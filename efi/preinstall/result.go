@@ -72,53 +72,38 @@ const (
 	// be used to add the PCR7 profile to a policy.
 	NoSecureBootPolicyProfileSupport
 
-	// DiscreteTPMDetected indicates that a discrete TPM was detected. Discrete TPMs suffer from
-	// some well known attacks against the bus that it uses to communicate with the host chipset if
-	// an adversary has physical access, such as passive interposer attacks (which are mitigated
-	// against in Ubuntu by using response encryption with TPM2_Unseal), active interposer attacks
-	// where an adversary can modify communications as well as monitor them (for which there are no
-	// OS-level mitigations - whilst this can be mitigated by end-to-end integrity protection of PCR
-	// extends and other critical commands, and the use of TPM2_EncryptDecrypt2 rather than TPM2_Unseal
-	// in order to prevent the ability to modify session attributes and remove response encryption flag,
-	// the mitigations are required throughout the entire trust chain including the firmware, which is
-	// not the case today) and the ability to just desolder the device and attach it to a malicious host
-	// platform, for which there are obviously no software mitigations. Firmware based TPMs such as Intel
-	// PTT or those which run in a TEE are generally considered more secure as long as the persistent
-	// storage is adequately protected from reading sensitive data, modification and rollback.
+	// RequestPartialDiscreteTPMResetAttackMitigation indicates that a partial mitigation against discrete
+	// TPM reset attacks should be enabled.
 	//
-	// They also potentially suffer from reset attacks. Whilst the TCG PC Client Platform Firmware
-	// Profile Specification requires that the TPM and host platform cannot be reset independently, some
-	// platforms permit the TPM to be reset without resetting the host platform, breaking measured boot
-	// because it may be possible to reconstruct PCR values from software. This type of issue is a
-	// hardware integration bug. Even if resetting the TPM correctly resets the host platform, it may be
-	// possible for an adversary with physical access to lift the reset pin of the TPM in order to reset
-	// it independently, depending on what type of package is used - eg, this is significantly harder for
-	// TPMs in a QFN package than it is for TPMs in a TSSOP package - both of which are permitted as
-	// described in the TCG PC Client Platform TPM Profile Specification for TPM 2.0, although the QFN
-	// package is more likely to be found in laptops and other small computing devices. Note that it may
-	// be possible to provide some mitigation against reset attacks if the TPM's startup locality is not
-	// accessible from ring 0 code (platform firmware and privileged OS code). This is because the startup
-	// locality changes the initial value of PCR 0, and so a startup locality other than 0 will make it
-	// impossible to reconstruct the same PCR values from software as long as the startup locality cannot
-	// be accessed from software by the adversary. Note that this type of mitigation offers no protection
-	// from an adversary performing an active interposer attack as described before, as if they can control
-	// bus communications then they can access any locality in order to replay PCR values, so any mitigation
-	// provided is limited.
-	DiscreteTPMDetected
-
-	// StartupLocalityNotProtected indicates that the TPM's startup locality can most likely be accessed
-	// from any code running at ring 0 (platform firmware and privileged OS code). This won't be set if
-	// DiscreteTPMDetected isn't also set. If this is set, then it is not possible to offer any mitigation
-	// against replaying PCR values from software as part of a reset attack. Support for not offering any
-	// reset attack mitigation has to be opted into with the PermitNoDiscreteTPMResetMitigation flag to
-	// RunChecks.
-	StartupLocalityNotProtected
+	// Discrete TPMs on some platforms may be vulnerable to a class of attack where the TPM can be reset
+	// independently of the host platform, contrary to the requirements of the TCG PC Client Platform
+	// Firmware Profile specification, breaking measured boot. This flag will be set on these platforms
+	// if a partial mitigation is available.
+	//
+	// The locality from which TPM2_Startup is called from affects the starting value of PCR0. If access
+	// to the startup locality is restricted by the hardware root-of-trust, then it's possible to
+	// enable a partial mitigation against discrete TPM reset attacks by binding policies to PCR0,
+	// which ensures that PCR0 cannot be reconstructed from the OS.
+	//
+	// This is only a partial mitigation becuase discrete TPMs may be vulnerable to several classes of
+	// attacks. This doesn't mitigate active interposer attacks (where an adversary can modify communication
+	// between the host CPU and TPM - this would require measures such as end-to-end integrity protection
+	// of PCR extends and other critical commands throughout the entire chain of trust, and the use of
+	// TPM2_EncryptDecrypt2 rather than TPM2_Unseal to prevent modification of session attributes to remove
+	// the response encryption flag), nor other types of attacks where the TPM can be physically detached
+	// in order to spoof the host platform. Even on platforms where the discrete TPM can't be reset
+	// independently of the host CPU, it may still be possible for an adversary to reset it independently by
+	// lifting pins.
+	RequestPartialDiscreteTPMResetAttackMitigation
 
 	// InsufficientDMAProtectionDetected indicates that DMA remapping was disabled in the pre-OS environment.
 	// This weakens security because it allows pre-OS DMA attacks to compromise system integrity.
 	// Support for this has to be opted into with the PermitInsufficientDMAProtection flag to RunChecks.
 	// This check may not run if the NoSecureBootPolicyProfileSupport flag is set.
 	InsufficientDMAProtectionDetected
+
+	discreteTPMDetected
+	startupLocalityNotProtected
 )
 
 func (f CheckResultFlags) toStringSlice() []string {
@@ -145,10 +130,8 @@ func (f CheckResultFlags) toStringSlice() []string {
 			str = "no-boot-manager-config-profile-support"
 		case NoSecureBootPolicyProfileSupport:
 			str = "no-secure-boot-policy-profile-support"
-		case DiscreteTPMDetected:
-			str = "discrete-tpm-detected"
-		case StartupLocalityNotProtected:
-			str = "startup-locality-not-protected"
+		case RequestPartialDiscreteTPMResetAttackMitigation:
+			str = "request-partial-dtpm-reset-attack-mitigation"
 		case InsufficientDMAProtectionDetected:
 			str = "insufficient-dma-protection-detected"
 		default:
@@ -193,12 +176,14 @@ func (f *CheckResultFlags) UnmarshalJSON(data []byte) error {
 			val = NoBootManagerConfigProfileSupport
 		case "no-secure-boot-policy-profile-support":
 			val = NoSecureBootPolicyProfileSupport
-		case "discrete-tpm-detected":
-			val = DiscreteTPMDetected
-		case "startup-locality-not-protected":
-			val = StartupLocalityNotProtected
+		case "request-partial-dtpm-reset-attack-mitigation":
+			val = RequestPartialDiscreteTPMResetAttackMitigation
 		case "insufficient-dma-protection-detected":
 			val = InsufficientDMAProtectionDetected
+		case "discrete-tpm-detected":
+			val = discreteTPMDetected
+		case "startup-locality-not-protected":
+			val = startupLocalityNotProtected
 		default:
 			v, err := strconv.ParseUint(flag, 0, 32)
 			switch {
@@ -212,6 +197,11 @@ func (f *CheckResultFlags) UnmarshalJSON(data []byte) error {
 
 		out |= val
 	}
+
+	if out&(discreteTPMDetected|startupLocalityNotProtected) == discreteTPMDetected {
+		out |= RequestPartialDiscreteTPMResetAttackMitigation
+	}
+	out &^= (discreteTPMDetected | startupLocalityNotProtected)
 
 	*f = out
 	return nil

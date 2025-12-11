@@ -28,6 +28,29 @@ import (
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
+// discreteTPMPartialResetAttackMitigationStatus indicates whether a partial mitigation against
+// discrete TPM reset attacks should be enabled. See the documentation for
+// RequestPartialDiscreteTPMResetAttackMitigation
+type discreteTPMPartialResetAttackMitigationStatus int
+
+const (
+	// dtpmPartialResetAttackMitigationUnknown indicates that it is not known if
+	// partial mitigation is required, because of an error.
+	dtpmPartialResetAttackMitigationUnknown discreteTPMPartialResetAttackMitigationStatus = iota
+
+	// dtpmPartialResetAttackMitigationNotRequired indicates that no partial mitigation
+	// is required.
+	dtpmPartialResetAttackMitigationNotRequired
+
+	// dtpmPartialResetAttackMitigationPreferred indicates that a partial mitigation
+	// is desired.
+	dtpmPartialResetAttackMitigationPreferred
+
+	// dtpmPartialResetAttackMitigationUnavailable indicates that a partial
+	// mitigation is desired but not possible.
+	dtpmPartialResetAttackMitigationUnavailable
+)
+
 // checkForKernelIOMMU checks that the kernel has enabled some sort of DMA protection.
 // On Intel devices, the domains are defined by the DMAR ACPI table. The check is quite
 // simple, and based on the fwupd HSI checks. If it is not enabled, a [ErrNoKernelIOMMU]

@@ -310,12 +310,9 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		warnings = append(warnings, err)
 	}
 
-	discreteTPM := false
-
 	if virtMode == detectVirtNone {
 		// Only run host security checks if we are not in a VM
-		protectedLocalities, err := checkHostSecurity(runChecksEnv, log)
-		if err != nil {
+		if err := checkHostSecurity(runChecksEnv, log); err != nil {
 			var ce CompoundError
 			if !errors.As(err, &ce) {
 				return nil, &HostSecurityError{err}
@@ -331,48 +328,18 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 			}
 		}
 
-		discreteTPM, err = isTPMDiscrete(runChecksEnv)
+		status, err := checkDiscreteTPMPartialResetAttackMitigationStatus(runChecksEnv, logResults)
 		if err != nil {
-			return nil, &TPM2DeviceError{err}
+			return nil, err
 		}
-
-		switch {
-		case discreteTPM && !logResults.Lookup(internal_efi.PlatformFirmwarePCR).Ok():
-			// We can't use PCR0 to enable the reset attack mitigation.
-			result.Flags |= StartupLocalityNotProtected
+		switch status {
+		case dtpmPartialResetAttackMitigationNotRequired:
+			// nothing to do.
+		case dtpmPartialResetAttackMitigationPreferred:
+			result.Flags |= RequestPartialDiscreteTPMResetAttackMitigation
+		case dtpmPartialResetAttackMitigationUnavailable:
 			warnings = append(warnings, &HostSecurityError{ErrNoPartialDiscreteTPMResetAttackMitigation})
-		case discreteTPM:
-			switch logResults.StartupLocality {
-			case 0:
-				// TPM2_Startup occurred from locality 0. Mark PCR0 as reconstructible
-				// from anything that runs as part of the static OS (only applicable to
-				// discrete TPMs that can be reset independently of the host CPU, which
-				// isn't really meant to be possible).
-				result.Flags |= StartupLocalityNotProtected
-				warnings = append(warnings, &HostSecurityError{ErrNoPartialDiscreteTPMResetAttackMitigation})
-			case 3:
-				// TPM2_Startup occurred from locality 3. Mark PCR0 as reconstructible
-				// from anything that runs as part of the static OS for the reasons stated
-				// above if access to locality 3 isn't protected.
-				if protectedLocalities&tpm2.LocalityThree == 0 {
-					result.Flags |= StartupLocalityNotProtected
-					warnings = append(warnings, &HostSecurityError{ErrNoPartialDiscreteTPMResetAttackMitigation})
-				}
-			case 4:
-				// There were H-CRTM events.  Mark PCR0 as reconstructible from anything that
-				// runs as part of the static OS for the reasons stated above if access to
-				// locality 4 isn't protected.
-				if protectedLocalities&tpm2.LocalityFour == 0 {
-					result.Flags |= StartupLocalityNotProtected
-					warnings = append(warnings, &HostSecurityError{ErrNoPartialDiscreteTPMResetAttackMitigation})
-				}
-			}
 		}
-	}
-
-	if discreteTPM {
-		// Note that a discrete TPM was detected.
-		result.Flags |= DiscreteTPMDetected
 	}
 
 	addDeferredErrorOrWarning := func(err error, permitFlag CheckFlags) {

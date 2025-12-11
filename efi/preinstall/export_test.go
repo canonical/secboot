@@ -25,6 +25,7 @@ import (
 	"io"
 
 	efi "github.com/canonical/go-efilib"
+	"github.com/canonical/go-tpm2"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 	pe "github.com/snapcore/secboot/internal/pe1.14"
 )
@@ -36,69 +37,56 @@ type (
 	BootManagerCodeResult       = bootManagerCodeResult
 	CheckFirmwareLogFlags       = checkFirmwareLogFlags
 	CheckTPM2DeviceFlags        = checkTPM2DeviceFlags
-	CpuVendor                   = cpuVendor
 	DetectVirtResult            = detectVirtResult
-	HfstsRegisters              = hfstsRegisters
-	HfstsRegistersCsme11        = hfstsRegistersCsme11
-	HfstsRegistersCsme18        = hfstsRegistersCsme18
 	JoinError                   = joinError
-	MeVersion                   = meVersion
+	PcrResults                  = pcrResults
 	SecureBootPolicyResult      = secureBootPolicyResult
 	SecureBootPolicyResultFlags = secureBootPolicyResultFlags
 )
 
 const (
-	AuthorityTrustBootCode                    = authorityTrustBootCode
-	AuthorityTrustDrivers                     = authorityTrustDrivers
-	CheckFirmwareLogPermitEmptyPCRBanks       = checkFirmwareLogPermitEmptyPCRBanks
-	CheckFirmwareLogPermitWeakPCRBanks        = checkFirmwareLogPermitWeakPCRBanks
-	CheckTPM2DeviceInVM                       = checkTPM2DeviceInVM
-	CheckTPM2DevicePostInstall                = checkTPM2DevicePostInstall
-	CpuVendorIntel                            = cpuVendorIntel
-	CpuVendorAMD                              = cpuVendorAMD
-	DetectVirtNone                            = detectVirtNone
-	DetectVirtVM                              = detectVirtVM
-	MeFamilyUnknown                           = meFamilyUnknown
-	MeFamilySps                               = meFamilySps
-	MeFamilyTxe                               = meFamilyTxe
-	MeFamilyMe                                = meFamilyMe
-	MeFamilyCsme                              = meFamilyCsme
-	SecureBootIncludesWeakAlg                 = secureBootIncludesWeakAlg
-	SecureBootPreOSVerificationIncludesDigest = secureBootPreOSVerificationIncludesDigest
+	AuthorityTrustBootCode                      = authorityTrustBootCode
+	AuthorityTrustDrivers                       = authorityTrustDrivers
+	CheckFirmwareLogPermitEmptyPCRBanks         = checkFirmwareLogPermitEmptyPCRBanks
+	CheckFirmwareLogPermitWeakPCRBanks          = checkFirmwareLogPermitWeakPCRBanks
+	CheckTPM2DeviceInVM                         = checkTPM2DeviceInVM
+	CheckTPM2DevicePostInstall                  = checkTPM2DevicePostInstall
+	DetectVirtNone                              = detectVirtNone
+	DetectVirtVM                                = detectVirtVM
+	DiscreteTPMDetected                         = discreteTPMDetected
+	DtpmPartialResetAttackMitigationNotRequired = dtpmPartialResetAttackMitigationNotRequired
+	DtpmPartialResetAttackMitigationPreferred   = dtpmPartialResetAttackMitigationPreferred
+	DtpmPartialResetAttackMitigationUnavailable = dtpmPartialResetAttackMitigationUnavailable
+	SecureBootIncludesWeakAlg                   = secureBootIncludesWeakAlg
+	SecureBootPreOSVerificationIncludesDigest   = secureBootPreOSVerificationIncludesDigest
+	StartupLocalityNotProtected                 = startupLocalityNotProtected
 )
 
 var (
-	CalculateIntelMEFamily                                = calculateIntelMEFamily
 	CheckBootManagerCodeMeasurements                      = checkBootManagerCodeMeasurements
+	CheckDiscreteTPMPartialResetAttackMitigationStatus    = checkDiscreteTPMPartialResetAttackMitigationStatus
 	CheckDriversAndAppsMeasurements                       = checkDriversAndAppsMeasurements
 	CheckFirmwareLogAndChoosePCRBank                      = checkFirmwareLogAndChoosePCRBank
 	CheckForKernelIOMMU                                   = checkForKernelIOMMU
 	CheckHostSecurity                                     = checkHostSecurity
-	CheckHostSecurityIntelBootGuard                       = checkHostSecurityIntelBootGuard
-	CheckHostSecurityIntelBootGuardCSME11                 = checkHostSecurityIntelBootGuardCSME11
-	CheckHostSecurityIntelBootGuardCSME18                 = checkHostSecurityIntelBootGuardCSME18
-	CheckHostSecurityIntelCPUDebuggingLocked              = checkHostSecurityIntelCPUDebuggingLocked
 	CheckSecureBootPolicyMeasurementsAndObtainAuthorities = checkSecureBootPolicyMeasurementsAndObtainAuthorities
 	CheckSecureBootPolicyPCRForDegradedFirmwareSettings   = checkSecureBootPolicyPCRForDegradedFirmwareSettings
 	CheckSystemIsEFI                                      = checkSystemIsEFI
 	ClearTPM                                              = clearTPM
 	DetectVirtualization                                  = detectVirtualization
-	DetermineCPUVendor                                    = determineCPUVendor
 	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
 	InsertActionProceed                                   = insertActionProceed
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
 	IsPPIActionAvailable                                  = isPPIActionAvailable
 	IsTPMDiscrete                                         = isTPMDiscrete
-	IsTPMDiscreteFromIntelBootGuard                       = isTPMDiscreteFromIntelBootGuard
 	JoinErrors                                            = joinErrors
 	MatchLaunchToLoadOption                               = matchLaunchToLoadOption
 	NewX509CertificateID                                  = newX509CertificateID
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
 	ReadCurrentBootLoadOptionFromLog                      = readCurrentBootLoadOptionFromLog
-	ReadIntelHFSTSRegistersFromMEISysfs                   = readIntelHFSTSRegistersFromMEISysfs
-	ReadIntelMEVersionFromMEISysfs                        = readIntelMEVersionFromMEISysfs
 	ReadLoadOptionFromLog                                 = readLoadOptionFromLog
 	ReadOrderedLoadOptionVariables                        = readOrderedLoadOptionVariables
+	RestrictedTPMLocalitiesIntel                          = restrictedTPMLocalitiesIntel
 	RunPPIAction                                          = runPPIAction
 	UnwrapCompoundError                                   = unwrapCompoundError
 )
@@ -149,5 +137,23 @@ func NewWithKindAndActionsErrorForTest(kind ErrorKind, args map[string]json.RawM
 		Args:    args,
 		Actions: actions,
 		err:     err,
+	}
+}
+
+func MakePCRResults(mandatory bool, initialVal, logVal, pcrVal tpm2.Digest, err error) pcrResults {
+	return pcrResults{
+		mandatory:    mandatory,
+		initialValue: initialVal,
+		logValue:     logVal,
+		pcrValue:     pcrVal,
+		err:          err,
+	}
+}
+
+func NewPCRBankResults(alg tpm2.HashAlgorithmId, sl uint8, pcrs [8]PcrResults) *pcrBankResults {
+	return &pcrBankResults{
+		Alg:             alg,
+		StartupLocality: sl,
+		pcrs:            pcrs,
 	}
 }
