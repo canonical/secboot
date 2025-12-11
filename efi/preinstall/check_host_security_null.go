@@ -25,12 +25,15 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
 
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (protectedStartupLocalities tpm2.Locality, err error) {
-	return 0, &UnsupportedPlatformError{fmt.Errorf("checking host security is not implemented on %s", runtime.GOARCH)}
+func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) error {
+	return &UnsupportedPlatformError{fmt.Errorf("checking host security is not implemented on %s", runtime.GOARCH)}
+}
+
+func checkDiscreteTPMPartialResetAttackMitigationStatus(env internal_efi.HostEnvironment, logResults *pcrBankResults) (discreteTPMPartialResetAttackMitigationStatus, error) {
+	return dtpmPartialResetAttackMitigationNotRequired, nil
 }

@@ -28,6 +28,7 @@ import (
 	"io"
 	"strings"
 
+	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
@@ -263,7 +264,8 @@ var (
 
 	// ErrNoPartialDiscreteTPMResetAttackMitigation is returned wrapped in HostSecurityError as
 	// a warning in CheckResult if a partial mitigation against TPM reset attacks cannot be used
-	// when required. See the documentation for DiscreteTPMDetected for more information.
+	// when required. See the documentation for RequestPartialDiscreteTPMResetAttackMitigation for
+	// more information.
 	ErrNoPartialDiscreteTPMResetAttackMitigation = errors.New("cannot enable partial mitigation against discrete TPM reset attacks")
 )
 
@@ -574,17 +576,159 @@ func (e *DriversAndAppsPCRError) Unwrap() error {
 	return e.err
 }
 
-var (
-	// ErrVARSuppliedDriversPresent is returned wrapped in a type that implements
-	// CompoundError if value-added-retailer drivers are detected to be running. These
-	// can be running either because they are loaded by BDS by the presence of Driver####
-	// load options and the DriverOrder global variable, or because the firmware finds a
-	// loadable PE image in the ROM area of a connected PCI device. They are included in
-	// a PCR policy when using efi.WithDriversAndAppsProfile.
-	// These can be permitted by supplying the PermitVARSuppliedDrivers flag to RunChecks,
-	// in which case, this error will be returned as a warning via CheckResult.
-	ErrVARSuppliedDriversPresent = errors.New("value added retailer supplied drivers were detected to be running")
+// LoadedImageFormat describes the format of a loaded image.
+type LoadedImageFormat string
+
+const (
+	// LoadedImageFormatPE is a PE image. These images are measured using the
+	// EV_EFI_BOOT_SERVICES_DRIVER, EV_EFI_RUNTIME_SERVICES_DRIVER and
+	// EV_EFI_BOOT_SERVICES_APPLICATION event types.
+	LoadedImageFormatPE LoadedImageFormat = "pe"
+
+	// LoadedImageFormatBlob is an opaque blob. These images are measured using
+	// the EV_EFI_PLATFORM_FIRMWARE_BLOB and EV_EFI_PLATFORM_FIRMWARE_BLOB2
+	// event types.
+	LoadedImageFormatBlob LoadedImageFormat = "blob"
 )
+
+type devicePathJSON struct {
+	String string `json:"string"`
+	Bytes  []byte `json:"bytes"`
+}
+
+type loadedImageInfoJSON struct {
+	Format         LoadedImageFormat `json:"format"`
+	Description    string            `json:"description,omitempty"`
+	LoadOptionName string            `json:"load-option-name,omitempty"`
+	DevicePath     devicePathJSON    `json:"device-path"`
+	DigestAlg      hashAlgorithmId   `json:"digest-alg"`
+	Digest         []byte            `json:"digest"`
+}
+
+// LoadedImageInfo contains information about a loaded image, which may be a
+// driver or system preparation application.
+type LoadedImageInfo struct {
+	// Format is the format of the loaded image.
+	Format LoadedImageFormat
+
+	// Description is a human readable description of the loaded image,
+	// if there is one.
+	Description string
+
+	// LoadOptionName is the name of the EFI variable containing the
+	// associated EFI_LOAD_OPTION if there is one. This can be empty for
+	// option ROMs and is empty for firmware blobs.
+	LoadOptionName string
+
+	// DevicePath is the EFI device path of the loaded image if it is
+	// known.
+	DevicePath efi.DevicePath
+
+	// DigestAlg is the algorithm of the digest in the Digest field.
+	DigestAlg tpm2.HashAlgorithmId
+
+	// Digest is the digest of the loaded image, using the algorithm
+	// specified in the DigestAlg field. When Format is LoadedImageFormatPE,
+	// this is the Authenticode digest.
+	Digest tpm2.Digest
+}
+
+// MarshalJSON implements [json.Marshaler].
+func (i *LoadedImageInfo) MarshalJSON() ([]byte, error) {
+	pathBytes, err := i.DevicePath.Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("cannot encode device path: %w", err)
+	}
+
+	info := &loadedImageInfoJSON{
+		Format:         i.Format,
+		Description:    i.Description,
+		LoadOptionName: i.LoadOptionName,
+		DevicePath: devicePathJSON{
+			String: i.DevicePath.String(),
+			Bytes:  pathBytes,
+		},
+		DigestAlg: hashAlgorithmId(i.DigestAlg),
+		Digest:    i.Digest,
+	}
+	return json.Marshal(info)
+}
+
+// UnmarshalJSON implements [json.Unmarshaler].
+func (i *LoadedImageInfo) UnmarshalJSON(data []byte) error {
+	var info *loadedImageInfoJSON
+	if err := json.Unmarshal(data, &info); err != nil {
+		return err
+	}
+
+	path, err := efi.ReadDevicePath(bytes.NewReader(info.DevicePath.Bytes))
+	if err != nil {
+		return fmt.Errorf("cannot decode device path: %w", err)
+	}
+
+	*i = LoadedImageInfo{
+		Format:         info.Format,
+		Description:    info.Description,
+		LoadOptionName: info.LoadOptionName,
+		DevicePath:     path,
+		DigestAlg:      tpm2.HashAlgorithmId(info.DigestAlg),
+		Digest:         info.Digest,
+	}
+	return nil
+}
+
+// String implements [fmt.Stringer].
+func (i *LoadedImageInfo) String() string {
+	var b strings.Builder
+	if i.Description != "" {
+		io.WriteString(&b, i.Description)
+	} else {
+		io.WriteString(&b, "[no description]")
+	}
+	if len(i.DevicePath) > 0 {
+		fmt.Fprintf(&b, " path=%s", i.DevicePath)
+	}
+	switch i.Format {
+	case LoadedImageFormatPE:
+		io.WriteString(&b, " authenticode-digest")
+	default:
+		io.WriteString(&b, " digest")
+	}
+	fmt.Fprintf(&b, "=%v:%x", i.DigestAlg, i.Digest)
+	if i.LoadOptionName != "" {
+		fmt.Fprintf(&b, " load-option=%s", i.LoadOptionName)
+	}
+
+	return b.String()
+}
+
+// AddonDriversPresentError is returned wrapped in a type that implements [CompoundError]
+// if addon drivers are detected to be running. These can be running either because they
+// are loaded by BDS by the presence of Driver#### load options and the DriverOrder global
+// variable, or because firmware finds a loadable PE image in the ROM area of a connected
+// PCI device. They are included in a PCR policy when using [secboot_efi.WithDriversAndAppsProfile].
+// These can be permitted by supplying the PermitAddonDrivers flag to [RunChecks], in
+// which case, this error will be returned as a warning via [CheckResult].
+//
+// The check for addon drivers may not execute if a [DriversAndAppsPCRError] is returned,
+// either as an error or as a warning.
+type AddonDriversPresentError struct {
+	Drivers []*LoadedImageInfo
+}
+
+func (e *AddonDriversPresentError) Error() string {
+	var b strings.Builder
+	io.WriteString(&b, "addon drivers were detected")
+
+	if len(e.Drivers) > 0 {
+		io.WriteString(&b, ":\n")
+		for _, info := range e.Drivers {
+			fmt.Fprintf(&b, "- %s\n", info)
+		}
+	}
+
+	return b.String()
+}
 
 // Errors related to drivers and apps config PCR checks
 
@@ -666,19 +810,6 @@ func (e *BootManagerCodePCRError) Unwrap() error {
 }
 
 var (
-	// ErrSysPrepApplicationsPresent is returned wrapped in a type that implements
-	// CompoundError if system preparation applications were detected to be running. These
-	// are loaded by BDS as part of the pre-OS environment because there are SysPrep####
-	// load options and a SysPrepOrder global variable defined. As these aren't under the
-	// control of the OS, these can increase the fragility of profiles that include
-	// efi.WithBootManagerCodeProfile, which includes the measurements of these applications.
-	// These can be permitted by supplying the PermitSysPrepApplications flag to RunChecks,
-	// in which case, this error is returned as a warning via CheckResult.
-	//
-	// The check for system preparation applications may not execute if a
-	// BootManagerCodePCRError error is returned, either as an error or as a warning.
-	ErrSysPrepApplicationsPresent = errors.New("system preparation applications were detected to be running")
-
 	// ErrAbsoluteComputraceActive is returned wrapped in a type that implements CompoundError
 	// if Absolute was detected to be active. Absolute is an endpoint management component. As
 	// it is a component of the firmware, it increases fragility of profiles that include
@@ -691,6 +822,34 @@ var (
 	// either as an error or as a warning.
 	ErrAbsoluteComputraceActive = errors.New("Absolute was detected to be active and it is advised that this is disabled")
 )
+
+// SysPrepApplicationsPresentError is returned wrapped in a type that implements [CompoundError]
+// if system preparation applications were detected to be running. These are loaded by BDS as part
+// of the pre-OS environment because there are SysPrep#### load options and a SysPrepOrder global
+// variable defined. As these aren't under the control of the OS, these can increase fragility of
+// profiles that include [secboot_efi.WithBootManagerCodeProfile], which includes the measurements
+// of these applications. These can be permitted by supplying the PermitSysPrepApplications flag
+// to [RunChecks], in which case, the error is returned as a warning via [CheckResult].
+//
+// The check for system preparation applications may not execute if a [BootManagerCodePCRError]
+// is returned, either as an error or as a warning.
+type SysPrepApplicationsPresentError struct {
+	Apps []*LoadedImageInfo
+}
+
+func (e *SysPrepApplicationsPresentError) Error() string {
+	var b strings.Builder
+	io.WriteString(&b, "system preparation applications were detected")
+
+	if len(e.Apps) > 0 {
+		io.WriteString(&b, ":\n")
+		for _, info := range e.Apps {
+			fmt.Fprintf(&b, "- %s\n", info)
+		}
+	}
+
+	return b.String()
+}
 
 // Errors related to boot manager config PCR checks
 

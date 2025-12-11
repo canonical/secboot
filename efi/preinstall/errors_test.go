@@ -23,6 +23,8 @@ import (
 	"encoding/json"
 	"errors"
 
+	efi "github.com/canonical/go-efilib"
+	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot/efi/preinstall"
 	"github.com/snapcore/secboot/internal/testutil"
 	. "gopkg.in/check.v1"
@@ -58,6 +60,245 @@ multiple lines
 func (s *errorsSuite) TestJoinErrorOneError(c *C) {
 	err := JoinErrors(errors.New("some error"))
 	c.Check(err.Error(), Equals, `some error`)
+}
+
+func (s *errorsSuite) TestLoadedImageInfoMarshalJSON1(c *C) {
+	info := &LoadedImageInfo{
+		Format: LoadedImageFormatPE,
+		DevicePath: efi.DevicePath{
+			&efi.ACPIDevicePathNode{
+				HID: 0x0a0341d0,
+				UID: 0x0,
+			},
+			&efi.PCIDevicePathNode{
+				Function: 0x1c,
+				Device:   0x2,
+			},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x0,
+			},
+			&efi.MediaRelOffsetRangeDevicePathNode{
+				StartingOffset: 0x38,
+				EndingOffset:   0x11dff,
+			},
+		},
+		DigestAlg: tpm2.HashAlgorithmSHA256,
+		Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+	}
+
+	data, err := json.Marshal(info)
+	c.Check(err, IsNil)
+	c.Check(data, DeepEquals, []byte(`{"format":"pe","device-path":{"string":"\\PciRoot(0x0)\\Pci(0x2,0x1c)\\Pci(0x0,0x0)\\Offset(0x38,0x11dff)","bytes":"AgEMANBBAwoAAAAAAQEGABwCAQEGAAAABAgYAAAAAAA4AAAAAAAAAP8dAQAAAAAAf/8EAA=="},"digest-alg":"sha256","digest":"HpSq7SrVmkQJ8yMNyirYwD744/3nfMR9x7gbuLJC8+Y="}`))
+}
+
+func (s *errorsSuite) TestLoadedImageInfoMarshalJSON2(c *C) {
+	info := &LoadedImageInfo{
+		Format:    LoadedImageFormatBlob,
+		DigestAlg: tpm2.HashAlgorithmSHA256,
+		Digest:    testutil.DecodeHexString(c, "111ae52b17b2487348b3dabc80b895bc25e457ab0559270acaf34601a007729d"),
+	}
+
+	data, err := json.Marshal(info)
+	c.Check(err, IsNil)
+	c.Check(data, DeepEquals, []byte(`{"format":"blob","device-path":{"string":"","bytes":"f/8EAA=="},"digest-alg":"sha256","digest":"ERrlKxeySHNIs9q8gLiVvCXkV6sFWScKyvNGAaAHcp0="}`))
+}
+
+func (s *errorsSuite) TestLoadedImageInfoMarshalJSON3(c *C) {
+	info := &LoadedImageInfo{
+		Format:         LoadedImageFormatPE,
+		Description:    "Mock sysprep app",
+		LoadOptionName: "SysPrep0001",
+		DevicePath: efi.DevicePath{
+			&efi.ACPIDevicePathNode{
+				HID: 0x0a0341d0,
+				UID: 0x0},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x1d},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x0},
+			&efi.NVMENamespaceDevicePathNode{
+				NamespaceID:   0x1,
+				NamespaceUUID: efi.EUI64{}},
+			&efi.HardDriveDevicePathNode{
+				PartitionNumber: 1,
+				PartitionStart:  0x800,
+				PartitionSize:   0x100000,
+				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+				MBRType:         efi.GPT},
+			efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+		},
+		DigestAlg: tpm2.HashAlgorithmSHA384,
+		Digest:    testutil.DecodeHexString(c, "11a4d03833dafa0f99ba8d983c52b35d0b26ed97d9600313ba7c27fbecda6fccba0a1f0a94c9970e73ce7596d3a4bf44"),
+	}
+
+	data, err := json.Marshal(info)
+	c.Check(err, IsNil)
+	c.Check(data, DeepEquals, []byte(`{"format":"pe","description":"Mock sysprep app","load-option-name":"SysPrep0001","device-path":{"string":"\\PciRoot(0x0)\\Pci(0x1d,0x0)\\Pci(0x0,0x0)\\NVMe(0x1,00-00-00-00-00-00-00-00)\\HD(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960)\\\\EFI\\Dell\\sysprep.efi","bytes":"AgEMANBBAwoAAAAAAQEGAAAdAQEGAAAAAxcQAAEAAAAAAAAAAAAAAAQBKgABAAAAAAgAAAAAAAAAABAAAAAAAHuU3may/SVFt1Iw1muyuWACAgQEMABcAEUARgBJAFwARABlAGwAbABcAHMAeQBzAHAAcgBlAHAALgBlAGYAaQAAAH//BAA="},"digest-alg":"sha384","digest":"EaTQODPa+g+Zuo2YPFKzXQsm7ZfZYAMTunwn++zab8y6Ch8KlMmXDnPOdZbTpL9E"}`))
+}
+
+func (s *errorsSuite) TestLoadedImageInfoUnmashalJSON1(c *C) {
+	data := []byte(`{"format":"pe","device-path":{"string":"\\PciRoot(0x0)\\Pci(0x2,0x1c)\\Pci(0x0,0x0)\\Offset(0x38,0x11dff)","bytes":"AgEMANBBAwoAAAAAAQEGABwCAQEGAAAABAgYAAAAAAA4AAAAAAAAAP8dAQAAAAAAf/8EAA=="},"digest-alg":"sha256","digest":"HpSq7SrVmkQJ8yMNyirYwD744/3nfMR9x7gbuLJC8+Y="}`)
+
+	var info *LoadedImageInfo
+	c.Check(json.Unmarshal(data, &info), IsNil)
+	c.Check(info, DeepEquals, &LoadedImageInfo{
+		Format: LoadedImageFormatPE,
+		DevicePath: efi.DevicePath{
+			&efi.ACPIDevicePathNode{
+				HID: 0x0a0341d0,
+				UID: 0x0,
+			},
+			&efi.PCIDevicePathNode{
+				Function: 0x1c,
+				Device:   0x2,
+			},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x0,
+			},
+			&efi.MediaRelOffsetRangeDevicePathNode{
+				StartingOffset: 0x38,
+				EndingOffset:   0x11dff,
+			},
+		},
+		DigestAlg: tpm2.HashAlgorithmSHA256,
+		Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+	})
+}
+
+func (s *errorsSuite) TestLoadedImageInfoUnmashalJSON2(c *C) {
+	data := []byte(`{"format":"blob","device-path":{"string":"","bytes":"f/8EAA=="},"digest-alg":"sha256","digest":"ERrlKxeySHNIs9q8gLiVvCXkV6sFWScKyvNGAaAHcp0="}`)
+
+	var info *LoadedImageInfo
+	c.Check(json.Unmarshal(data, &info), IsNil)
+	c.Check(info, DeepEquals, &LoadedImageInfo{
+		Format:    LoadedImageFormatBlob,
+		DigestAlg: tpm2.HashAlgorithmSHA256,
+		Digest:    testutil.DecodeHexString(c, "111ae52b17b2487348b3dabc80b895bc25e457ab0559270acaf34601a007729d"),
+	})
+}
+
+func (s *errorsSuite) TestLoadedImageInfoUnmashalJSON3(c *C) {
+	data := []byte(`{"format":"pe","description":"Mock sysprep app","load-option-name":"SysPrep0001","device-path":{"string":"\\PciRoot(0x0)\\Pci(0x1d,0x0)\\Pci(0x0,0x0)\\NVMe(0x1,00-00-00-00-00-00-00-00)\\HD(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960)\\\\EFI\\Dell\\sysprep.efi","bytes":"AgEMANBBAwoAAAAAAQEGAAAdAQEGAAAAAxcQAAEAAAAAAAAAAAAAAAQBKgABAAAAAAgAAAAAAAAAABAAAAAAAHuU3may/SVFt1Iw1muyuWACAgQEMABcAEUARgBJAFwARABlAGwAbABcAHMAeQBzAHAAcgBlAHAALgBlAGYAaQAAAH//BAA="},"digest-alg":"sha384","digest":"EaTQODPa+g+Zuo2YPFKzXQsm7ZfZYAMTunwn++zab8y6Ch8KlMmXDnPOdZbTpL9E"}`)
+
+	var info *LoadedImageInfo
+	c.Check(json.Unmarshal(data, &info), IsNil)
+	c.Check(info, DeepEquals, &LoadedImageInfo{
+		Format:         LoadedImageFormatPE,
+		Description:    "Mock sysprep app",
+		LoadOptionName: "SysPrep0001",
+		DevicePath: efi.DevicePath{
+			&efi.ACPIDevicePathNode{
+				HID: 0x0a0341d0,
+				UID: 0x0},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x1d},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x0},
+			&efi.NVMENamespaceDevicePathNode{
+				NamespaceID:   0x1,
+				NamespaceUUID: efi.EUI64{}},
+			&efi.HardDriveDevicePathNode{
+				PartitionNumber: 1,
+				PartitionStart:  0x800,
+				PartitionSize:   0x100000,
+				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+				MBRType:         efi.GPT},
+			efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+		},
+		DigestAlg: tpm2.HashAlgorithmSHA384,
+		Digest:    testutil.DecodeHexString(c, "11a4d03833dafa0f99ba8d983c52b35d0b26ed97d9600313ba7c27fbecda6fccba0a1f0a94c9970e73ce7596d3a4bf44"),
+	})
+}
+
+func (s *errorsSuite) TestLoadedImageInfoUnmashalErrInvalidValue(c *C) {
+	data := []byte(`{"format":"blob","device-path":{"string":"","bytes":"f/8EAA=="},"digest-alg":"","digest":"ERrlKxeySHNIs9q8gLiVvCXkV6sFWScKyvNGAaAHcp0="}`)
+
+	var info *LoadedImageInfo
+	c.Check(json.Unmarshal(data, &info), ErrorMatches, `unrecognized hash algorithm`)
+}
+
+func (s *errorsSuite) TestLoadedImageInfoUnmashalErrInvalidDevicePath(c *C) {
+	data := []byte(`{"format":"blob","device-path":{"string":"","bytes":""},"digest-alg":"sha256","digest":"ERrlKxeySHNIs9q8gLiVvCXkV6sFWScKyvNGAaAHcp0="}`)
+
+	var info *LoadedImageInfo
+	c.Check(json.Unmarshal(data, &info), ErrorMatches, `cannot decode device path: cannot decode node 0: unexpected EOF`)
+}
+
+func (s *errorsSuite) TestLoadedImageInfoMarshalString1(c *C) {
+	info := &LoadedImageInfo{
+		Format: LoadedImageFormatPE,
+		DevicePath: efi.DevicePath{
+			&efi.ACPIDevicePathNode{
+				HID: 0x0a0341d0,
+				UID: 0x0,
+			},
+			&efi.PCIDevicePathNode{
+				Function: 0x1c,
+				Device:   0x2,
+			},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x0,
+			},
+			&efi.MediaRelOffsetRangeDevicePathNode{
+				StartingOffset: 0x38,
+				EndingOffset:   0x11dff,
+			},
+		},
+		DigestAlg: tpm2.HashAlgorithmSHA256,
+		Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+	}
+
+	c.Check(info.String(), Equals, `[no description] path=\PciRoot(0x0)\Pci(0x2,0x1c)\Pci(0x0,0x0)\Offset(0x38,0x11dff) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6`)
+}
+
+func (s *errorsSuite) TestLoadedImageInfoMarshalString2(c *C) {
+	info := &LoadedImageInfo{
+		Format:    LoadedImageFormatBlob,
+		DigestAlg: tpm2.HashAlgorithmSHA256,
+		Digest:    testutil.DecodeHexString(c, "111ae52b17b2487348b3dabc80b895bc25e457ab0559270acaf34601a007729d"),
+	}
+
+	c.Check(info.String(), Equals, `[no description] digest=TPM_ALG_SHA256:111ae52b17b2487348b3dabc80b895bc25e457ab0559270acaf34601a007729d`)
+}
+
+func (s *errorsSuite) TestLoadedImageInfoMarshalString3(c *C) {
+	info := &LoadedImageInfo{
+		Format:         LoadedImageFormatPE,
+		Description:    "Mock sysprep app",
+		LoadOptionName: "SysPrep0001",
+		DevicePath: efi.DevicePath{
+			&efi.ACPIDevicePathNode{
+				HID: 0x0a0341d0,
+				UID: 0x0},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x1d},
+			&efi.PCIDevicePathNode{
+				Function: 0x0,
+				Device:   0x0},
+			&efi.NVMENamespaceDevicePathNode{
+				NamespaceID:   0x1,
+				NamespaceUUID: efi.EUI64{}},
+			&efi.HardDriveDevicePathNode{
+				PartitionNumber: 1,
+				PartitionStart:  0x800,
+				PartitionSize:   0x100000,
+				Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+				MBRType:         efi.GPT},
+			efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+		},
+		DigestAlg: tpm2.HashAlgorithmSHA384,
+		Digest:    testutil.DecodeHexString(c, "11a4d03833dafa0f99ba8d983c52b35d0b26ed97d9600313ba7c27fbecda6fccba0a1f0a94c9970e73ce7596d3a4bf44"),
+	}
+
+	c.Check(info.String(), Equals, `Mock sysprep app path=\PciRoot(0x0)\Pci(0x1d,0x0)\Pci(0x0,0x0)\NVMe(0x1,00-00-00-00-00-00-00-00)\HD(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960)\\EFI\Dell\sysprep.efi authenticode-digest=TPM_ALG_SHA384:11a4d03833dafa0f99ba8d983c52b35d0b26ed97d9600313ba7c27fbecda6fccba0a1f0a94c9970e73ce7596d3a4bf44 load-option=SysPrep0001`)
 }
 
 func (s *errorsSuite) TestNewWithKindAndActionsErrorNoArgsOrActions(c *C) {

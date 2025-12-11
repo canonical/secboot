@@ -59,7 +59,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteIntelNoTPM2(c *C) {
 	c.Check(errors.Is(err, ErrNoTPM2Device), testutil.IsTrue)
 }
 
-func (s *tpmIntelSuite) TestIsTPMDiscreteAMDNotSupported(c *C) {
+func (s *tpmIntelSuite) TestIsTPMDiscreteAMD(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("AuthenticAMD", nil, 1, nil))
 	_, err := IsTPMDiscrete(env)
 	c.Check(err, ErrorMatches, `unsupported platform: cannot check TPM discreteness on AMD systems`)

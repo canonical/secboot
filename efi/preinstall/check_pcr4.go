@@ -37,13 +37,10 @@ var (
 	efiComputePeImageDigest = efi.ComputePeImageDigest
 )
 
-type bootManagerCodeResultFlags int
-
-const (
-	bootManagerCodeSysprepAppsPresent bootManagerCodeResultFlags = 1 << iota
-	bootManagerCodeAbsoluteComputraceRunning
-	bootManagerCodeNotAllLaunchDigestsVerified
-)
+type bootManagerCodeResult struct {
+	HasAbsolute bool
+	SysprepApps []*LoadedImageInfo
+}
 
 // checkBootManagerCodeMeasurements performs some checks on the boot manager code PCR (4).
 //
@@ -51,26 +48,23 @@ const (
 // from EFI variables. The supplied env and log arguments provide other inputs to this function.
 // The pcrAlg argument is the PCR bank that is chosen as the best one to use. The loadImages
 // argument provides a way to supply the load images associated with the current boot, in the
-// order in which they are loaded. The caller must supply at least the IBL (initial boot loader,
-// loaded by the firmware), and the SBL (secondary boot loader, loaded by the IBL), if there is an
-// event in the log for it. These images are used to verify the digests of the
-// EV_EFI_BOOT_SERVICES_APPLICATION events. Other images are optional, but if not all
-// EV_EFI_BOOT_SERVICES_APPLICATION events can be verified, this will set the
-// bootManagerCodeNotAllLaunchDigestsVerified flag.
+// order in which they are loaded. These images are used to verify the digests of the
+// EV_EFI_BOOT_SERVICES_APPLICATION events.
 //
 // This function ensures that the pre-OS environment is well formed. Either it contains a single
 // EV_OMIT_BOOT_DEVICE_EVENT event or an optional EV_EFI_ACTION "Calling EFI Application from Boot
 // Option" event if the EV_OMIT_BOOT_DEVICE_EVENT event is not present. If the EV_EFI_ACTION event
 // is present, then the next expected event is the EV_SEPARATOR to signal the transition to OS-present.
 // The function considers any EV_EFI_BOOT_SERVICES_APPLICATION events before this to be system
-// preparation applications, and it will set the bootManagerCodeSysprepAppsPresent flag if any are
-// detected. If the BootOptionSupport EFI variable indicates that sysprep apps are not supported but
-// they are present, then an error is returned.
+// preparation applications, and it will return information about these in the returned result. If
+// the BootOptionSupport EFI variable indicates that sysprep apps are not supported but they are present,
+// then an error is returned. If any pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event is associated with
+// Absolute, then this is indicated separately in the returned result.
 //
 // The function expects the next event after the EV_SEPARATOR to be a EV_EFI_BOOT_SERVICES_APPLICATION
-// event, either the one associated with the IBL (initial boot loader), or a component of Absolute. If
-// it is Absolute, then this sets the bootManagerCodeAbsoluteComputraceRunning flag, and it then expects
-// the next event to be the one associated with the IBL (based on the value of the BootCurrent EFI variable,
+// event, either the one associated with the IBL (initial boot loader) for the OS, or a component of
+// Absolute. If it is Absolute, then this is indicated in the returned result. It then expects the next
+// event to be the one associated with the IBL (based on the value of the BootCurrent EFI variable,
 // and the corresponding EFI_LOAD_OPTION in the TCG log). If the event data is inconsistent with the
 // EFI_LOAD_OPTION for BootCurrent, it returns an error. It verifies that the digest of the event matches
 // the Authenticode digest of the first supplied image, and returns an error if it isn't.
@@ -82,35 +76,46 @@ const (
 // In any case, if any OS component loads the next component itself and measures a digest directly without
 // using the LoadImage API, it depends on the presence of the EFI_TCG2_PROTOCOL interface with support for
 // the PE_COFF_IMAGE flag. There's no direct way to test for this, so for this reason, this function requires
-// that the EV_EFI_BOOT_SERVICES_APPLICATION digest associated with the SBL (secondary boot-loader), if
-// there is one, matches the Authenticode digest of the second image supplied via the loadImages argument,
-// and this must be supplied. It's not necessary to supply additional load images, although if there are any
-// more EV_EFI_BOOT_SERVICES_APPLICATION events without a corresponding boot image to test it against, the
-// function sets the bootManagerCodeNotAllLaunchDigestsVerified flag.
-func checkBootManagerCodeMeasurements(ctx context.Context, env internal_efi.HostEnvironment, log *tcglog.Log, pcrAlg tpm2.HashAlgorithmId, loadImages []secboot_efi.Image) (result bootManagerCodeResultFlags, err error) {
-	if len(loadImages) == 0 {
-		return 0, errors.New("at least the initial EFI application loaded during this boot must be supplied")
-	}
+// that the EV_EFI_BOOT_SERVICES_APPLICATION digests associated with subsequent loader stages match the
+// Authenticode digest of the images supplied via the loadImages argument. If they don't, then an error is
+// returned.
+func checkBootManagerCodeMeasurements(ctx context.Context, env internal_efi.HostEnvironment, log *tcglog.Log, pcrAlg tpm2.HashAlgorithmId, loadImages []secboot_efi.Image) (result *bootManagerCodeResult, err error) {
 	varCtx := env.VarContext(ctx)
 
 	// Obtain the boot option support
 	opts, err := efi.ReadBootOptionSupportVariable(varCtx)
-	if err != nil {
-		return 0, fmt.Errorf("cannot obtain boot option support: %w", err)
+	switch {
+	case errors.Is(err, efi.ErrVarNotExist):
+		// We want RunChecks to not return the EFI variable access error in this case.
+		return nil, errors.New("cannot obtain boot option support: variable doesn't exist")
+	case err != nil:
+		return nil, fmt.Errorf("cannot obtain boot option support: %w", err)
 	}
 
 	// Obtain the load option from the current boot so we can identify which load
 	// event corresponds to the initial OS boot loader.
 	bootOpt, err := readCurrentBootLoadOptionFromLog(varCtx, log)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	var (
-		sysprepSupported               = opts&efi.BootOptionSupportSysPrep > 0 // The firmware supports SysPrep applications
-		omitBootDeviceEventsSeen       = false                                 // a EV_OMIT_BOOT_DEVICE_EVENTS event has been seen
-		expectingTransitionToOSPresent = false                                 // The next events in PCR4 are expected to be the transition to OS-present
-		seenOSComponentLaunches        = 0                                     // The number of EV_EFI_BOOT_SERVICES_APPLICATION events associated with OS component launches we've seen
+		sysprepOrder []uint16
+		sysprepOpts  []*efi.LoadOption
+	)
+	if opts&efi.BootOptionSupportSysPrep > 0 {
+		sysprepOpts, sysprepOrder, err = readOrderedLoadOptionVariables(varCtx, efi.LoadOptionClassSysPrep)
+		if err != nil && !errors.Is(err, efi.ErrVarNotExist) {
+			return nil, fmt.Errorf("cannot read sysprep app load option variables: %w", err)
+		}
+	}
+
+	result = new(bootManagerCodeResult)
+
+	var (
+		omitBootDeviceEventsSeen       = false // a EV_OMIT_BOOT_DEVICE_EVENTS event has been seen
+		expectingTransitionToOSPresent = false // The next events in PCR4 are expected to be the transition to OS-present
+		seenOSComponentLaunches        = 0     // The number of EV_EFI_BOOT_SERVICES_APPLICATION events associated with OS component launches we've seen
 	)
 
 	phaseTracker := newTcgLogPhaseTracker()
@@ -118,7 +123,7 @@ NextEvent:
 	for _, ev := range log.Events {
 		phase, err := phaseTracker.processEvent(ev)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 
 		switch phase {
@@ -130,12 +135,12 @@ NextEvent:
 
 			// Make sure the event data is valid
 			if err, isErr := ev.Data.(error); isErr {
-				return 0, fmt.Errorf("invalid %v event data: %w", ev.EventType, err)
+				return nil, fmt.Errorf("invalid %v event data: %w", ev.EventType, err)
 			}
 
 			if expectingTransitionToOSPresent {
 				// The next events in PCR4 should have taken us to OS-present
-				return 0, fmt.Errorf("unexpected event type %v: expecting transition from pre-OS to OS-present event", ev.EventType)
+				return nil, fmt.Errorf("unexpected event type %v: expecting transition from pre-OS to OS-present event", ev.EventType)
 			}
 
 			switch ev.EventType {
@@ -143,7 +148,7 @@ NextEvent:
 				// The digest is the tagged hash of the event data, but we don't bother verifying
 				// that because we just copy this event into the profile if it's present.
 				if omitBootDeviceEventsSeen {
-					return 0, errors.New("already seen a EV_OMIT_BOOT_DEVICE_EVENTS event")
+					return nil, errors.New("already seen a EV_OMIT_BOOT_DEVICE_EVENTS event")
 				}
 				omitBootDeviceEventsSeen = true
 			case tcglog.EventTypeEFIAction:
@@ -162,10 +167,10 @@ NextEvent:
 				if ev.Data == tcglog.EFICallingEFIApplicationEvent {
 					// This is the signal from BDS that we're about to hand over to the OS.
 					if phase == tcglogPhaseFirmwareLaunch {
-						return 0, fmt.Errorf("unexpected EV_EFI_ACTION event %q (before secure boot config was measured)", ev.Data)
+						return nil, fmt.Errorf("unexpected EV_EFI_ACTION event %q (before secure boot config was measured)", ev.Data)
 					}
 					if omitBootDeviceEventsSeen {
-						return 0, fmt.Errorf("unexpected EV_EFI_ACTION event %q (because of earlier EV_OMIT_BOOT_DEVICE_EVENTS event)", ev.Data)
+						return nil, fmt.Errorf("unexpected EV_EFI_ACTION event %q (because of earlier EV_OMIT_BOOT_DEVICE_EVENTS event)", ev.Data)
 					}
 
 					// The next event we're expecting is the pre-OS to OS-present transition.
@@ -181,7 +186,7 @@ NextEvent:
 				} else {
 					// We're not expecting any other EV_EFI_ACTION event types, although see
 					// the TODO above.
-					return 0, fmt.Errorf("unexpected EV_EFI_ACTION event %q", ev.Data)
+					return nil, fmt.Errorf("unexpected EV_EFI_ACTION event %q", ev.Data)
 				}
 			case tcglog.EventTypeEFIBootServicesApplication:
 				// Assume all pre-OS application launches are SysPrep applications. There shouldn't
@@ -199,26 +204,50 @@ NextEvent:
 
 				if phase == tcglogPhaseFirmwareLaunch {
 					// Application launches before the secure boot configuration has been measured is a bug.
-					return 0, fmt.Errorf("encountered pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v before secure boot configuration has been measured", data.DevicePath)
+					return nil, fmt.Errorf("encountered pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v before secure boot configuration has been measured", data.DevicePath)
 				}
-				isAbsolute, err := internal_efi.IsAbsoluteAgentLaunch(ev)
-				switch {
+
+				switch isAbsolute, err := internal_efi.IsAbsoluteAgentLaunch(ev); {
 				case err != nil:
-					return 0, fmt.Errorf("cannot determine if pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with Absolute: %w", data.DevicePath, err)
-				case isAbsolute && result&bootManagerCodeAbsoluteComputraceRunning > 0:
-					return 0, errors.New("encountered more than one EV_EFI_BOOT_SERVICES_APPLICATION event associated with Absolute")
+					return nil, fmt.Errorf("cannot determine if pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with Absolute: %w", data.DevicePath, err)
+				case isAbsolute && result.HasAbsolute:
+					return nil, errors.New("encountered more than one EV_EFI_BOOT_SERVICES_APPLICATION event associated with Absolute")
 				case isAbsolute:
-					result |= bootManagerCodeAbsoluteComputraceRunning
-				case !sysprepSupported:
-					// The firmware indicated that sysprep applications aren't supported yet it still
-					// loaded one!
-					return 0, fmt.Errorf("encountered pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v when SysPrep applications are not supported", data.DevicePath)
+					result.HasAbsolute = true
+				case len(sysprepOpts) == 0:
+					// We are not expecting any sysprep applications.
+					return nil, fmt.Errorf("encountered pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v when no sysprep applications are expected", data.DevicePath)
 				default:
-					result |= bootManagerCodeSysprepAppsPresent // Record that this boot contains system preparation applications.
+					for {
+						if len(sysprepOpts) == 0 {
+							return nil, fmt.Errorf("encountered unexpected pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v", data.DevicePath)
+						}
+
+						opt := sysprepOpts[0]
+						n := sysprepOrder[0]
+						sysprepOpts = sysprepOpts[1:]
+						sysprepOrder = sysprepOrder[1:]
+
+						ok, err := isLaunchedFromLoadOption(ev, opt)
+						if err != nil {
+							return nil, fmt.Errorf("cannot determine if pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with the next sysprep load option: %w", data.DevicePath, err)
+						}
+						if ok {
+							result.SysprepApps = append(result.SysprepApps, &LoadedImageInfo{
+								Format:         LoadedImageFormatPE,
+								Description:    opt.Description,
+								LoadOptionName: efi.FormatLoadOptionVariableName(efi.LoadOptionClassSysPrep, n),
+								DevicePath:     data.DevicePath,
+								DigestAlg:      pcrAlg,
+								Digest:         ev.Digests[pcrAlg],
+							})
+							break
+						}
+					}
 				}
 			default:
 				// We're not expecting any other event types during the pre-OS phase.
-				return 0, fmt.Errorf("unexpected pre-OS event type %v", ev.EventType)
+				return nil, fmt.Errorf("unexpected pre-OS event type %v", ev.EventType)
 			}
 		case tcglogPhaseOSPresent:
 			if ev.PCRIndex != internal_efi.BootManagerCodePCR {
@@ -230,7 +259,7 @@ NextEvent:
 				// Only care about EV_EFI_BOOT_SERVICES_APPLICATION events for checking
 				if seenOSComponentLaunches == 0 {
 					// The only events we're expecting in OS-present for now is EV_EFI_BOOT_SERVICES_APPLICATION.
-					return 0, fmt.Errorf("unexpected OS-present log event type %v (expected EV_EFI_BOOT_SERVICES_APPLICATION)", ev.EventType)
+					return nil, fmt.Errorf("unexpected OS-present log event type %v (expected EV_EFI_BOOT_SERVICES_APPLICATION)", ev.EventType)
 				}
 				// Once the IBL has launched, other event types are acceptable as long as the policy generation
 				// code associated with the component in the secboot efi package emits them.
@@ -243,7 +272,7 @@ NextEvent:
 				// the current boot. This will fail if the data associated with the event is invalid.
 				isBootOptLaunch, err := isLaunchedFromLoadOption(ev, bootOpt)
 				if err != nil {
-					return 0, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event is associated with the current boot load option: %w", err)
+					return nil, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event is associated with the current boot load option: %w", err)
 				}
 				if isBootOptLaunch {
 					// We have the EV_EFI_BOOT_SERVICES_APPLICATION event associated with the IBL launch.
@@ -261,17 +290,16 @@ NextEvent:
 
 					data := ev.Data.(*tcglog.EFIImageLoadEvent) // this is safe, else the earlier isLaunchedFromLoadOption would have returned an error
 
-					isAbsolute, err := internal_efi.IsAbsoluteAgentLaunch(ev)
-					if err != nil {
-						return 0, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with Absolute: %w", data.DevicePath, err)
+					switch isAbsolute, err := internal_efi.IsAbsoluteAgentLaunch(ev); {
+					case err != nil:
+						return nil, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with Absolute: %w", data.DevicePath, err)
+					case !isAbsolute:
+						return nil, fmt.Errorf("OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is not associated with the current boot load option and is not Absolute", data.DevicePath)
+					case result.HasAbsolute:
+						return nil, errors.New("encountered more than one EV_EFI_BOOT_SERVICES_APPLICATION event associated with Absolute")
+					default:
+						result.HasAbsolute = true
 					}
-					if !isAbsolute {
-						return 0, fmt.Errorf("OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is not associated with the current boot load option and is not Absolute", data.DevicePath)
-					}
-					if result&bootManagerCodeAbsoluteComputraceRunning > 0 {
-						return 0, errors.New("encountered more than one EV_EFI_BOOT_SERVICES_APPLICATION event associated with Absolute")
-					}
-					result |= bootManagerCodeAbsoluteComputraceRunning
 					continue NextEvent // We want to start a new iteration, else we'll consume one of the loadImages below.
 				}
 			default:
@@ -279,14 +307,10 @@ NextEvent:
 			}
 
 			if len(loadImages) == 0 {
-				result |= bootManagerCodeNotAllLaunchDigestsVerified
-				if seenOSComponentLaunches < 3 {
-					// This launch is associated with a SBL - we know this because we check that
-					// len(loadImages) > 0 at the start of the function, so we will never reach
-					// this condition for the IBL.
-					return 0, errors.New("cannot verify digest for EV_EFI_BOOT_SERVICES_APPLICATION event associated with the secondary boot loader")
+				if data, ok := ev.Data.(*tcglog.EFIImageLoadEvent); ok && len(data.DevicePath) > 0 {
+					return nil, fmt.Errorf("cannot verify correctness of EV_EFI_BOOT_SERVICES_APPLICATION event digest for %v: not enough images supplied", data.DevicePath)
 				}
-				continue NextEvent
+				return nil, errors.New("cannot verify correctness of EV_EFI_BOOT_SERVICES_APPLICATION event digest: not enough images supplied")
 			}
 
 			image := loadImages[0]
@@ -326,7 +350,7 @@ NextEvent:
 				return fmt.Errorf("log contains unexpected EV_EFI_BOOT_SERVICES_APPLICATION digest for OS-present application %s: log digest matches flat file digest (%#x) which suggests an image loaded outside of the LoadImage API and firmware lacking support for the EFI_TCG2_PROTOCOL and/or the PE_COFF_IMAGE flag", image, h.Sum(nil))
 			}()
 			if err != nil {
-				return 0, err
+				return nil, err
 			}
 		}
 	}

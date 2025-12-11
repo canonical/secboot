@@ -1171,7 +1171,7 @@ C7E003CB
 		actions:                   []actionAndArgs{{action: ActionNone}},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected,
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation,
 		expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
@@ -1247,7 +1247,7 @@ C7E003CB
 		actions:                   []actionAndArgs{{action: ActionNone}},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected,
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation,
 		expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
@@ -1395,7 +1395,7 @@ C7E003CB
 			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
 			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
 		},
-		profileOpts: PCRProfileOptionTrustCAsForVARSuppliedDrivers,
+		profileOpts: PCRProfileOptionTrustCAsForAddonDrivers,
 		prepare: func(_ int) {
 			_, err := s.TPM.PCREvent(s.TPM.PCRHandleContext(2), []byte("foo"), nil)
 			c.Check(err, IsNil)
@@ -1495,9 +1495,9 @@ C7E003CB
 // TODO: Good test case for invalid PCR5 when we support it.
 // TODO: Good test case for invalid PCR7 when PCRProfileOptionPermitNoSecureBootPolicyProfile is supported.
 
-func (s *runChecksContextSuite) TestRunGoodVARDriversPresentFromInitialFlags(c *C) {
+func (s *runChecksContextSuite) TestRunGoodAddonDriversPresentFromInitialFlags(c *C) {
 	// Test good case on a fTPM where there are value-added-retailer drivers
-	// detected, and these are permitted with the PermitVARSuppliedDrivers
+	// detected, and these are permitted with the PermitAddonDrivers
 	// initial flag.
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
@@ -1545,7 +1545,7 @@ C7E003CB
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		initialFlags: PermitVARSuppliedDrivers,
+		initialFlags: PermitAddonDrivers,
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -1564,7 +1564,8 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- value added retailer supplied drivers were detected to be running
+- addon drivers were detected:
+  - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
 `,
@@ -1572,10 +1573,10 @@ C7E003CB
 	c.Check(errs, HasLen, 0)
 }
 
-// TODO: Test the above case without the initial flag when we have an action to set PermitVARSuppliedDrivers.
+// TODO: Test the above case without the initial flag when we have an action to set PermitAddonDrivers.
 
-func (s *runChecksContextSuite) TestRunGoodActionProceedPermitVARSuppliedDrivers(c *C) {
-	// Test that ActionProceed turns on PermitVARSuppliedDrivers.
+func (s *runChecksContextSuite) TestRunGoodActionProceedPermitAddonDrivers(c *C) {
+	// Test that ActionProceed turns on PermitAddonDrivers.
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -1639,11 +1640,42 @@ C7E003CB
 			switch i {
 			case 0:
 				c.Assert(errs, HasLen, 1)
+				imageInfo := []*LoadedImageInfo{
+					{
+						Format: LoadedImageFormatPE,
+						DevicePath: efi.DevicePath{
+							&efi.ACPIDevicePathNode{
+								HID: 0x0a0341d0,
+								UID: 0x0,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x1c,
+								Device:   0x2,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x0,
+								Device:   0x0,
+							},
+							&efi.MediaRelOffsetRangeDevicePathNode{
+								StartingOffset: 0x38,
+								EndingOffset:   0x11dff,
+							},
+						},
+						DigestAlg: tpm2.HashAlgorithmSHA256,
+						Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+					},
+				}
+
+				c.Check(errs[0], ErrorMatches, `addon drivers were detected:
+- \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
+`)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindVARSuppliedDriversPresent,
-					nil,
+					ErrorKindAddonDriversPresent,
+					LoadedImagesInfoArg(imageInfo),
 					[]Action{ActionProceed},
-					ErrVARSuppliedDriversPresent,
+					&AddonDriversPresentError{
+						Drivers: imageInfo,
+					},
 				))
 			}
 		},
@@ -1656,7 +1688,8 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- value added retailer supplied drivers were detected to be running
+- addon drivers were detected:
+  - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
 `,
@@ -1706,6 +1739,20 @@ C7E003CB
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+				{Name: "SysPrepOrder", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1, 0x0}},
+				{Name: "SysPrep0001", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: efitest.MakeVarPayload(c, &efi.LoadOption{
+					Attributes:  efi.LoadOptionActive | efi.LoadOptionCategoryApp,
+					Description: "Mock sysprep app",
+					FilePath: efi.DevicePath{
+						&efi.HardDriveDevicePathNode{
+							PartitionNumber: 1,
+							PartitionStart:  0x800,
+							PartitionSize:   0x100000,
+							Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+							MBRType:         efi.GPT},
+						efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+					},
+				})},
 			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
 		),
 		tpmPropertyModifiers: map[tpm2.Property]uint32{
@@ -1734,7 +1781,8 @@ C7E003CB
 		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- system preparation applications were detected to be running
+- system preparation applications were detected:
+  - Mock sysprep app path=\\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\Dell\\sysprep.efi authenticode-digest=TPM_ALG_SHA256:11b68a5ce0facfa4233cb71140e3d59c686bc7a176a49a520947c57247fe86f4 load-option=SysPrep0001
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
 `,
 	})
@@ -1781,6 +1829,20 @@ C7E003CB
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+				{Name: "SysPrepOrder", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1, 0x0}},
+				{Name: "SysPrep0001", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: efitest.MakeVarPayload(c, &efi.LoadOption{
+					Attributes:  efi.LoadOptionActive | efi.LoadOptionCategoryApp,
+					Description: "Mock sysprep app",
+					FilePath: efi.DevicePath{
+						&efi.HardDriveDevicePathNode{
+							PartitionNumber: 1,
+							PartitionStart:  0x800,
+							PartitionSize:   0x100000,
+							Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+							MBRType:         efi.GPT},
+						efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+					},
+				})},
 			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
 		),
 		tpmPropertyModifiers: map[tpm2.Property]uint32{
@@ -1810,11 +1872,48 @@ C7E003CB
 			switch i {
 			case 0:
 				c.Assert(errs, HasLen, 1)
+
+				c.Check(errs[0], ErrorMatches, `system preparation applications were detected:
+- Mock sysprep app path=\\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\Dell\\sysprep.efi authenticode-digest=TPM_ALG_SHA256:11b68a5ce0facfa4233cb71140e3d59c686bc7a176a49a520947c57247fe86f4 load-option=SysPrep0001
+`)
+				imageInfo := []*LoadedImageInfo{
+					{
+						Format:         LoadedImageFormatPE,
+						Description:    "Mock sysprep app",
+						LoadOptionName: "SysPrep0001",
+						DevicePath: efi.DevicePath{
+							&efi.ACPIDevicePathNode{
+								HID: 0x0a0341d0,
+								UID: 0x0},
+							&efi.PCIDevicePathNode{
+								Function: 0x0,
+								Device:   0x1d},
+							&efi.PCIDevicePathNode{
+								Function: 0x0,
+								Device:   0x0},
+							&efi.NVMENamespaceDevicePathNode{
+								NamespaceID:   0x1,
+								NamespaceUUID: efi.EUI64{}},
+							&efi.HardDriveDevicePathNode{
+								PartitionNumber: 1,
+								PartitionStart:  0x800,
+								PartitionSize:   0x100000,
+								Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+								MBRType:         efi.GPT},
+							efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+						},
+						DigestAlg: tpm2.HashAlgorithmSHA256,
+						Digest:    testutil.DecodeHexString(c, "11b68a5ce0facfa4233cb71140e3d59c686bc7a176a49a520947c57247fe86f4"),
+					},
+				}
+
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindSysPrepApplicationsPresent,
-					nil,
+					LoadedImagesInfoArg(imageInfo),
 					[]Action{ActionProceed},
-					ErrSysPrepApplicationsPresent,
+					&SysPrepApplicationsPresentError{
+						Apps: imageInfo,
+					},
 				))
 			}
 		},
@@ -1824,7 +1923,8 @@ C7E003CB
 		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- system preparation applications were detected to be running
+- system preparation applications were detected:
+  - Mock sysprep app path=\\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\Dell\\sysprep.efi authenticode-digest=TPM_ALG_SHA256:11b68a5ce0facfa4233cb71140e3d59c686bc7a176a49a520947c57247fe86f4 load-option=SysPrep0001
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
 `,
 	})
@@ -2127,7 +2227,7 @@ C7E003CB
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		initialFlags: PermitVARSuppliedDrivers | PermitPreOSVerificationUsingDigests,
+		initialFlags: PermitAddonDrivers | PermitPreOSVerificationUsingDigests,
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -2146,7 +2246,8 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `5 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- value added retailer supplied drivers were detected to be running
+- addon drivers were detected:
+  - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
 - some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
@@ -2227,11 +2328,43 @@ C7E003CB
 			switch i {
 			case 0:
 				c.Check(errs, HasLen, 2)
+
+				imageInfo := []*LoadedImageInfo{
+					{
+						Format: LoadedImageFormatPE,
+						DevicePath: efi.DevicePath{
+							&efi.ACPIDevicePathNode{
+								HID: 0x0a0341d0,
+								UID: 0x0,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x1c,
+								Device:   0x2,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x0,
+								Device:   0x0,
+							},
+							&efi.MediaRelOffsetRangeDevicePathNode{
+								StartingOffset: 0x38,
+								EndingOffset:   0x11dff,
+							},
+						},
+						DigestAlg: tpm2.HashAlgorithmSHA256,
+						Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+					},
+				}
+
+				c.Check(errs[0], ErrorMatches, `addon drivers were detected:
+- \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
+`)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindVARSuppliedDriversPresent,
-					nil,
+					ErrorKindAddonDriversPresent,
+					LoadedImagesInfoArg(imageInfo),
 					[]Action{ActionProceed},
-					ErrVARSuppliedDriversPresent,
+					&AddonDriversPresentError{
+						Drivers: imageInfo,
+					},
 				))
 
 				c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
@@ -2247,7 +2380,8 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `5 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- value added retailer supplied drivers were detected to be running
+- addon drivers were detected:
+  - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
 - some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
@@ -2307,7 +2441,7 @@ C7E003CB
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		initialFlags: PermitVARSuppliedDrivers | PermitWeakSecureBootAlgorithms | PermitPreOSVerificationUsingDigests,
+		initialFlags: PermitAddonDrivers | PermitWeakSecureBootAlgorithms | PermitPreOSVerificationUsingDigests,
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -2326,7 +2460,8 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `6 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- value added retailer supplied drivers were detected to be running
+- addon drivers were detected:
+  - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
 - a weak cryptographic algorithm was detected during secure boot verification
@@ -2408,11 +2543,43 @@ C7E003CB
 			switch i {
 			case 0:
 				c.Check(errs, HasLen, 3)
+
+				imageInfo := []*LoadedImageInfo{
+					{
+						Format: LoadedImageFormatPE,
+						DevicePath: efi.DevicePath{
+							&efi.ACPIDevicePathNode{
+								HID: 0x0a0341d0,
+								UID: 0x0,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x1c,
+								Device:   0x2,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x0,
+								Device:   0x0,
+							},
+							&efi.MediaRelOffsetRangeDevicePathNode{
+								StartingOffset: 0x38,
+								EndingOffset:   0x11dff,
+							},
+						},
+						DigestAlg: tpm2.HashAlgorithmSHA256,
+						Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+					},
+				}
+
+				c.Check(errs[0], ErrorMatches, `addon drivers were detected:
+- \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
+`)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindVARSuppliedDriversPresent,
-					nil,
+					ErrorKindAddonDriversPresent,
+					LoadedImagesInfoArg(imageInfo),
 					[]Action{ActionProceed},
-					ErrVARSuppliedDriversPresent,
+					&AddonDriversPresentError{
+						Drivers: imageInfo,
+					},
 				))
 
 				c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
@@ -2435,7 +2602,8 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `6 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- value added retailer supplied drivers were detected to be running
+- addon drivers were detected:
+  - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
 - a weak cryptographic algorithm was detected during secure boot verification
@@ -2512,7 +2680,7 @@ C7E003CB
 		profileOpts: PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
 			{action: ActionNone},
-			{action: ActionProceed, args: ActionProceedArgs{ErrorKindVARSuppliedDriversPresent}},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindAddonDriversPresent}},
 			{action: ActionProceed, args: ActionProceedArgs{ErrorKindWeakSecureBootAlgorithmsDetected}},
 			{action: ActionProceed, args: ActionProceedArgs{ErrorKindPreOSDigestVerificationDetected}},
 		},
@@ -2520,11 +2688,43 @@ C7E003CB
 			switch i {
 			case 0:
 				c.Check(errs, HasLen, 3)
+
+				imageInfo := []*LoadedImageInfo{
+					{
+						Format: LoadedImageFormatPE,
+						DevicePath: efi.DevicePath{
+							&efi.ACPIDevicePathNode{
+								HID: 0x0a0341d0,
+								UID: 0x0,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x1c,
+								Device:   0x2,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x0,
+								Device:   0x0,
+							},
+							&efi.MediaRelOffsetRangeDevicePathNode{
+								StartingOffset: 0x38,
+								EndingOffset:   0x11dff,
+							},
+						},
+						DigestAlg: tpm2.HashAlgorithmSHA256,
+						Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+					},
+				}
+
+				c.Check(errs[0], ErrorMatches, `addon drivers were detected:
+- \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
+`)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindVARSuppliedDriversPresent,
-					nil,
+					ErrorKindAddonDriversPresent,
+					LoadedImagesInfoArg(imageInfo),
 					[]Action{ActionProceed},
-					ErrVARSuppliedDriversPresent,
+					&AddonDriversPresentError{
+						Drivers: imageInfo,
+					},
 				))
 
 				c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
@@ -2570,7 +2770,8 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `6 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- value added retailer supplied drivers were detected to be running
+- addon drivers were detected:
+  - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
 - a weak cryptographic algorithm was detected during secure boot verification
@@ -3059,7 +3260,7 @@ C7E003CB
 		actions:                   []actionAndArgs{{action: ActionNone}},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected | StartupLocalityNotProtected,
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `4 errors detected:
 - error with system security: cannot enable partial mitigation against discrete TPM reset attacks
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
@@ -3138,7 +3339,7 @@ C7E003CB
 		actions:                   []actionAndArgs{{action: ActionNone}},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformFirmwareProfileSupport | NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | DiscreteTPMDetected | StartupLocalityNotProtected,
+		expectedFlags:             NoPlatformFirmwareProfileSupport | NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `5 errors detected:
 - error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0x420bd3899738e6b41dccd18253a556e152e2b107559b89cbf0cbf1661ff6ee55, reconstructed from log 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef\)
 - error with system security: cannot enable partial mitigation against discrete TPM reset attacks
@@ -3266,6 +3467,7 @@ C7E003CB
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Err: efi.ErrVarDeviceError},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -3293,8 +3495,8 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Check(errs, HasLen, 1)
-	c.Assert(errs[0], ErrorMatches, `cannot access EFI variable: cannot obtain boot option support: variable does not exist`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindEFIVariableAccess, EFIVarNotExist, []Action{ActionContactOEM}, errs[0].Unwrap()))
+	c.Assert(errs[0], ErrorMatches, `cannot access EFI variable: cannot obtain boot option support: variable access failed because of a hardware error`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindEFIVariableAccess, EFIVarDeviceError, []Action{ActionContactOEM}, errs[0].Unwrap()))
 }
 
 func (s *runChecksContextSuite) TestRunBadNoTPM2Device(c *C) {
@@ -5265,7 +5467,7 @@ C7E003CB
 	))
 }
 
-func (s *runChecksContextSuite) TestRunBadVARDriversPresent(c *C) {
+func (s *runChecksContextSuite) TestRunBadAddonDriversPresent(c *C) {
 	// Test the error case where value-added-retailer drivers have been detected
 	// but the initial flags do not permit these.
 	meiAttrs := map[string][]byte{
@@ -5330,12 +5532,43 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `value added retailer supplied drivers were detected to be running`)
+
+	imageInfo := []*LoadedImageInfo{
+		{
+			Format: LoadedImageFormatPE,
+			DevicePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0,
+				},
+				&efi.PCIDevicePathNode{
+					Function: 0x1c,
+					Device:   0x2,
+				},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0,
+				},
+				&efi.MediaRelOffsetRangeDevicePathNode{
+					StartingOffset: 0x38,
+					EndingOffset:   0x11dff,
+				},
+			},
+			DigestAlg: tpm2.HashAlgorithmSHA256,
+			Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+		},
+	}
+
+	c.Check(errs[0], ErrorMatches, `addon drivers were detected:
+- \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
+`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-		ErrorKindVARSuppliedDriversPresent,
-		nil,
+		ErrorKindAddonDriversPresent,
+		LoadedImagesInfoArg(imageInfo),
 		[]Action{ActionProceed},
-		ErrVARSuppliedDriversPresent,
+		&AddonDriversPresentError{
+			Drivers: imageInfo,
+		},
 	))
 }
 
@@ -5380,6 +5613,20 @@ C7E003CB
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+				{Name: "SysPrepOrder", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1, 0x0}},
+				{Name: "SysPrep0001", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: efitest.MakeVarPayload(c, &efi.LoadOption{
+					Attributes:  efi.LoadOptionActive | efi.LoadOptionCategoryApp,
+					Description: "Mock sysprep app",
+					FilePath: efi.DevicePath{
+						&efi.HardDriveDevicePathNode{
+							PartitionNumber: 1,
+							PartitionStart:  0x800,
+							PartitionSize:   0x100000,
+							Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+							MBRType:         efi.GPT},
+						efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+					},
+				})},
 			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
 		),
 		tpmPropertyModifiers: map[tpm2.Property]uint32{
@@ -5404,12 +5651,48 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `system preparation applications were detected to be running`)
+
+	c.Check(errs[0], ErrorMatches, `system preparation applications were detected:
+- Mock sysprep app path=\\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\Dell\\sysprep.efi authenticode-digest=TPM_ALG_SHA256:11b68a5ce0facfa4233cb71140e3d59c686bc7a176a49a520947c57247fe86f4 load-option=SysPrep0001
+`)
+	imageInfo := []*LoadedImageInfo{
+		{
+			Format:         LoadedImageFormatPE,
+			Description:    "Mock sysprep app",
+			LoadOptionName: "SysPrep0001",
+			DevicePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x1d},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0},
+				&efi.NVMENamespaceDevicePathNode{
+					NamespaceID:   0x1,
+					NamespaceUUID: efi.EUI64{}},
+				&efi.HardDriveDevicePathNode{
+					PartitionNumber: 1,
+					PartitionStart:  0x800,
+					PartitionSize:   0x100000,
+					Signature:       efi.GUIDHardDriveSignature(efi.MakeGUID(0x66de947b, 0xfdb2, 0x4525, 0xb752, [...]uint8{0x30, 0xd6, 0x6b, 0xb2, 0xb9, 0x60})),
+					MBRType:         efi.GPT},
+				efi.FilePathDevicePathNode("\\EFI\\Dell\\sysprep.efi"),
+			},
+			DigestAlg: tpm2.HashAlgorithmSHA256,
+			Digest:    testutil.DecodeHexString(c, "11b68a5ce0facfa4233cb71140e3d59c686bc7a176a49a520947c57247fe86f4"),
+		},
+	}
+
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindSysPrepApplicationsPresent,
-		nil,
+		LoadedImagesInfoArg(imageInfo),
 		[]Action{ActionProceed},
-		ErrSysPrepApplicationsPresent,
+		&SysPrepApplicationsPresentError{
+			Apps: imageInfo,
+		},
 	))
 }
 
@@ -5553,7 +5836,7 @@ C7E003CB
 		actions:        []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with boot manager code \(PCR4\) measurements: cannot verify the correctness of all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch event digests`)
+	c.Check(errs[0], ErrorMatches, `error with boot manager code \(PCR4\) measurements: cannot verify correctness of EV_EFI_BOOT_SERVICES_APPLICATION event digest: not enough images supplied`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, PCRUnusableArg(4), []Action{ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -5920,12 +6203,43 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Check(errs, HasLen, 3)
-	c.Check(errs[0], ErrorMatches, `value added retailer supplied drivers were detected to be running`)
+
+	imageInfo := []*LoadedImageInfo{
+		{
+			Format: LoadedImageFormatPE,
+			DevicePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0,
+				},
+				&efi.PCIDevicePathNode{
+					Function: 0x1c,
+					Device:   0x2,
+				},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0,
+				},
+				&efi.MediaRelOffsetRangeDevicePathNode{
+					StartingOffset: 0x38,
+					EndingOffset:   0x11dff,
+				},
+			},
+			DigestAlg: tpm2.HashAlgorithmSHA256,
+			Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+		},
+	}
+
+	c.Check(errs[0], ErrorMatches, `addon drivers were detected:
+- \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
+`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-		ErrorKindVARSuppliedDriversPresent,
-		nil,
+		ErrorKindAddonDriversPresent,
+		LoadedImagesInfoArg(imageInfo),
 		[]Action{ActionProceed},
-		ErrVARSuppliedDriversPresent,
+		&AddonDriversPresentError{
+			Drivers: imageInfo,
+		},
 	))
 
 	c.Check(errs[1], ErrorMatches, `a weak cryptographic algorithm was detected during secure boot verification`)
@@ -6496,43 +6810,26 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
-				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				Algorithms:       []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				FirmwareDebugger: true,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
-				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
 		tpmPropertyModifiers: map[tpm2.Property]uint32{
 			tpm2.PropertyNVCountersMax:     0,
 			tpm2.PropertyPSFamilyIndicator: 1,
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
-		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
-		loadedImages: []secboot_efi.Image{
-			&mockImage{
-				contents: []byte("mock shim executable"),
-				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
-				signatures: []*efi.WinCertificateAuthenticode{
-					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
-				},
-			},
-			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
-		},
+		enabledBanks:   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
-		profileOpts:    PCRProfileOptionsDefault,
 		actions:        []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 2)
 
-	c.Check(errs[0], ErrorMatches, `error with boot manager code \(PCR4\) measurements: cannot verify the correctness of all EV_EFI_BOOT_SERVICES_APPLICATION boot manager launch event digests`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, PCRUnusableArg(4), []Action{ActionContactOEM}, errs[0].Unwrap()))
+	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware contains a debugging endpoint enabled`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindUEFIDebuggingEnabled, nil, []Action{ActionContactOEM}, errs[0].Unwrap()))
 
 	c.Check(errs[1], ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM`)
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsErrorForTest(
@@ -6613,11 +6910,42 @@ C7E003CB
 			switch i {
 			case 0:
 				c.Check(errs, HasLen, 1)
+				imageInfo := []*LoadedImageInfo{
+					{
+						Format: LoadedImageFormatPE,
+						DevicePath: efi.DevicePath{
+							&efi.ACPIDevicePathNode{
+								HID: 0x0a0341d0,
+								UID: 0x0,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x1c,
+								Device:   0x2,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x0,
+								Device:   0x0,
+							},
+							&efi.MediaRelOffsetRangeDevicePathNode{
+								StartingOffset: 0x38,
+								EndingOffset:   0x11dff,
+							},
+						},
+						DigestAlg: tpm2.HashAlgorithmSHA256,
+						Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+					},
+				}
+
+				c.Check(errs[0], ErrorMatches, `addon drivers were detected:
+- \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
+`)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindVARSuppliedDriversPresent,
-					nil,
+					ErrorKindAddonDriversPresent,
+					LoadedImagesInfoArg(imageInfo),
 					[]Action{ActionProceed},
-					ErrVARSuppliedDriversPresent,
+					&AddonDriversPresentError{
+						Drivers: imageInfo,
+					},
 				))
 			}
 		},
@@ -6706,11 +7034,42 @@ C7E003CB
 			switch i {
 			case 0:
 				c.Check(errs, HasLen, 1)
+				imageInfo := []*LoadedImageInfo{
+					{
+						Format: LoadedImageFormatPE,
+						DevicePath: efi.DevicePath{
+							&efi.ACPIDevicePathNode{
+								HID: 0x0a0341d0,
+								UID: 0x0,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x1c,
+								Device:   0x2,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x0,
+								Device:   0x0,
+							},
+							&efi.MediaRelOffsetRangeDevicePathNode{
+								StartingOffset: 0x38,
+								EndingOffset:   0x11dff,
+							},
+						},
+						DigestAlg: tpm2.HashAlgorithmSHA256,
+						Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+					},
+				}
+
+				c.Check(errs[0], ErrorMatches, `addon drivers were detected:
+- \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
+`)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindVARSuppliedDriversPresent,
-					nil,
+					ErrorKindAddonDriversPresent,
+					LoadedImagesInfoArg(imageInfo),
 					[]Action{ActionProceed},
-					ErrVARSuppliedDriversPresent,
+					&AddonDriversPresentError{
+						Drivers: imageInfo,
+					},
 				))
 			}
 		},
@@ -6799,11 +7158,42 @@ C7E003CB
 			switch i {
 			case 0:
 				c.Check(errs, HasLen, 1)
+				imageInfo := []*LoadedImageInfo{
+					{
+						Format: LoadedImageFormatPE,
+						DevicePath: efi.DevicePath{
+							&efi.ACPIDevicePathNode{
+								HID: 0x0a0341d0,
+								UID: 0x0,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x1c,
+								Device:   0x2,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x0,
+								Device:   0x0,
+							},
+							&efi.MediaRelOffsetRangeDevicePathNode{
+								StartingOffset: 0x38,
+								EndingOffset:   0x11dff,
+							},
+						},
+						DigestAlg: tpm2.HashAlgorithmSHA256,
+						Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+					},
+				}
+
+				c.Check(errs[0], ErrorMatches, `addon drivers were detected:
+- \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
+`)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindVARSuppliedDriversPresent,
-					nil,
+					ErrorKindAddonDriversPresent,
+					LoadedImagesInfoArg(imageInfo),
 					[]Action{ActionProceed},
-					ErrVARSuppliedDriversPresent,
+					&AddonDriversPresentError{
+						Drivers: imageInfo,
+					},
 				))
 			}
 		},
@@ -6887,18 +7277,50 @@ C7E003CB
 		profileOpts: PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
 			{action: ActionNone},
-			{action: ActionProceed, args: ActionProceedArgs{ErrorKindVARSuppliedDriversPresent}},
-			{action: ActionProceed, args: ActionProceedArgs{ErrorKindVARSuppliedDriversPresent}},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindAddonDriversPresent}},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindAddonDriversPresent}},
 		},
 		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
 			switch i {
 			case 0:
 				c.Check(errs, HasLen, 2)
+
+				imageInfo := []*LoadedImageInfo{
+					{
+						Format: LoadedImageFormatPE,
+						DevicePath: efi.DevicePath{
+							&efi.ACPIDevicePathNode{
+								HID: 0x0a0341d0,
+								UID: 0x0,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x1c,
+								Device:   0x2,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x0,
+								Device:   0x0,
+							},
+							&efi.MediaRelOffsetRangeDevicePathNode{
+								StartingOffset: 0x38,
+								EndingOffset:   0x11dff,
+							},
+						},
+						DigestAlg: tpm2.HashAlgorithmSHA256,
+						Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+					},
+				}
+
+				c.Check(errs[0], ErrorMatches, `addon drivers were detected:
+- \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
+`)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindVARSuppliedDriversPresent,
-					nil,
+					ErrorKindAddonDriversPresent,
+					LoadedImagesInfoArg(imageInfo),
 					[]Action{ActionProceed},
-					ErrVARSuppliedDriversPresent,
+					&AddonDriversPresentError{
+						Drivers: imageInfo,
+					},
 				))
 
 				c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
@@ -6920,7 +7342,7 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `invalid value for argument "error-kinds" at index 0: "var-supplied-drivers-present" is not expected`)
+	c.Check(errs[0], ErrorMatches, `invalid value for argument "error-kinds" at index 0: "addon-drivers-present" is not expected`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInvalidArgument,
 		InvalidActionArgumentDetails{

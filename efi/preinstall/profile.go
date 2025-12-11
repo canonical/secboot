@@ -113,12 +113,12 @@ const (
 	// CAs that are unrecognized for trust by this package.
 	PCRProfileOptionTrustCAsForBootCode
 
-	// PCRProfileOptionTrustCAsForVARSuppliedDrivers can omit PCR2 if the CAs in the
+	// PCRProfileOptionTrustCAsForAddonDrivers can omit PCR2 if the CAs in the
 	// authorized signature database that were used to authenticate code on the current
 	// boot are not directly trusted to sign UEFI drivers, but a system administrator
 	// makes an explicit decision to trust these CAs. This might be because it uses
 	// custom CAs that are unrecognized for trust by this package.
-	PCRProfileOptionTrustCAsForVARSuppliedDrivers
+	PCRProfileOptionTrustCAsForAddonDrivers
 
 	// PCRProfileOptionDistrustVARSuppliedNonHostCode can be used to include PCR2 if a
 	// system administrator makes an explicit decision to not trust non host code running
@@ -131,16 +131,16 @@ const (
 	// indicates that PCR7 cannot be used.
 	PCRProfileOptionPermitNoSecureBootPolicyProfile
 
-	// PCRProfileOptionNoDiscreteTPMResetMitigation can be used to omit PCR0 from the
-	// profile on platforms that have a discrete TPM and where including PCR0 can provide
-	// limited mitigation of TPM reset attacks by preventing the PCR values from being
-	// reconstructed from software. This should only be used if a system administrator makes
-	// an explicit decision that they don't want the additional PCR fragility caused by this
-	// mitigation, perhaps because they consider that discrete TPMs still have other
+	// PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation can be used to omit PCR0
+	// from the profile on platforms that have a discrete TPM and where including PCR0 can
+	// provide limited mitigation of TPM reset attacks by preventing the PCR values from
+	// being reconstructed from software. This should only be used if a system administrator
+	// makes an explicit decision that they don't want the additional PCR fragility caused by
+	// this mitigation, perhaps because they consider that discrete TPMs still have other
 	// weaknesses to anyone with physical access to the device without any of their own
-	// mitigations. See the DiscreteTPMDetected CheckResultFlags flag description for more
-	// information.
-	PCRProfileOptionNoDiscreteTPMResetMitigation
+	// mitigations. See the RequestPartialDiscreteTPMResetAttackMitigation CheckResultFlags
+	// flag description for more information.
+	PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation
 
 	// PCRProfileOptionsDefault is the default PCR configuration. WithAutoTCGPCRProfile
 	// will select the most appropriate configuration depending on the CheckResult.
@@ -161,14 +161,14 @@ func (o PCRProfileOptionsFlags) toStringSlice() []string {
 			str = "most-secure"
 		case PCRProfileOptionTrustCAsForBootCode:
 			str = "trust-cas-for-boot-code"
-		case PCRProfileOptionTrustCAsForVARSuppliedDrivers:
-			str = "trust-cas-for-var-supplied-drivers"
+		case PCRProfileOptionTrustCAsForAddonDrivers:
+			str = "trust-cas-for-addon-drivers"
 		case PCRProfileOptionDistrustVARSuppliedNonHostCode:
 			str = "distrust-var-supplied-nonhost-code"
 		case PCRProfileOptionPermitNoSecureBootPolicyProfile:
 			str = "permit-no-secure-boot-policy-profile"
-		case PCRProfileOptionNoDiscreteTPMResetMitigation:
-			str = "no-discrete-tpm-reset-mitigation"
+		case PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation:
+			str = "no-partial-dtpm-reset-attack-mitigation"
 		default:
 			str = fmt.Sprintf("%#08x", uint32(flag))
 		}
@@ -200,14 +200,14 @@ func (o *PCRProfileOptionsFlags) UnmarshalJSON(data []byte) error {
 			val = PCRProfileOptionMostSecure
 		case "trust-cas-for-boot-code":
 			val = PCRProfileOptionTrustCAsForBootCode
-		case "trust-cas-for-var-supplied-drivers":
-			val = PCRProfileOptionTrustCAsForVARSuppliedDrivers
+		case "trust-cas-for-addon-drivers":
+			val = PCRProfileOptionTrustCAsForAddonDrivers
 		case "distrust-var-supplied-nonhost-code":
 			val = PCRProfileOptionDistrustVARSuppliedNonHostCode
 		case "permit-no-secure-boot-policy-profile":
 			val = PCRProfileOptionPermitNoSecureBootPolicyProfile
-		case "no-discrete-tpm-reset-mitigation":
-			val = PCRProfileOptionNoDiscreteTPMResetMitigation
+		case "no-partial-dtpm-reset-attack-mitigation":
+			val = PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation
 		default:
 			v, err := strconv.ParseUint(flag, 0, 32)
 			switch {
@@ -317,17 +317,17 @@ func (o *pcrProfileAutoSetPcrsOption) pcrOptions() ([]secboot_efi.PCRProfileEnab
 				// in attached embedded controllers.
 				return nil, fmt.Errorf("PCRProfileOptionDistrustVARSuppliedNonHostCode cannot be used: %w", newUnsupportedRequiredPCRsError(tpm2.HandleList{2}, o.result.Flags))
 			}
-			if !knownCAs.trustedForDrivers(o.result.UsedSecureBootCAs) && o.opts&PCRProfileOptionTrustCAsForVARSuppliedDrivers == 0 {
+			if !knownCAs.trustedForDrivers(o.result.UsedSecureBootCAs) && o.opts&PCRProfileOptionTrustCAsForAddonDrivers == 0 {
 				// We need to include PCR2 if any CAs used for verification are not generally trusted to sign UEFI drivers
 				// (ie, they may have signed code in the past that can defeat our security model. This is true of the Microsoft
 				// UEFI CA 2011, and for now, we assume to be true of the 2023 UEFI CA unless Microsoft are more transparent about
 				// what they sign under this CA). It's also assumed to be true for any unrecognized CAs.
-				// This can be overridden with PCRProfileOptionTrustCAsForVARSuppliedDrivers.
+				// This can be overridden with PCRProfileOptionTrustCAsForAddonDrivers.
 				includePcr2 = true
 				if !isPcr2Supported {
 					return nil, fmt.Errorf("cannot create a valid secure boot configuration: one or more CAs used for secure boot "+
 						"verification are not trusted to authenticate value-added-retailer suppled drivers and the "+
-						"PCRProfileOptionTrustCAsForVARSuppliedDrivers option was not supplied: %w",
+						"PCRProfileOptionTrustCAsForAddonDrivers option was not supplied: %w",
 						newUnsupportedRequiredPCRsError(tpm2.HandleList{2}, o.result.Flags))
 				}
 			}
@@ -369,21 +369,14 @@ func (o *pcrProfileAutoSetPcrsOption) pcrOptions() ([]secboot_efi.PCRProfileEnab
 			//			)
 
 		}
-		if o.opts&PCRProfileOptionNoDiscreteTPMResetMitigation == 0 {
-			const mask = DiscreteTPMDetected | StartupLocalityNotProtected
-			if o.result.Flags&mask == DiscreteTPMDetected {
-				// Enable reset attack mitigations by including PCR0, because the startup locality
-				// is protected making it impossible to reconstruct PCR0 from software if the TPM is
-				// reset indepdendently of the host platform. Note that it is still possible for an
-				// adversary with physical access to reconstruct PCR0 by manipulating the bus between
-				// the host CPU and the discrete TPM directly, as this will allow them access to all
-				// localities.
-				if o.result.Flags&NoPlatformFirmwareProfileSupport > 0 {
-					return nil, fmt.Errorf("cannot enable a discrete TPM reset attack mitigation and the "+
-						"PCRProfileOptionNoDiscreteTPMResetMitigation was not supplied: %w", newUnsupportedRequiredPCRsError(tpm2.HandleList{0}, o.result.Flags))
-				}
-				opts = append(opts, secboot_efi.WithPlatformFirmwareProfile())
-			}
+		if o.opts&PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation == 0 && o.result.Flags&RequestPartialDiscreteTPMResetAttackMitigation > 0 {
+			// Enable reset attack mitigations by including PCR0, because the startup locality
+			// is protected making it impossible to reconstruct PCR0 from software if the TPM is
+			// reset indepdendently of the host platform. Note that it is still possible for an
+			// adversary with physical access to reconstruct PCR0 by manipulating the bus between
+			// the host CPU and the discrete TPM directly, as this will allow them access to all
+			// localities.
+			opts = append(opts, secboot_efi.WithPlatformFirmwareProfile())
 		}
 		return opts, nil
 	}

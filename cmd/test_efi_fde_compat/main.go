@@ -18,7 +18,7 @@ type options struct {
 		PermitVM                            bool `long:"permit-vm" description:"Permit running inside of a virtual machine"`
 		PermitWeakPCRBanks                  bool `long:"permit-weak-pcr-banks" description:"Permit selecting a weak PCR bank if no others are available"`
 		PermitEmptyPCRBanks                 bool `long:"permit-empty-pcr-banks" description:"Allow the platform firmware to leave one or more PCR banks empty. This potentially compromises remote attestation"`
-		PermitVARSuppliedDrivers            bool `long:"permit-var-supplied-drivers" description:"Allow value-added-retailer supplied drivers to be running. This increases fragility of profiles that include PCR2, and potentially PCR7"`
+		PermitAddonDrivers                  bool `long:"permit-addon-drivers" description:"Allow addon drivers to be running. This increases fragility of profiles that include PCR2, and potentially PCR7"`
 		PermitSysPrepApplications           bool `long:"permit-sys-prep-apps" description:"Allow system preparation applications to load before the OS. This increases fragility of profiles that include PCR4, and potentially PCR7"`
 		PermitAbsolute                      bool `long:"permit-absolute" description:"Allow the Absolute endpoint management component to be running. This increases fragility of profiles that include PCR4"`
 		PermitWeakSecureBootAlgorithms      bool `long:"permit-weak-secure-boot-algs" description:"Permit secure boot verification using weak algorithms"`
@@ -29,7 +29,7 @@ type options struct {
 	Profile struct {
 		MostSecure                     bool `long:"most-secure" description:"Select the most secure PCR profile"`
 		TrustCAsForBootCode            bool `long:"trust-authorities-for-boot-code" description:"Trust the secure boot CAs used to authenticate code on this system to authenticate any boot code (definitely not advisable for the Microsoft UEFI CA)"`
-		TrustCAsForVARSuppliedDrivers  bool `long:"trust-authorities-for-var-supplied-drivers" description:"Trust the secure boot CAs used to authenticate code on this system to authenticate any value-added-retailer supplied firmware driver (most likely not advisable for the Microsoft UEFI CA)"`
+		TrustCAsForAddonDrivers        bool `long:"trust-authorities-for-addon-drivers" description:"Trust the secure boot CAs used to authenticate code on this system to authenticate any addon driver (most likely not advisable for the Microsoft UEFI CA)"`
 		DistrustVARSuppliedNonHostCode bool `long:"distrust-var-supplied-nonhost-code" description:"Distrust code running in value-added-retailer supplied embedded controllers. This code doesn't run on the CPU and isn't part of the trust chain, but can potentially still affect trust"`
 		PermitNoSecureBoot             bool `long:"permit-no-secure-boot" description:"Permit profiles that don't include the secure boot policy"`
 		NoDiscreteTPMResetMitigation   bool `long:"no-discrete-tpm-reset-mitigation" description:"Disable mitigations against discrete TPM reset attacks where appropriate"`
@@ -62,8 +62,8 @@ func run() error {
 	if opts.Check.PermitEmptyPCRBanks {
 		checkFlags |= preinstall.PermitEmptyPCRBanks
 	}
-	if opts.Check.PermitVARSuppliedDrivers {
-		checkFlags |= preinstall.PermitVARSuppliedDrivers
+	if opts.Check.PermitAddonDrivers {
+		checkFlags |= preinstall.PermitAddonDrivers
 	}
 	if opts.Check.PermitSysPrepApplications {
 		checkFlags |= preinstall.PermitSysPrepApplications
@@ -103,8 +103,8 @@ func run() error {
 	if opts.Profile.TrustCAsForBootCode {
 		pcrFlags |= preinstall.PCRProfileOptionTrustCAsForBootCode
 	}
-	if opts.Profile.TrustCAsForVARSuppliedDrivers {
-		pcrFlags |= preinstall.PCRProfileOptionTrustCAsForVARSuppliedDrivers
+	if opts.Profile.TrustCAsForAddonDrivers {
+		pcrFlags |= preinstall.PCRProfileOptionTrustCAsForAddonDrivers
 	}
 	if opts.Profile.DistrustVARSuppliedNonHostCode {
 		pcrFlags |= preinstall.PCRProfileOptionDistrustVARSuppliedNonHostCode
@@ -113,7 +113,7 @@ func run() error {
 		pcrFlags |= preinstall.PCRProfileOptionPermitNoSecureBootPolicyProfile
 	}
 	if opts.Profile.NoDiscreteTPMResetMitigation {
-		pcrFlags |= preinstall.PCRProfileOptionNoDiscreteTPMResetMitigation
+		pcrFlags |= preinstall.PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation
 	}
 
 	fmt.Println("Testing this platform for compatibility with EFI based TPM protected FDE")
