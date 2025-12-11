@@ -104,8 +104,233 @@ func (s *tpmSuite) SetUpTest(c *C) {
 
 var _ = Suite(&tpmSuite{})
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCounters(c *C) {
-	// Test the good case for pre-install on bare-metal with infinite NV counters.
+func (s *tpmSuite) TestCheckTPM2ForRequiredPCClientFeatures(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyHRPersistentMin: 7, // The simulator seems to set this to 2
+	})
+
+	ok, err := CheckTPM2ForRequiredPCClientFeatures(s.TPM)
+	c.Check(err, IsNil)
+	c.Check(ok, testutil.IsTrue)
+}
+
+func (s *tpmSuite) TestCheckTPM2ForRequiredPCClientFeaturesFailTPMProperty(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyHRPersistentMin: 1,
+	})
+
+	ok, err := CheckTPM2ForRequiredPCClientFeatures(s.TPM)
+	c.Check(err, IsNil)
+	c.Check(ok, testutil.IsFalse)
+}
+
+func (s *tpmSuite) TestCheckTPM2ForRequiredPCClientFeaturesFailAlgorithm(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyHRPersistentMin: 7, // The simulator seems to set this to 2
+	})
+
+	origIntercept := s.Transport.ResponseIntercept
+	s.transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+		if cmdCode != tpm2.CommandGetCapability {
+			return
+		}
+
+		// Unpack the command parameters
+		var capability tpm2.Capability
+		var property uint32
+		var propertyCount uint32
+		_, err := mu.UnmarshalFromBytes(cpBytes, &capability, &property, &propertyCount)
+		c.Assert(err, IsNil)
+		if capability != tpm2.CapabilityAlgs {
+			origIntercept(cmdCode, cmdHandles, cmdAuthArea, cpBytes, rsp)
+			return
+		}
+
+		// Just return no algorithms
+		rpBytes := mu.MustMarshalToBytes(false, &tpm2.CapabilityData{
+			Capability: tpm2.CapabilityAlgs,
+		})
+		rsp.Reset()
+		c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseSuccess, nil, rpBytes, nil), IsNil)
+	}
+	defer func() { s.Transport.ResponseIntercept = origIntercept }()
+
+	ok, err := CheckTPM2ForRequiredPCClientFeatures(s.TPM)
+	c.Check(err, IsNil)
+	c.Check(ok, testutil.IsFalse)
+}
+
+func (s *tpmSuite) TestCheckTPM2ForRequiredPCClientFeaturesFailCurve(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyHRPersistentMin: 7, // The simulator seems to set this to 2
+	})
+
+	origIntercept := s.Transport.ResponseIntercept
+	s.transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+		if cmdCode != tpm2.CommandGetCapability {
+			return
+		}
+
+		// Unpack the command parameters
+		var capability tpm2.Capability
+		var property uint32
+		var propertyCount uint32
+		_, err := mu.UnmarshalFromBytes(cpBytes, &capability, &property, &propertyCount)
+		c.Assert(err, IsNil)
+		if capability != tpm2.CapabilityECCCurves {
+			origIntercept(cmdCode, cmdHandles, cmdAuthArea, cpBytes, rsp)
+			return
+		}
+
+		// Just return no algorithms
+		rpBytes := mu.MustMarshalToBytes(false, &tpm2.CapabilityData{
+			Capability: tpm2.CapabilityECCCurves,
+		})
+		rsp.Reset()
+		c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseSuccess, nil, rpBytes, nil), IsNil)
+	}
+	defer func() { s.Transport.ResponseIntercept = origIntercept }()
+
+	ok, err := CheckTPM2ForRequiredPCClientFeatures(s.TPM)
+	c.Check(err, IsNil)
+	c.Check(ok, testutil.IsFalse)
+}
+
+func (s *tpmSuite) TestCheckTPM2ForRequiredPCClientFeaturesFailPCRAttributes(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyHRPersistentMin: 7, // The simulator seems to set this to 2
+	})
+
+	origIntercept := s.Transport.ResponseIntercept
+	s.transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+		if cmdCode != tpm2.CommandGetCapability {
+			return
+		}
+
+		// Unpack the command parameters
+		var capability tpm2.Capability
+		var property uint32
+		var propertyCount uint32
+		_, err := mu.UnmarshalFromBytes(cpBytes, &capability, &property, &propertyCount)
+		c.Assert(err, IsNil)
+		if capability != tpm2.CapabilityPCRProperties {
+			origIntercept(cmdCode, cmdHandles, cmdAuthArea, cpBytes, rsp)
+			return
+		}
+
+		c.Assert(propertyCount, Equals, uint32(1))
+		if property != uint32(tpm2.PropertyPCRNoIncrement) {
+			return
+		}
+
+		rpBytes := mu.MustMarshalToBytes(false, tpm2.CapabilityPCRProperties, uint32(1), tpm2.PropertyPCRNoIncrement, mu.Sized1Bytes{0xff, 0xff, 0xff})
+		rsp.Reset()
+		c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseSuccess, nil, rpBytes, nil), IsNil)
+	}
+	defer func() { s.Transport.ResponseIntercept = origIntercept }()
+
+	ok, err := CheckTPM2ForRequiredPCClientFeatures(s.TPM)
+	c.Check(err, IsNil)
+	c.Check(ok, testutil.IsFalse)
+}
+
+func (s *tpmSuite) TestCheckTPM2ForRequiredPCClientFeaturesFailCommand(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyHRPersistentMin: 7, // The simulator seems to set this to 2
+	})
+
+	origIntercept := s.Transport.ResponseIntercept
+	s.transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+		if cmdCode != tpm2.CommandGetCapability {
+			return
+		}
+
+		// Unpack the command parameters
+		var capability tpm2.Capability
+		var property uint32
+		var propertyCount uint32
+		_, err := mu.UnmarshalFromBytes(cpBytes, &capability, &property, &propertyCount)
+		c.Assert(err, IsNil)
+		if capability != tpm2.CapabilityCommands {
+			origIntercept(cmdCode, cmdHandles, cmdAuthArea, cpBytes, rsp)
+			return
+		}
+
+		// Just return no commands
+		rpBytes := mu.MustMarshalToBytes(false, &tpm2.CapabilityData{
+			Capability: tpm2.CapabilityCommands,
+		})
+		rsp.Reset()
+		c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseSuccess, nil, rpBytes, nil), IsNil)
+	}
+	defer func() { s.Transport.ResponseIntercept = origIntercept }()
+
+	ok, err := CheckTPM2ForRequiredPCClientFeatures(s.TPM)
+	c.Check(err, IsNil)
+	c.Check(ok, testutil.IsFalse)
+}
+
+func (s *tpmSuite) TestCheckTPM2ForRequiredPCClientFeaturesErrorTPMProperty(c *C) {
+	s.transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+		if cmdCode != tpm2.CommandGetCapability {
+			return
+		}
+
+		// Unpack the command parameters
+		var capability tpm2.Capability
+		var property uint32
+		var propertyCount uint32
+		_, err := mu.UnmarshalFromBytes(cpBytes, &capability, &property, &propertyCount)
+		c.Assert(err, IsNil)
+		if capability != tpm2.CapabilityTPMProperties {
+			return
+		}
+
+		// Return an error.
+		rsp.Reset()
+		c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseFailure, nil, nil, nil), IsNil)
+	}
+
+	_, err := CheckTPM2ForRequiredPCClientFeatures(s.TPM)
+	c.Check(err, ErrorMatches, `cannot obtain value of 270: TPM returned an error whilst executing command TPM_CC_GetCapability: TPM_RC_FAILURE \(commands not being accepted because of a TPM failure\)`)
+	c.Check(tpm2.IsTPMError(err, tpm2.ErrorFailure, tpm2.CommandGetCapability), testutil.IsTrue)
+}
+
+func (s *tpmSuite) TestCheckTPM2ForRequiredPCClientFeaturesErrorPCRAttribute(c *C) {
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyHRPersistentMin: 7, // The simulator seems to set this to 2
+	})
+
+	origIntercept := s.Transport.ResponseIntercept
+	s.transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandles tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+		if cmdCode != tpm2.CommandGetCapability {
+			return
+		}
+
+		// Unpack the command parameters
+		var capability tpm2.Capability
+		var property uint32
+		var propertyCount uint32
+		_, err := mu.UnmarshalFromBytes(cpBytes, &capability, &property, &propertyCount)
+		c.Assert(err, IsNil)
+		if capability != tpm2.CapabilityPCRProperties {
+			origIntercept(cmdCode, cmdHandles, cmdAuthArea, cpBytes, rsp)
+			return
+		}
+
+		// Return an error.
+		rsp.Reset()
+		c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseFailure, nil, nil, nil), IsNil)
+	}
+	defer func() { s.Transport.ResponseIntercept = origIntercept }()
+
+	_, err := CheckTPM2ForRequiredPCClientFeatures(s.TPM)
+	c.Check(err, ErrorMatches, `cannot obtain value of 0: TPM returned an error whilst executing command TPM_CC_GetCapability: TPM_RC_FAILURE \(commands not being accepted because of a TPM failure\)`)
+	c.Check(tpm2.IsTPMError(err, tpm2.ErrorFailure, tpm2.CommandGetCapability), testutil.IsTrue)
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallInfiniteCounters(c *C) {
+	// Test the good case for pre-install with infinite NV counters.
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     0,
 		tpm2.PropertyPSFamilyIndicator: 1,
@@ -123,9 +348,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMInfiniteCounters(
 	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMFiniteCounters(c *C) {
-	// Test the good case for pre-install on bare-metal with a finite but sufficient
-	// number of NV counters.
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallFiniteCounters(c *C) {
+	// Test the good case for pre-install with a finite but sufficient number of NV counters.
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyNVCountersMax:     6,
 		tpm2.PropertyNVCounters:        4,
@@ -144,7 +368,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallNoVMFiniteCounters(c 
 	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMCountersCheckSkipped(c *C) {
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallCountersCheckSkipped(c *C) {
 	// Test the good case for post-install on bare-metal, making sure we skip the NV
 	// counter index check.
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
@@ -165,9 +389,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMCountersCheckSki
 	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMOwnershipCheckSkipped(c *C) {
-	// Test the good case for post-install on bare-metal, making sure we skip the
-	// hierarchy ownership check.
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallOwnershipCheckSkipped(c *C) {
+	// Test the good case for post-install, making sure we skip the hierarchy ownership check.
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyPSFamilyIndicator: 1,
 		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerNTC),
@@ -187,8 +410,8 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMOwnershipCheckSk
 	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMOwnershipCheckSkipped_2(c *C) {
-	// Test the good case for post-install on bare-metal, making sure we skip the
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallOwnershipCheckSkipped_2(c *C) {
+	// Test the good case for post-install, making sure we skip the
 	// hierarchy ownership check where we test for hierarchy policies.
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyPSFamilyIndicator: 1,
@@ -209,48 +432,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPostInstallNoVMOwnershipCheckSk
 	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallVMInfiniteCounters(c *C) {
-	// Test the good case for pre-install on a VM with infinite NV counters.
-	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
-		tpm2.PropertyNVCountersMax:     0,
-		tpm2.PropertyPSFamilyIndicator: 1,
-		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerMSFT),
-	})
-
-	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
-	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DeviceInVM)
-	c.Check(err, IsNil)
-	c.Assert(tpm, NotNil)
-	var tmpl tpm2_testutil.TransportWrapper
-	c.Assert(tpm.Transport(), Implements, &tmpl)
-	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
-	c.Check(dev.NumberOpen(), Equals, int(1))
-}
-
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreInstallVMInfiniteCountersWithSWTPMWorkaround(c *C) {
-	// Test the good case for pre-install on a VM with a swtpm that has
-	// infinite NV counters, using the workaround for invalid TPM_PT_PS_FAMILY_INDICATOR.
-	family, err := s.TPM.GetCapabilityTPMProperty(tpm2.PropertyFamilyIndicator)
-	c.Check(err, IsNil)
-	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
-		tpm2.PropertyNVCountersMax:     0,
-		tpm2.PropertyPSFamilyIndicator: family,
-		tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerMSFT),
-	})
-
-	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
-	tpm, err := OpenAndCheckTPM2Device(env, CheckTPM2DeviceInVM)
-	c.Check(err, IsNil)
-	c.Assert(tpm, NotNil)
-	var tmpl tpm2_testutil.TransportWrapper
-	c.Assert(tpm.Transport(), Implements, &tmpl)
-	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
-	c.Check(dev.NumberOpen(), Equals, int(1))
-}
-
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodNoVMPreinstallLockoutAvailabilityCheckClearsDALockout(c *C) {
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodPreinstallLockoutAvailabilityCheckClearsDALockout(c *C) {
 	// Test the good case where the tests start with the TPM's DA lockout
 	// mechanism tripped, but the lockout hierarchy availability check
 	// clears it without having to return an error.
@@ -284,6 +466,25 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceGoodNoVMPreinstallLockoutAvailabili
 	perm, err := s.TPM.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
 	c.Check(err, IsNil)
 	c.Check(tpm2.PermanentAttributes(perm)&tpm2.AttrInLockout, Equals, tpm2.PermanentAttributes(0))
+}
+
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceIsNotPCClientWithSuccessfulFeatureChecks(c *C) {
+	// Test for not having a PC Client TPM2 device but where
+	// the device passes the feature checks.
+	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
+		tpm2.PropertyPSFamilyIndicator: 2, // This is defined as PDA in the reference library specs
+		tpm2.PropertyHRPersistentMin:   7, // The simulator seems to set this to 2
+	})
+
+	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
+	tpm, err := OpenAndCheckTPM2Device(env, 0)
+	c.Check(err, IsNil)
+	c.Check(tpm, NotNil)
+	var tmpl tpm2_testutil.TransportWrapper
+	c.Assert(tpm.Transport(), Implements, &tmpl)
+	c.Check(tpm.Transport().(tpm2_testutil.TransportWrapper).Unwrap(), Equals, s.Transport)
+	c.Check(dev.NumberOpen(), Equals, int(1))
 }
 
 // XXX: See the commented out TPM2_SelfTest result handling code in check_tpm.go
@@ -465,29 +666,16 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceWithBackgroundSelfTest(c *C) {
 ///	c.Check(dev.NumberOpen(), Equals, int(0))
 //}
 
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceIsNotPCClient(c *C) {
+func (s *tpmSuite) TestOpenAndCheckTPM2DeviceIsNotPCClientWithFailedFeatureChecks(c *C) {
 	// Test for not having a PC Client TPM2 device.
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyPSFamilyIndicator: 2, // This is defined as PDA in the reference library specs
+		tpm2.PropertyHRPersistentMin:   1,
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
 	_, err := OpenAndCheckTPM2Device(env, 0)
-	c.Check(err, Equals, ErrNoPCClientTPM)
-	c.Check(dev.NumberOpen(), Equals, int(0))
-}
-
-func (s *tpmSuite) TestOpenAndCheckTPM2DeviceIsNotPCClientWithSWTPMWorkaround(c *C) {
-	// Test for not having a PC Client TPM2 device, when running in a VM, which
-	// has a workaround for the swtpm.
-	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
-		tpm2.PropertyPSFamilyIndicator: 2, // This is defined as PDA in the reference library specs
-	})
-
-	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithTPMDevice(newTpmDevice(dev, nil, tpm2_device.ErrNoPPI)))
-	_, err := OpenAndCheckTPM2Device(env, CheckTPM2DeviceInVM)
 	c.Check(err, Equals, ErrNoPCClientTPM)
 	c.Check(dev.NumberOpen(), Equals, int(0))
 }

@@ -49,7 +49,6 @@ const (
 	AuthorityTrustDrivers                       = authorityTrustDrivers
 	CheckFirmwareLogPermitEmptyPCRBanks         = checkFirmwareLogPermitEmptyPCRBanks
 	CheckFirmwareLogPermitWeakPCRBanks          = checkFirmwareLogPermitWeakPCRBanks
-	CheckTPM2DeviceInVM                         = checkTPM2DeviceInVM
 	CheckTPM2DevicePostInstall                  = checkTPM2DevicePostInstall
 	DetectVirtNone                              = detectVirtNone
 	DetectVirtVM                                = detectVirtVM
@@ -72,6 +71,7 @@ var (
 	CheckSecureBootPolicyMeasurementsAndObtainAuthorities = checkSecureBootPolicyMeasurementsAndObtainAuthorities
 	CheckSecureBootPolicyPCRForDegradedFirmwareSettings   = checkSecureBootPolicyPCRForDegradedFirmwareSettings
 	CheckSystemIsEFI                                      = checkSystemIsEFI
+	CheckTPM2ForRequiredPCClientFeatures                  = checkTPM2ForRequiredPCClientFeatures
 	ClearTPM                                              = clearTPM
 	DetectVirtualization                                  = detectVirtualization
 	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
