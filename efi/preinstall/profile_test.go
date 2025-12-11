@@ -570,7 +570,7 @@ func (s *profileSuite) TestWithAutoTCGPCRInsufficientDMAProtection(c *C) {
 	result := &CheckResult{
 		PCRAlg:            tpm2.HashAlgorithmSHA256,
 		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             InsufficientDMAProtectionDetected,
+		AcceptedErrors:    map[ErrorKind]json.RawMessage{ErrorKindInsufficientDMAProtection: nil},
 	}
 	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
 

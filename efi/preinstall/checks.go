@@ -21,6 +21,7 @@ package preinstall
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -178,7 +179,9 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		deferredErrs []error // Errors to return at the end of this function
 		warnings     []error // Warnings to return via CheckResult at the end of the function
 	)
-	result = new(CheckResult)
+	result = &CheckResult{
+		AcceptedErrors: make(map[ErrorKind]json.RawMessage),
+	}
 
 	virtMode, err := detectVirtualization(runChecksEnv)
 	if err != nil {
@@ -318,10 +321,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 				return nil, &HostSecurityError{err}
 			}
 			for _, e := range ce.Unwrap() {
-				if errors.Is(e, ErrInsufficientDMAProtection) && flags&PermitInsufficientDMAProtection > 0 {
-					result.Flags |= InsufficientDMAProtectionDetected
-				} else if errors.Is(e, ErrNoKernelIOMMU) && flags&PermitInsufficientDMAProtection > 0 {
-					warnings = append(warnings, err)
+				if (errors.Is(e, ErrInsufficientDMAProtection) || errors.Is(e, ErrNoKernelIOMMU)) && flags&PermitInsufficientDMAProtection > 0 {
+					warnings = append(warnings, e)
 				} else {
 					deferredErrs = append(deferredErrs, &HostSecurityError{e})
 				}
@@ -450,6 +451,11 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		return nil, joinErrors(deferredErrs...)
 	}
 
+	for kind, flag := range errorKindToProceedFlag {
+		if flag&flags > 0 {
+			result.AcceptedErrors[kind] = nil
+		}
+	}
 	if len(warnings) > 0 {
 		result.Warnings = joinErrors(warnings...).(CompoundError)
 	}

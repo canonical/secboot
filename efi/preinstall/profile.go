@@ -393,7 +393,7 @@ func (o *pcrProfileAutoSetPcrsOption) ApplyOptionTo(visitor internal_efi.PCRProf
 			return fmt.Errorf("cannot add PCR profile option %d: %w", i, err)
 		}
 	}
-	if o.result.Flags&InsufficientDMAProtectionDetected != 0 {
+	if _, permitted := o.result.AcceptedErrors[ErrorKindInsufficientDMAProtection]; permitted {
 		if err := secboot_efi.WithAllowInsufficientDmaProtection().ApplyOptionTo(visitor); err != nil {
 			return fmt.Errorf("cannot add DMA allow insufficient protection profile option: %w", err)
 		}
