@@ -31,7 +31,7 @@ import (
 )
 
 type (
-	AuthorityTrust              = authorityTrust
+	AuthorityTrustFlags         = authorityTrustFlags
 	AuthorityTrustData          = authorityTrustData
 	AuthorityTrustDataSet       = authorityTrustDataSet
 	BootManagerCodeResult       = bootManagerCodeResult

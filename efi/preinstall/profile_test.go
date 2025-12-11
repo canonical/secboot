@@ -22,6 +22,8 @@ package preinstall_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"regexp"
 
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot/efi/preinstall"
@@ -61,13 +63,17 @@ func (s *profileSuite) TestPCRProfileOptionsFlagsMarshalJSON(c *C) {
 		expected string
 	}{
 		{flags: PCRProfileOptionsDefault, expected: `[]`},
-		{flags: PCRProfileOptionMostSecure, expected: `["most-secure"]`},
-		{flags: PCRProfileOptionTrustCAsForBootCode, expected: `["trust-cas-for-boot-code"]`},
-		{flags: PCRProfileOptionTrustCAsForAddonDrivers, expected: `["trust-cas-for-addon-drivers"]`},
-		{flags: PCRProfileOptionDistrustVARSuppliedNonHostCode, expected: `["distrust-var-supplied-nonhost-code"]`},
+		{flags: PCRProfileOptionLockToPlatformFirmware, expected: `["lock-platform-firmware"]`},
+		{flags: PCRProfileOptionLockToPlatformConfig, expected: `["lock-platform-config"]`},
+		{flags: PCRProfileOptionLockToDriversAndApps, expected: `["lock-drivers-and-apps"]`},
+		{flags: PCRProfileOptionLockToDriversAndAppsConfig, expected: `["lock-drivers-and-apps-config"]`},
+		{flags: PCRProfileOptionLockToBootManagerCode, expected: `["lock-boot-manager-code"]`},
+		{flags: PCRProfileOptionLockToBootManagerConfig, expected: `["lock-boot-manager-config"]`},
+		{flags: PCRProfileOptionTrustSecureBootAuthoritiesForBootCode, expected: `["trust-authorities-for-boot-code"]`},
+		{flags: PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers, expected: `["trust-authorities-for-addon-drivers"]`},
 		{flags: PCRProfileOptionPermitNoSecureBootPolicyProfile, expected: `["permit-no-secure-boot-policy-profile"]`},
 		{flags: PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation, expected: `["no-partial-dtpm-reset-attack-mitigation"]`},
-		{flags: PCRProfileOptionTrustCAsForBootCode | PCRProfileOptionTrustCAsForAddonDrivers, expected: `["trust-cas-for-boot-code","trust-cas-for-addon-drivers"]`},
+		{flags: PCRProfileOptionMostSecure, expected: `["lock-platform-firmware","lock-platform-config","lock-drivers-and-apps","lock-drivers-and-apps-config","lock-boot-manager-code","lock-boot-manager-config"]`},
 	} {
 		data, err := json.Marshal(params.flags)
 		c.Check(err, IsNil, Commentf("flags:%v", params.flags))
@@ -81,15 +87,19 @@ func (s *profileSuite) TestPCRProfileOptionsFlagsUnmarshalJSON(c *C) {
 		expected PCRProfileOptionsFlags
 	}{
 		{flags: `[]`, expected: PCRProfileOptionsDefault},
-		{flags: `["most-secure"]`, expected: PCRProfileOptionMostSecure},
-		{flags: `["trust-cas-for-boot-code"]`, expected: PCRProfileOptionTrustCAsForBootCode},
-		{flags: `["trust-cas-for-addon-drivers"]`, expected: PCRProfileOptionTrustCAsForAddonDrivers},
-		{flags: `["distrust-var-supplied-nonhost-code"]`, expected: PCRProfileOptionDistrustVARSuppliedNonHostCode},
+		{flags: `["lock-platform-firmware"]`, expected: PCRProfileOptionLockToPlatformFirmware},
+		{flags: `["lock-platform-config"]`, expected: PCRProfileOptionLockToPlatformConfig},
+		{flags: `["lock-drivers-and-apps"]`, expected: PCRProfileOptionLockToDriversAndApps},
+		{flags: `["lock-drivers-and-apps-config"]`, expected: PCRProfileOptionLockToDriversAndAppsConfig},
+		{flags: `["lock-boot-manager-code"]`, expected: PCRProfileOptionLockToBootManagerCode},
+		{flags: `["lock-boot-manager-config"]`, expected: PCRProfileOptionLockToBootManagerConfig},
+		{flags: `["trust-authorities-for-boot-code"]`, expected: PCRProfileOptionTrustSecureBootAuthoritiesForBootCode},
+		{flags: `["trust-authorities-for-addon-drivers"]`, expected: PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers},
 		{flags: `["permit-no-secure-boot-policy-profile"]`, expected: PCRProfileOptionPermitNoSecureBootPolicyProfile},
 		{flags: `["no-partial-dtpm-reset-attack-mitigation"]`, expected: PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation},
-		{flags: `["trust-cas-for-boot-code","trust-cas-for-addon-drivers"]`, expected: PCRProfileOptionTrustCAsForBootCode | PCRProfileOptionTrustCAsForAddonDrivers},
-		{flags: `["0x1"]`, expected: PCRProfileOptionMostSecure},
-		{flags: `["16"]`, expected: PCRProfileOptionPermitNoSecureBootPolicyProfile},
+		{flags: `["lock-platform-firmware","lock-platform-config","lock-drivers-and-apps","lock-drivers-and-apps-config","lock-boot-manager-code","lock-boot-manager-config"]`, expected: PCRProfileOptionMostSecure},
+		{flags: `["0x3f"]`, expected: PCRProfileOptionMostSecure},
+		{flags: `["256"]`, expected: PCRProfileOptionPermitNoSecureBootPolicyProfile},
 	} {
 		var flags PCRProfileOptionsFlags
 		c.Check(json.Unmarshal([]byte(params.flags), &flags), IsNil, Commentf("flags:%q", params.flags))
@@ -113,456 +123,424 @@ func (s *profileSuite) TestPCRProfileOptionsFlagsString(c *C) {
 		expected string
 	}{
 		{flags: PCRProfileOptionsDefault, expected: ""},
-		{flags: PCRProfileOptionMostSecure, expected: "most-secure"},
-		{flags: PCRProfileOptionTrustCAsForBootCode, expected: "trust-cas-for-boot-code"},
-		{flags: PCRProfileOptionTrustCAsForAddonDrivers, expected: "trust-cas-for-addon-drivers"},
-		{flags: PCRProfileOptionDistrustVARSuppliedNonHostCode, expected: "distrust-var-supplied-nonhost-code"},
+		{flags: PCRProfileOptionLockToPlatformFirmware, expected: "lock-platform-firmware"},
+		{flags: PCRProfileOptionLockToPlatformConfig, expected: "lock-platform-config"},
+		{flags: PCRProfileOptionLockToDriversAndApps, expected: "lock-drivers-and-apps"},
+		{flags: PCRProfileOptionLockToDriversAndAppsConfig, expected: "lock-drivers-and-apps-config"},
+		{flags: PCRProfileOptionLockToBootManagerCode, expected: "lock-boot-manager-code"},
+		{flags: PCRProfileOptionLockToBootManagerConfig, expected: "lock-boot-manager-config"},
+		{flags: PCRProfileOptionTrustSecureBootAuthoritiesForBootCode, expected: "trust-authorities-for-boot-code"},
+		{flags: PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers, expected: "trust-authorities-for-addon-drivers"},
 		{flags: PCRProfileOptionPermitNoSecureBootPolicyProfile, expected: "permit-no-secure-boot-policy-profile"},
 		{flags: PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation, expected: "no-partial-dtpm-reset-attack-mitigation"},
-		{flags: PCRProfileOptionTrustCAsForBootCode | PCRProfileOptionTrustCAsForAddonDrivers, expected: "trust-cas-for-boot-code,trust-cas-for-addon-drivers"},
+		{flags: PCRProfileOptionMostSecure, expected: "lock-platform-firmware,lock-platform-config,lock-drivers-and-apps,lock-drivers-and-apps-config,lock-boot-manager-code,lock-boot-manager-config"},
 	} {
 		c.Check(params.flags.String(), Equals, params.expected, Commentf("flags:%#08x", params.flags))
 	}
 }
 
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefault(c *C) {
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+type testWithAutoTCGPCRProfilePCRSelectionParams struct {
+	usedSecureBootCAs [][]byte
+	flags             CheckResultFlags
+	opts              PCRProfileOptionsFlags
+	expectedPcrs      tpm2.HandleList
+}
+
+func (s *profileSuite) testWithAutoTCGPCRProfilePCRSelection(c *C, params *testWithAutoTCGPCRProfilePCRSelectionParams) {
+	var usedSecureBootCAs []*X509CertificateID
+	for _, cert := range params.usedSecureBootCAs {
+		usedSecureBootCAs = append(usedSecureBootCAs, NewX509CertificateID(testutil.ParseCertificate(c, cert)))
 	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
+	result := &CheckResult{
+		UsedSecureBootCAs: usedSecureBootCAs,
+		Flags:             params.flags,
+	}
+	profile := WithAutoTCGPCRProfile(result, params.opts)
 
 	visitor := new(mockPcrProfileOptionVisitor)
 	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7, 4, 2})
+	c.Check(visitor.pcrs, DeepEquals, params.expectedPcrs)
 
 	pcrs, err := profile.PCRs()
 	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7, 4, 2})
+	c.Check(pcrs, DeepEquals, params.expectedPcrs)
 }
 
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultWithDTPMResetAttackMitigation(c *C) {
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7, 4, 2, 0})
-
-	pcrs, err := profile.PCRs()
-	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7, 4, 2, 0})
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultCATrustedForBootCode(c *C) {
-	restore := MockKnownCAs(AuthorityTrustDataSet{
-		{internal_efi.MSUefiCA2011, 0},
-		{internal_efi.MSUefiCA2023, AuthorityTrustBootCode},
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionDefault(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		expectedPcrs:      tpm2.HandleList{2, 4, 7},
 	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionDefaultUnrecognizedCA(c *C) {
+	restore := MockKnownCAs(AuthorityTrustDataSet{})
 	defer restore()
 
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert2023))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7, 2})
-
-	pcrs, err := profile.PCRs()
-	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7, 2})
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		expectedPcrs:      tpm2.HandleList{2, 4, 7},
+	})
 }
 
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultCATrustedForDrivers(c *C) {
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToPlatformFirmare(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		opts:              PCRProfileOptionLockToPlatformFirmware,
+		expectedPcrs:      tpm2.HandleList{0, 2, 4, 7},
+	})
+}
+
+// XXX: Uncomment when secboot_efi.WithPlatformConfigProfile exists.
+//func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToPlatformConfig(c *C) {
+//	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+//		usedSecureBootCAs: [][]byte{msUefiCACert},
+//		opts:              PCRProfileOptionLockToPlatformConfig,
+//		expectedPcrs:      tpm2.HandleList{1, 2, 4, 7},
+//	})
+//}
+//
+//func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToPlatformFirmareAndConfig(c *C) {
+//	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+//		usedSecureBootCAs: [][]byte{msUefiCACert},
+//		opts:              PCRProfileOptionLockToPlatformFirmware | PCRProfileOptionLockToPlatformConfig,
+//		expectedPcrs:      tpm2.HandleList{0, 1, 2, 4, 7},
+//	})
+//}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionDefaultCAsTrustedForDrivers(c *C) {
 	restore := MockKnownCAs(AuthorityTrustDataSet{
 		{internal_efi.MSUefiCA2011, 0},
 		{internal_efi.MSUefiCA2023, AuthorityTrustDrivers},
 	})
 	defer restore()
 
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert2023))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7, 4})
-
-	pcrs, err := profile.PCRs()
-	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7, 4})
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert2023},
+		expectedPcrs:      tpm2.HandleList{4, 7},
+	})
 }
 
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultCATrustedForDriversAndBootCode(c *C) {
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToDriversAndApps(c *C) {
 	restore := MockKnownCAs(AuthorityTrustDataSet{
 		{internal_efi.MSUefiCA2011, 0},
-		{internal_efi.MSUefiCA2023, AuthorityTrustBootCode | AuthorityTrustDrivers},
+		{internal_efi.MSUefiCA2023, AuthorityTrustDrivers},
 	})
 	defer restore()
 
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert2023))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7})
-
-	pcrs, err := profile.PCRs()
-	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7})
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert2023},
+		opts:              PCRProfileOptionLockToDriversAndApps,
+		expectedPcrs:      tpm2.HandleList{2, 4, 7},
+	})
 }
 
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultCATrustedForDriversAndBootCodeAndDTPMResetAttackMitigation(c *C) {
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionTrustSecureBootAuthoritiesForAddonDrivers(c *C) {
+	restore := MockKnownCAs(AuthorityTrustDataSet{})
+	defer restore()
+
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		opts:              PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers,
+		expectedPcrs:      tpm2.HandleList{4, 7},
+	})
+}
+
+// XXX: Uncomment when secboot_efi.WithDriversAndAppsConfigProfile exists.
+//func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToDriversAndAppsConfig(c *C) {
+//	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+//		usedSecureBootCAs: [][]byte{msUefiCACert},
+//		opts:              PCRProfileOptionLockToDriversAndAppsConfig,
+//		expectedPcrs:      tpm2.HandleList{2, 3, 4, 7},
+//	})
+//}
+//
+//func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToDriversAndAppsAndConfig(c *C) {
+//	restore := MockKnownCAs(AuthorityTrustDataSet{
+//		{internal_efi.MSUefiCA2011, 0},
+//		{internal_efi.MSUefiCA2023, AuthorityTrustDrivers},
+//	})
+//	defer restore()
+//
+//	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+//		usedSecureBootCAs: [][]byte{msUefiCACert2023},
+//		opts:              PCRProfileOptionLockToDriversAndApps | PCRProfileOptionLockToDriversAndAppsConfig,
+//		expectedPcrs:      tpm2.HandleList{2, 3, 4, 7},
+//	})
+//}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionDefaultCAsTrustedForBootCode(c *C) {
 	restore := MockKnownCAs(AuthorityTrustDataSet{
 		{internal_efi.MSUefiCA2011, 0},
-		{internal_efi.MSUefiCA2023, AuthorityTrustBootCode | AuthorityTrustDrivers},
+		{internal_efi.MSUefiCA2023, AuthorityTrustBootCode},
 	})
 	defer restore()
 
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert2023))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7, 0})
-
-	pcrs, err := profile.PCRs()
-	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7, 0})
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultUnrecognizedCA(c *C) {
-	restore := MockKnownCAs(AuthorityTrustDataSet{
-		{internal_efi.MSUefiCA2023, 0},
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert2023},
+		expectedPcrs:      tpm2.HandleList{2, 7},
 	})
-	defer restore()
-
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7, 4, 2})
-
-	pcrs, err := profile.PCRs()
-	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7, 4, 2})
 }
 
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultNoBootManagerCodeSupport(c *C) {
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	err := profile.ApplyOptionTo(visitor)
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: cannot create a valid secure boot configuration: one or more CAs used for secure boot verification are not trusted to authenticate boot code and the PCRProfileOptionTrustCAsForBootCode option was not supplied: PCR 0x00000004 is required, but is unsupported`)
-	var err2 *UnsupportedRequiredPCRsError
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-
-	_, err = profile.PCRs()
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: cannot create a valid secure boot configuration: one or more CAs used for secure boot verification are not trusted to authenticate boot code and the PCRProfileOptionTrustCAsForBootCode option was not supplied: PCR 0x00000004 is required, but is unsupported`)
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultNoDriversAndAppsSupport(c *C) {
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	err := profile.ApplyOptionTo(visitor)
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: cannot create a valid secure boot configuration: one or more CAs used for secure boot verification are not trusted to authenticate value-added-retailer suppled drivers and the PCRProfileOptionTrustCAsForAddonDrivers option was not supplied: PCR 0x00000002 is required, but is unsupported`)
-	var err2 *UnsupportedRequiredPCRsError
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-
-	_, err = profile.PCRs()
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: cannot create a valid secure boot configuration: one or more CAs used for secure boot verification are not trusted to authenticate value-added-retailer suppled drivers and the PCRProfileOptionTrustCAsForAddonDrivers option was not supplied: PCR 0x00000002 is required, but is unsupported`)
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultNoSecureBootPolicyProfileSupport(c *C) {
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	err := profile.ApplyOptionTo(visitor)
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: cannot create a valid configuration without secure boot policy and the PCRProfileOptionPermitNoSecureBootPolicyProfile option was not supplied: PCR 0x00000007 is required, but is unsupported`)
-	var err2 *UnsupportedRequiredPCRsError
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-
-	_, err = profile.PCRs()
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: cannot create a valid configuration without secure boot policy and the PCRProfileOptionPermitNoSecureBootPolicyProfile option was not supplied: PCR 0x00000007 is required, but is unsupported`)
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileMostSecure(c *C) {
-	// This is an error for now, but will work in the future when we've added
-	// support for the missing PCRs.
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionMostSecure)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	err := profile.ApplyOptionTo(visitor)
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: PCRProfileOptionMostSecure cannot be used: PCRs \[0x00000001 0x00000003 0x00000005 0x00000007\] are required, but are unsupported`)
-	var err2 *UnsupportedRequiredPCRsError
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-
-	_, err = profile.PCRs()
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: PCRProfileOptionMostSecure cannot be used: PCRs \[0x00000001 0x00000003 0x00000005 0x00000007\] are required, but are unsupported`)
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileMostSecure2(c *C) {
-	// This is an error for now, but will work in the future when we've added
-	// support for the missing PCRs.
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionMostSecure)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	err := profile.ApplyOptionTo(visitor)
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: PCRProfileOptionMostSecure cannot be used because it is currently unsupported: PCRs \[0x00000001 0x00000003 0x00000005\] are required, but are unsupported`)
-	var err2 *UnsupportedRequiredPCRsError
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-
-	_, err = profile.PCRs()
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: PCRProfileOptionMostSecure cannot be used because it is currently unsupported: PCRs \[0x00000001 0x00000003 0x00000005\] are required, but are unsupported`)
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultNoSecureBootPolicyProfileSupportOptIn(c *C) {
-	// This is an error for now, but will work in the future when we've added
-	// support for the missing PCRs.
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionPermitNoSecureBootPolicyProfile)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	err := profile.ApplyOptionTo(visitor)
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: cannot create a valid configuration without secure boot policy: PCRs \[0x00000001 0x00000003 0x00000005\] are required, but are unsupported`)
-	var err2 *UnsupportedRequiredPCRsError
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-
-	_, err = profile.PCRs()
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: cannot create a valid configuration without secure boot policy: PCRs \[0x00000001 0x00000003 0x00000005\] are required, but are unsupported`)
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultNoSecureBootPolicyProfileSupportOptIn2(c *C) {
-	// This is an error for now, but will work in the future when we've added
-	// support for the missing PCRs.
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoSecureBootPolicyProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionPermitNoSecureBootPolicyProfile)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	err := profile.ApplyOptionTo(visitor)
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: cannot create a configuration without secure boot policy because this is currently unsupported: PCRs \[0x00000001 0x00000003 0x00000005\] are required, but are unsupported`)
-	var err2 *UnsupportedRequiredPCRsError
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-
-	_, err = profile.PCRs()
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: cannot create a configuration without secure boot policy because this is currently unsupported: PCRs \[0x00000001 0x00000003 0x00000005\] are required, but are unsupported`)
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileMostSecureWithOtherOptions(c *C) {
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionMostSecure|PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	c.Check(profile.ApplyOptionTo(visitor), ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: PCRProfileOptionMostSecure can only be used on its own`)
-
-	_, err := profile.PCRs()
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: PCRProfileOptionMostSecure can only be used on its own`)
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileTrustCAsForBootCode(c *C) {
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionTrustCAsForBootCode)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7, 2})
-
-	pcrs, err := profile.PCRs()
-	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7, 2})
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileTrustCAsForAddonDrivers(c *C) {
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionTrustCAsForAddonDrivers)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7, 4})
-
-	pcrs, err := profile.PCRs()
-	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7, 4})
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileTrustCAsForAddonDriversAndBootCode(c *C) {
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionTrustCAsForBootCode|PCRProfileOptionTrustCAsForAddonDrivers)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7})
-
-	pcrs, err := profile.PCRs()
-	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7})
-}
-
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultDistrustVARSuppliedNonHostCode(c *C) {
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToBootManagerCode(c *C) {
 	restore := MockKnownCAs(AuthorityTrustDataSet{
 		{internal_efi.MSUefiCA2011, 0},
-		{internal_efi.MSUefiCA2023, AuthorityTrustBootCode | AuthorityTrustDrivers},
+		{internal_efi.MSUefiCA2023, AuthorityTrustBootCode},
 	})
 	defer restore()
 
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert2023))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionDistrustVARSuppliedNonHostCode)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7, 2})
-
-	pcrs, err := profile.PCRs()
-	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7, 2})
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert2023},
+		opts:              PCRProfileOptionLockToBootManagerCode,
+		expectedPcrs:      tpm2.HandleList{2, 4, 7},
+	})
 }
 
-func (s *profileSuite) TestWithAutoTCGPCRProfileDefaultDistrustVARSuppliedNonHostCodeNoDriversAndAppsProfileSupport(c *C) {
-	restore := MockKnownCAs(AuthorityTrustDataSet{
-		{internal_efi.MSUefiCA2011, 0},
-		{internal_efi.MSUefiCA2023, AuthorityTrustBootCode | AuthorityTrustDrivers},
-	})
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionTrustSecureBootAuthoritiesForBootCode(c *C) {
+	restore := MockKnownCAs(AuthorityTrustDataSet{})
 	defer restore()
 
-	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
-		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert2023))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
-	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionDistrustVARSuppliedNonHostCode)
-
-	visitor := new(mockPcrProfileOptionVisitor)
-	err := profile.ApplyOptionTo(visitor)
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: PCRProfileOptionDistrustVARSuppliedNonHostCode cannot be used: PCR 0x00000002 is required, but is unsupported`)
-	var err2 *UnsupportedRequiredPCRsError
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
-
-	_, err = profile.PCRs()
-	c.Check(err, ErrorMatches, `cannot select an appropriate set of TCG defined PCRs with the current options: PCRProfileOptionDistrustVARSuppliedNonHostCode cannot be used: PCR 0x00000002 is required, but is unsupported`)
-	c.Check(errors.As(err, &err2), testutil.IsTrue)
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		opts:              PCRProfileOptionTrustSecureBootAuthoritiesForBootCode,
+		expectedPcrs:      tpm2.HandleList{2, 7},
+	})
 }
 
-func (s *profileSuite) TestWithAutoTCGPCRProfileNoPartialDiscreteTPMResetAttackMitigation(c *C) {
+// XXX: Uncomment when secboot_efi.WithBootManagerConfigProfile exists.
+//func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToBootManagerConfig(c *C) {
+//	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+//		usedSecureBootCAs: [][]byte{msUefiCACert},
+//		opts:              PCRProfileOptionLockToBootManagerConfig,
+//		expectedPcrs:      tpm2.HandleList{2, 4, 5, 7},
+//	})
+//}
+//
+//func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToBootManagerCodeAndConfig(c *C) {
+//	restore := MockKnownCAs(AuthorityTrustDataSet{
+//		{internal_efi.MSUefiCA2011, 0},
+//		{internal_efi.MSUefiCA2023, AuthorityTrustBootCode},
+//	})
+//	defer restore()
+//
+//	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+//		usedSecureBootCAs: [][]byte{msUefiCACert2023},
+//		opts:              PCRProfileOptionLockToBootManagerCode | PCRProfileOptionLockToBootManagerConfig,
+//		expectedPcrs:      tpm2.HandleList{2, 4, 5, 7},
+//	})
+//}
+
+// XXX: Uncomment when secboot_efi.WithPlatformConfigProfile, secboot_efi.WithDriversAndAppsConfigProfile
+// and secboot_efi.WithBootManagerConfigProfile exist.
+//func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionMostSecure(c *C) {
+//	restore := MockKnownCAs(AuthorityTrustDataSet{
+//		{internal_efi.MSUefiCA2011, 0},
+//		{internal_efi.MSUefiCA2023, AuthorityTrustDriver | AuthorityTrustBootCode},
+//	})
+//	defer restore()
+//
+//	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+//		usedSecureBootCAs: [][]byte{msUefiCACert2023},
+//		opts:              PCRProfileOptionsMostSecure,
+//		expectedPcrs:      tpm2.HandleList{0, 1, 2, 3, 4, 5, 7},
+//	})
+//}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionPermitNoSecureBootPolicyProfile(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		opts:              PCRProfileOptionPermitNoSecureBootPolicyProfile,
+		expectedPcrs:      tpm2.HandleList{2, 4, 7},
+	})
+}
+
+// XXX: Uncomment when secboot_efi.WithPlatformConfigProfile, secboot_efi.WithDriversAndAppsConfigProfile
+// and secboot_efi.WithBootManagerConfigProfile exist.
+//func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionNoSecureBootPolicyProfileSupportedButPermitted(c *C) {
+//	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+//		usedSecureBootCAs: [][]byte{msUefiCACert},
+//		flags:             NoSecureBootPolicyProfileSupport,
+//		opts:              PCRProfileOptionPermitNoSecureBootPolicyProfile,
+//		expectedPcrs:      tpm2.HandleList{2, 4, 7},
+//	})
+//}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionWithPartialDTPMResetAttackMitigation(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		flags:             RequestPartialDiscreteTPMResetAttackMitigation,
+		expectedPcrs:      tpm2.HandleList{0, 2, 4, 7},
+	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionNoPartialDTPMResetAttackMitigation(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		flags:             RequestPartialDiscreteTPMResetAttackMitigation,
+		opts:              PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation,
+		expectedPcrs:      tpm2.HandleList{2, 4, 7},
+	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfileLockToDriversAndAppsIncompatibleWithTrustSecureBootAuthoritiesForAddonDrivers(c *C) {
+	profile := WithAutoTCGPCRProfile(new(CheckResult), PCRProfileOptionLockToDriversAndApps|PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers)
+	c.Check(profile.ApplyOptionTo(new(mockPcrProfileOptionVisitor)), ErrorMatches,
+		`cannot select an appropriate set of TCG defined PCRs with the current options: "trust-authorities-for-addon-drivers" option is incompatible with "lock-drivers-and-apps" option`)
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfileTrustSecureBootAuthoritiesForAddonDriversFailsForExplicitlyDistrusted(c *C) {
 	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
 		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation,
 	}
-	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation)
+	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers)
+	c.Check(profile.ApplyOptionTo(new(mockPcrProfileOptionVisitor)), ErrorMatches,
+		`cannot select an appropriate set of TCG defined PCRs with the current options: "trust-authorities-for-addon-drivers" option cannot be used when secure boot CAs that are explicitly distrusted for authenticating addon drivers are active`)
+}
 
-	visitor := new(mockPcrProfileOptionVisitor)
-	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7, 4, 2})
+func (s *profileSuite) TestWithAutoTCGPCRProfileLockToBootManagerCodeIncompatibleWithTrustSecureBootAuthoritiesForBootCode(c *C) {
+	profile := WithAutoTCGPCRProfile(new(CheckResult), PCRProfileOptionLockToBootManagerCode|PCRProfileOptionTrustSecureBootAuthoritiesForBootCode)
+	c.Check(profile.ApplyOptionTo(new(mockPcrProfileOptionVisitor)), ErrorMatches,
+		`cannot select an appropriate set of TCG defined PCRs with the current options: "trust-authorities-for-boot-code" option is incompatible with "lock-boot-manager-code" option`)
+}
 
-	pcrs, err := profile.PCRs()
-	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7, 4, 2})
+func (s *profileSuite) TestWithAutoTCGPCRProfileTrustSecureBootAuthoritiesForBootCodeFailsForExplicitlyDistrusted(c *C) {
+	result := &CheckResult{
+		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+	}
+	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionTrustSecureBootAuthoritiesForBootCode)
+	c.Check(profile.ApplyOptionTo(new(mockPcrProfileOptionVisitor)), ErrorMatches,
+		`cannot select an appropriate set of TCG defined PCRs with the current options: "trust-authorities-for-boot-code" option cannot be used when secure boot CAs that are explicitly distrusted for authenticating boot code are active`)
+}
+
+func (s *profileSuite) testWithAutoTCGPCRProfilePCRSelectionUnsupported(c *C, params *testWithAutoTCGPCRProfilePCRSelectionParams) {
+	var usedSecureBootCAs []*X509CertificateID
+	for _, cert := range params.usedSecureBootCAs {
+		usedSecureBootCAs = append(usedSecureBootCAs, NewX509CertificateID(testutil.ParseCertificate(c, cert)))
+	}
+	result := &CheckResult{
+		UsedSecureBootCAs: usedSecureBootCAs,
+		Flags:             params.flags,
+	}
+	profile := WithAutoTCGPCRProfile(result, params.opts)
+
+	var expectedErr string
+	switch len(params.expectedPcrs) {
+	case 1:
+		expectedErr = fmt.Sprintf("PCR %v is required, but is unsupported", params.expectedPcrs[0])
+	default:
+		expectedErr = fmt.Sprintf("PCRs %v are required, but are unsupported", params.expectedPcrs)
+	}
+
+	err := profile.ApplyOptionTo(new(mockPcrProfileOptionVisitor))
+	c.Check(err, ErrorMatches, fmt.Sprintf("cannot select an appropriate set of TCG defined PCRs with the current options: %s", regexp.QuoteMeta(expectedErr)))
+
+	var e *UnsupportedRequiredPCRsError
+	c.Assert(errors.As(err, &e), testutil.IsTrue)
+	c.Check(e.PCRs, DeepEquals, params.expectedPcrs)
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionPlatformFirmwareProfileUnsupported(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelectionUnsupported(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		flags:             NoPlatformFirmwareProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation,
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		expectedPcrs:      tpm2.HandleList{0},
+	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionPlatformConfigProfileUnsupported(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelectionUnsupported(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		flags:             NoPlatformConfigProfileSupport,
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		opts:              PCRProfileOptionLockToPlatformConfig,
+		expectedPcrs:      tpm2.HandleList{1},
+	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionDriversAndAppsProfileUnsupported(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelectionUnsupported(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		flags:             NoDriversAndAppsProfileSupport,
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		expectedPcrs:      tpm2.HandleList{2},
+	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionDriversAndAppsConfigProfileUnsupported(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelectionUnsupported(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		flags:             NoDriversAndAppsConfigProfileSupport,
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		opts:              PCRProfileOptionLockToDriversAndAppsConfig,
+		expectedPcrs:      tpm2.HandleList{3},
+	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionBootManagerCodeProfileUnsupported(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelectionUnsupported(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		flags:             NoBootManagerCodeProfileSupport,
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		expectedPcrs:      tpm2.HandleList{4},
+	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionSecureBootPolicyProfileUnsupported(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelectionUnsupported(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		flags:             NoSecureBootPolicyProfileSupport,
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		expectedPcrs:      tpm2.HandleList{7},
+	})
+}
+
+// Error cases for temporarily unsupported options.
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToPlatformConfigUnsupported(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelectionUnsupported(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		opts:              PCRProfileOptionLockToPlatformConfig,
+		expectedPcrs:      tpm2.HandleList{1},
+	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToDriversAndAppsConfigUnsupported(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelectionUnsupported(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		opts:              PCRProfileOptionLockToDriversAndAppsConfig,
+		expectedPcrs:      tpm2.HandleList{3},
+	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToBootManagerConfigUnsupported(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelectionUnsupported(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		opts:              PCRProfileOptionLockToBootManagerConfig,
+		expectedPcrs:      tpm2.HandleList{5},
+	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionPermitNoSecureBootPolicyProfileUnsupported(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelectionUnsupported(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		flags:             NoSecureBootPolicyProfileSupport,
+		opts:              PCRProfileOptionPermitNoSecureBootPolicyProfile,
+		expectedPcrs:      tpm2.HandleList{1, 3, 5},
+	})
 }
 
 func (s *profileSuite) TestWithAutoTCGPCRProfileOptions(c *C) {
 	result := &CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmSHA256,
 		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	}
 	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
 
-	profile = profile.Options(PCRProfileOptionTrustCAsForBootCode | PCRProfileOptionTrustCAsForAddonDrivers)
+	profile = profile.Options(PCRProfileOptionLockToPlatformFirmware)
 
 	visitor := new(mockPcrProfileOptionVisitor)
 	c.Check(profile.ApplyOptionTo(visitor), IsNil)
-	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{7})
+	c.Check(visitor.pcrs, DeepEquals, tpm2.HandleList{0, 2, 4, 7})
 
 	pcrs, err := profile.PCRs()
 	c.Check(err, IsNil)
-	c.Check(pcrs, DeepEquals, tpm2.HandleList{7})
+	c.Check(pcrs, DeepEquals, tpm2.HandleList{0, 2, 4, 7})
 
-	expectedProfile := WithAutoTCGPCRProfile(result, PCRProfileOptionTrustCAsForBootCode|PCRProfileOptionTrustCAsForAddonDrivers)
+	expectedProfile := WithAutoTCGPCRProfile(result, PCRProfileOptionLockToPlatformFirmware)
 	c.Check(profile, DeepEquals, expectedProfile)
 }
 
