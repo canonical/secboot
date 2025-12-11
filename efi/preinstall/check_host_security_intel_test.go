@@ -380,7 +380,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVMECSME
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoDevices(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts()
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `cannot obtain devices for mei subsystem: nil devices`)
+	c.Check(err, ErrorMatches, `cannot enumerate devices for mei subsystem: nil devices`)
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEModule(c *C) {
