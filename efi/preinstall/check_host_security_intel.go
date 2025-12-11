@@ -27,6 +27,7 @@ import (
 	"fmt"
 
 	"github.com/canonical/cpuid"
+	"github.com/canonical/go-tpm2"
 	"github.com/pilebones/go-udev/netlink"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
@@ -371,4 +372,19 @@ func checkHostSecurityIntelCPUDebuggingLocked(env internal_efi.HostEnvironmentAM
 	}
 
 	return nil
+}
+
+// restrictedTPMLocalitiesIntel returns the TPM localities with access restricted
+// from the OS.
+func restrictedTPMLocalitiesIntel(env internal_efi.HostEnvironmentAMD64) tpm2.Locality {
+	if env.HasCPUIDFeature(cpuid.SMX) {
+		// The Intel TXT spec says that locality 4 is only available to microcode,
+		// and is locked before handing over to an ACM which has access to locality
+		// 3. The SINIT ACM uses this to establish a D-RTM and then locks access to
+		// it before running non-Intel code, leaving access to localities 2 and 1 to
+		// the measured launch environment and dynamic OS respectively.
+		return tpm2.LocalityThree | tpm2.LocalityFour
+	}
+
+	return 0
 }

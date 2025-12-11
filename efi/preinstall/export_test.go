@@ -25,6 +25,7 @@ import (
 	"io"
 
 	efi "github.com/canonical/go-efilib"
+	"github.com/canonical/go-tpm2"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 	pe "github.com/snapcore/secboot/internal/pe1.14"
 )
@@ -39,30 +40,37 @@ type (
 	CheckTPM2DeviceFlags                  = checkTPM2DeviceFlags
 	DetectVirtResult                      = detectVirtResult
 	JoinError                             = joinError
+	PcrResults                            = pcrResults
 	SecureBootPolicyResult                = secureBootPolicyResult
 	SecureBootPolicyResultFlags           = secureBootPolicyResultFlags
 )
 
 const (
-	AuthorityTrustBootCode                     = authorityTrustBootCode
-	AuthorityTrustDrivers                      = authorityTrustDrivers
-	BootManagerCodeSysprepAppsPresent          = bootManagerCodeSysprepAppsPresent
-	BootManagerCodeAbsoluteComputraceRunning   = bootManagerCodeAbsoluteComputraceRunning
-	BootManagerCodeNotAllLaunchDigestsVerified = bootManagerCodeNotAllLaunchDigestsVerified
-	CheckFirmwareLogPermitEmptyPCRBanks        = checkFirmwareLogPermitEmptyPCRBanks
-	CheckFirmwareLogPermitWeakPCRBanks         = checkFirmwareLogPermitWeakPCRBanks
-	CheckTPM2DeviceInVM                        = checkTPM2DeviceInVM
-	CheckTPM2DevicePostInstall                 = checkTPM2DevicePostInstall
-	DetectVirtNone                             = detectVirtNone
-	DetectVirtVM                               = detectVirtVM
-	DriversAndAppsPresent                      = driversAndAppsPresent
-	NoDriversAndAppsPresent                    = noDriversAndAppsPresent
-	SecureBootIncludesWeakAlg                  = secureBootIncludesWeakAlg
-	SecureBootPreOSVerificationIncludesDigest  = secureBootPreOSVerificationIncludesDigest
+	AuthorityTrustBootCode                      = authorityTrustBootCode
+	AuthorityTrustDrivers                       = authorityTrustDrivers
+	BootManagerCodeSysprepAppsPresent           = bootManagerCodeSysprepAppsPresent
+	BootManagerCodeAbsoluteComputraceRunning    = bootManagerCodeAbsoluteComputraceRunning
+	BootManagerCodeNotAllLaunchDigestsVerified  = bootManagerCodeNotAllLaunchDigestsVerified
+	CheckFirmwareLogPermitEmptyPCRBanks         = checkFirmwareLogPermitEmptyPCRBanks
+	CheckFirmwareLogPermitWeakPCRBanks          = checkFirmwareLogPermitWeakPCRBanks
+	CheckTPM2DeviceInVM                         = checkTPM2DeviceInVM
+	CheckTPM2DevicePostInstall                  = checkTPM2DevicePostInstall
+	DetectVirtNone                              = detectVirtNone
+	DetectVirtVM                                = detectVirtVM
+	DiscreteTPMDetected                         = discreteTPMDetected
+	DriversAndAppsPresent                       = driversAndAppsPresent
+	DtpmPartialResetAttackMitigationNotRequired = dtpmPartialResetAttackMitigationNotRequired
+	DtpmPartialResetAttackMitigationPreferred   = dtpmPartialResetAttackMitigationPreferred
+	DtpmPartialResetAttackMitigationUnavailable = dtpmPartialResetAttackMitigationUnavailable
+	NoDriversAndAppsPresent                     = noDriversAndAppsPresent
+	SecureBootIncludesWeakAlg                   = secureBootIncludesWeakAlg
+	SecureBootPreOSVerificationIncludesDigest   = secureBootPreOSVerificationIncludesDigest
+	StartupLocalityNotProtected                 = startupLocalityNotProtected
 )
 
 var (
 	CheckBootManagerCodeMeasurements                      = checkBootManagerCodeMeasurements
+	CheckDiscreteTPMPartialResetAttackMitigationStatus    = checkDiscreteTPMPartialResetAttackMitigationStatus
 	CheckDriversAndAppsMeasurements                       = checkDriversAndAppsMeasurements
 	CheckFirmwareLogAndChoosePCRBank                      = checkFirmwareLogAndChoosePCRBank
 	CheckForKernelIOMMU                                   = checkForKernelIOMMU
@@ -82,6 +90,7 @@ var (
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
 	ReadCurrentBootLoadOptionFromLog                      = readCurrentBootLoadOptionFromLog
 	ReadLoadOptionFromLog                                 = readLoadOptionFromLog
+	RestrictedTPMLocalitiesIntel                          = restrictedTPMLocalitiesIntel
 	RunPPIAction                                          = runPPIAction
 	UnwrapCompoundError                                   = unwrapCompoundError
 )
@@ -132,5 +141,23 @@ func NewWithKindAndActionsErrorForTest(kind ErrorKind, args map[string]json.RawM
 		Args:    args,
 		Actions: actions,
 		err:     err,
+	}
+}
+
+func MakePCRResults(mandatory bool, initialVal, logVal, pcrVal tpm2.Digest, err error) pcrResults {
+	return pcrResults{
+		mandatory:    mandatory,
+		initialValue: initialVal,
+		logValue:     logVal,
+		pcrValue:     pcrVal,
+		err:          err,
+	}
+}
+
+func NewPCRBankResults(alg tpm2.HashAlgorithmId, sl uint8, pcrs [8]PcrResults) *pcrBankResults {
+	return &pcrBankResults{
+		Alg:             alg,
+		StartupLocality: sl,
+		pcrs:            pcrs,
 	}
 }

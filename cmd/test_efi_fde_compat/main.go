@@ -113,7 +113,7 @@ func run() error {
 		pcrFlags |= preinstall.PCRProfileOptionPermitNoSecureBootPolicyProfile
 	}
 	if opts.Profile.NoDiscreteTPMResetMitigation {
-		pcrFlags |= preinstall.PCRProfileOptionNoDiscreteTPMResetMitigation
+		pcrFlags |= preinstall.PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation
 	}
 
 	fmt.Println("Testing this platform for compatibility with EFI based TPM protected FDE")

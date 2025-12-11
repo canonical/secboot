@@ -263,7 +263,8 @@ var (
 
 	// ErrNoPartialDiscreteTPMResetAttackMitigation is returned wrapped in HostSecurityError as
 	// a warning in CheckResult if a partial mitigation against TPM reset attacks cannot be used
-	// when required. See the documentation for DiscreteTPMDetected for more information.
+	// when required. See the documentation for RequestPartialDiscreteTPMResetAttackMitigation for
+	// more information.
 	ErrNoPartialDiscreteTPMResetAttackMitigation = errors.New("cannot enable partial mitigation against discrete TPM reset attacks")
 )
 
