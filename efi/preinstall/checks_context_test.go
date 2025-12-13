@@ -85,6 +85,7 @@ type testRunChecksContextRunParams struct {
 	expectedPcrAlg            tpm2.HashAlgorithmId
 	expectedUsedSecureBootCAs []*X509CertificateID
 	expectedFlags             CheckResultFlags
+	expectedAcceptedErrors    map[ErrorKind]json.RawMessage
 	expectedWarningsMatch     string
 }
 
@@ -202,6 +203,11 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 		c.Check(ca, DeepEquals, params.expectedUsedSecureBootCAs[i])
 	}
 	c.Check(result.Flags, Equals, params.expectedFlags)
+	expectedAcceptedErrors := params.expectedAcceptedErrors
+	if expectedAcceptedErrors == nil {
+		expectedAcceptedErrors = make(map[ErrorKind]json.RawMessage)
+	}
+	c.Check(result.AcceptedErrors, DeepEquals, expectedAcceptedErrors)
 	c.Check(result.Warnings, ErrorMatches, params.expectedWarningsMatch)
 
 	c.Check(ctx.Result(), DeepEquals, result)
@@ -491,6 +497,9 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindEmptyPCRBanks: nil,
+		},
 		expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
@@ -579,6 +588,9 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindEmptyPCRBanks: nil,
+		},
 		expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
@@ -653,8 +665,13 @@ C7E003CB
 		actions:                   []actionAndArgs{{action: ActionNone}},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | InsufficientDMAProtectionDetected,
-		expectedWarningsMatch: `3 errors detected:
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindInsufficientDMAProtection: nil,
+			ErrorKindNoKernelIOMMU:             nil,
+		},
+		expectedWarningsMatch: `4 errors detected:
+- the platform firmware indicates that DMA protections are insufficient
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
@@ -742,8 +759,13 @@ C7E003CB
 		},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | InsufficientDMAProtectionDetected,
-		expectedWarningsMatch: `3 errors detected:
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindInsufficientDMAProtection: nil,
+			ErrorKindNoKernelIOMMU:             nil,
+		},
+		expectedWarningsMatch: `4 errors detected:
+- the platform firmware indicates that DMA protections are insufficient
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
@@ -1010,6 +1032,9 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindRunningInVM: nil,
+		},
 		expectedWarningsMatch: `4 errors detected:
 - virtual machine environment detected
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
@@ -1097,6 +1122,9 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindRunningInVM: nil,
+		},
 		expectedWarningsMatch: `4 errors detected:
 - virtual machine environment detected
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
@@ -1562,6 +1590,9 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindAddonDriversPresent: nil,
+		},
 		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - addon drivers were detected:
@@ -1686,6 +1717,9 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindAddonDriversPresent: nil,
+		},
 		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - addon drivers were detected:
@@ -1778,6 +1812,9 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindSysPrepApplicationsPresent: nil,
+		},
 		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
@@ -1920,6 +1957,9 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindSysPrepApplicationsPresent: nil,
+		},
 		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
@@ -1997,6 +2037,9 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindAbsolutePresent: nil,
+		},
 		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
@@ -2087,6 +2130,9 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindAbsolutePresent: nil,
+		},
 		expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
@@ -2244,6 +2290,10 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindAddonDriversPresent:             nil,
+			ErrorKindPreOSDigestVerificationDetected: nil,
+		},
 		expectedWarningsMatch: `5 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - addon drivers were detected:
@@ -2378,6 +2428,10 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindAddonDriversPresent:             nil,
+			ErrorKindPreOSDigestVerificationDetected: nil,
+		},
 		expectedWarningsMatch: `5 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - addon drivers were detected:
@@ -2458,6 +2512,11 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindAddonDriversPresent:              nil,
+			ErrorKindWeakSecureBootAlgorithmsDetected: nil,
+			ErrorKindPreOSDigestVerificationDetected:  nil,
+		},
 		expectedWarningsMatch: `6 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - addon drivers were detected:
@@ -2600,6 +2659,11 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindAddonDriversPresent:              nil,
+			ErrorKindWeakSecureBootAlgorithmsDetected: nil,
+			ErrorKindPreOSDigestVerificationDetected:  nil,
+		},
 		expectedWarningsMatch: `6 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - addon drivers were detected:
@@ -2768,6 +2832,11 @@ C7E003CB
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindAddonDriversPresent:              nil,
+			ErrorKindWeakSecureBootAlgorithmsDetected: nil,
+			ErrorKindPreOSDigestVerificationDetected:  nil,
+		},
 		expectedWarningsMatch: `6 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
 - addon drivers were detected:

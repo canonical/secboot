@@ -45,8 +45,8 @@ func (s *resultSuite) TestCheckResultFlagsMarshalJSON(c *C) {
 		{flags: NoBootManagerConfigProfileSupport, expected: `["no-boot-manager-config-profile-support"]`},
 		{flags: NoSecureBootPolicyProfileSupport, expected: `["no-secure-boot-policy-profile-support"]`},
 		{flags: RequestPartialDiscreteTPMResetAttackMitigation, expected: `["request-partial-dtpm-reset-attack-mitigation"]`},
-		{flags: InsufficientDMAProtectionDetected, expected: `["insufficient-dma-protection-detected"]`},
 		{flags: NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport, expected: `["no-platform-config-profile-support","no-drivers-and-apps-config-profile-support","no-boot-manager-config-profile-support"]`},
+		{flags: InsufficientDMAProtectionDetected, expected: `["0x00000400"]`},
 	} {
 		data, err := json.Marshal(params.flags)
 		c.Check(err, IsNil, Commentf("flags:%v", params.flags))
@@ -102,8 +102,8 @@ func (s *resultSuite) TestCheckResultFlagsString(c *C) {
 		{flags: NoBootManagerConfigProfileSupport, expected: "no-boot-manager-config-profile-support"},
 		{flags: NoSecureBootPolicyProfileSupport, expected: "no-secure-boot-policy-profile-support"},
 		{flags: RequestPartialDiscreteTPMResetAttackMitigation, expected: "request-partial-dtpm-reset-attack-mitigation"},
-		{flags: InsufficientDMAProtectionDetected, expected: "insufficient-dma-protection-detected"},
 		{flags: NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport, expected: "no-platform-config-profile-support,no-drivers-and-apps-config-profile-support,no-boot-manager-config-profile-support"},
+		{flags: InsufficientDMAProtectionDetected, expected: "0x00000400"},
 	} {
 		c.Check(params.flags.String(), Equals, params.expected, Commentf("flags:%#08x", params.flags))
 	}
@@ -208,6 +208,18 @@ func (s *resultSuite) TestCheckResultMarshalJSONRequestDTPMResetAttackMitigation
 	data, err := json.Marshal(result)
 	c.Check(err, IsNil)
 	c.Check(data, DeepEquals, []byte("{\"pcr-alg\":\"sha256\",\"used-secure-boot-cas\":[{\"subject\":\"MIGBMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMSswKQYDVQQDEyJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVUVGSSBDQSAyMDEx\",\"subject-key-id\":\"E62/Qwm9gnCcjNVPMW7VIpiKG9Q=\",\"pubkey-algorithm\":\"RSA\",\"issuer\":\"MIGRMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMTswOQYDVQQDEzJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVGhpcmQgUGFydHkgTWFya2V0cGxhY2UgUm9vdA==\",\"authority-key-id\":\"RWZSQ+F+WBG/1k6eI1UIOzoiaqg=\",\"signature-algorithm\":\"SHA256-RSA\"}],\"flags\":[\"no-platform-config-profile-support\",\"no-drivers-and-apps-config-profile-support\",\"no-boot-manager-config-profile-support\",\"request-partial-dtpm-reset-attack-mitigation\"]}"))
+}
+
+func (s *resultSuite) TestCheckResultMarshalJSONWithAcceptedErrors(c *C) {
+	result := CheckResult{
+		PCRAlg:            tpm2.HashAlgorithmSHA256,
+		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		AcceptedErrors:    map[ErrorKind]json.RawMessage{ErrorKindSysPrepApplicationsPresent: nil},
+	}
+	data, err := json.Marshal(result)
+	c.Check(err, IsNil)
+	c.Check(data, DeepEquals, []byte("{\"pcr-alg\":\"sha256\",\"used-secure-boot-cas\":[{\"subject\":\"MIGBMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMSswKQYDVQQDEyJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVUVGSSBDQSAyMDEx\",\"subject-key-id\":\"E62/Qwm9gnCcjNVPMW7VIpiKG9Q=\",\"pubkey-algorithm\":\"RSA\",\"issuer\":\"MIGRMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMTswOQYDVQQDEzJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVGhpcmQgUGFydHkgTWFya2V0cGxhY2UgUm9vdA==\",\"authority-key-id\":\"RWZSQ+F+WBG/1k6eI1UIOzoiaqg=\",\"signature-algorithm\":\"SHA256-RSA\"}],\"flags\":[\"no-platform-config-profile-support\",\"no-drivers-and-apps-config-profile-support\",\"no-boot-manager-config-profile-support\"],\"accepted-errors\":{\"sys-prep-applications-present\":null}}"))
 }
 
 func (s *resultSuite) TestCheckResultUnmarshalJSON(c *C) {
@@ -341,6 +353,22 @@ func (s *resultSuite) TestCheckResultUnmarshalJSONDiscreteTPMDetectedWithNoDTPMR
 		PCRAlg:            tpm2.HashAlgorithmSHA256,
 		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+	})
+}
+
+func (s *resultSuite) TestCheckResultUnmarshalJSONLegacyInsufficientDMAProtection(c *C) {
+	data := []byte("{\"pcr-alg\":\"sha256\",\"used-secure-boot-cas\":[{\"subject\":\"MIGBMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMSswKQYDVQQDEyJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVUVGSSBDQSAyMDEx\",\"subject-key-id\":\"E62/Qwm9gnCcjNVPMW7VIpiKG9Q=\",\"pubkey-algorithm\":\"RSA\",\"issuer\":\"MIGRMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMTswOQYDVQQDEzJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVGhpcmQgUGFydHkgTWFya2V0cGxhY2UgUm9vdA==\",\"authority-key-id\":\"RWZSQ+F+WBG/1k6eI1UIOzoiaqg=\",\"signature-algorithm\":\"SHA256-RSA\"}],\"flags\":[\"no-platform-config-profile-support\",\"no-drivers-and-apps-config-profile-support\",\"no-boot-manager-config-profile-support\",\"insufficient-dma-protection-detected\"]}")
+
+	var result *CheckResult
+	c.Assert(json.Unmarshal(data, &result), IsNil)
+	c.Check(result, DeepEquals, &CheckResult{
+		PCRAlg:            tpm2.HashAlgorithmSHA256,
+		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		Flags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		AcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindInsufficientDMAProtection: nil,
+			ErrorKindNoKernelIOMMU:             nil,
+		},
 	})
 }
 

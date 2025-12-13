@@ -195,7 +195,7 @@ type RunChecksContext struct {
 	// being returned.
 	expectedActions []Action
 
-	// proceedFlags indicates the CheckFlags that will be enabled if Run is called
+	// proceedFlags indicates the CheckFlags that can be enabled if Run is called
 	// with ActionProceed.
 	proceedFlags CheckFlags
 }
@@ -783,6 +783,7 @@ func (c *RunChecksContext) runAction(action Action, args map[string]json.RawMess
 			// Handle the case where no argument is supplied or
 			// an empty []ErrorKind slice is supplied
 			proceedFlags = c.proceedFlags
+			c.proceedFlags = 0
 		}
 
 		c.flags |= proceedFlags
