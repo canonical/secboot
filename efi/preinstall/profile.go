@@ -33,19 +33,26 @@ import (
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-type authorityTrust int
+type authorityTrustFlags int
 
 const (
-	authorityTrustBootCode authorityTrust = 1 << iota // authority is trusted to load boot code (we don't need PCR4)
-	authorityTrustDrivers                             // authority is trusted to load drivers (we may not need PCR2)
+	authorityTrustBootCode authorityTrustFlags = 1 << iota // authority is trusted to load boot code (we don't need PCR4)
+	authorityTrustDrivers                                  // authority is trusted to load drivers (we may not need PCR2)
+)
+
+type authoritiesTrustLevel int
+
+const (
+	authoritiesTrustUnknown authoritiesTrustLevel = iota
+	authoritiesNotTrusted
+	authoritiesTrusted
 )
 
 type authorityTrustDataSet []authorityTrustData
 
-func (s authorityTrustDataSet) determineTrust(certs []*X509CertificateID) authorityTrust {
-	trust := authorityTrustBootCode | authorityTrustDrivers
+func (s authorityTrustDataSet) trustedFor(certs []*X509CertificateID, flags authorityTrustFlags) authoritiesTrustLevel {
 	for _, cert := range certs {
-		var certTrust authorityTrust
+		var authFound bool
 		for _, auth := range s {
 			if !bytes.Equal(auth.Authority.Subject, cert.RawSubject()) {
 				continue
@@ -65,26 +72,33 @@ func (s authorityTrustDataSet) determineTrust(certs []*X509CertificateID) author
 			if auth.Authority.SignatureAlgorithm != cert.SignatureAlgorithm() {
 				continue
 			}
-			certTrust = auth.Trust
+
+			if flags&auth.Trust != flags {
+				return authoritiesNotTrusted
+			}
+			authFound = true
 			break
 		}
-		trust &= certTrust
+		if !authFound {
+			// We have no information about this certificate because it isn't in our dataset.
+			return authoritiesTrustUnknown
+		}
 	}
 
-	return trust
+	return authoritiesTrusted
 }
 
-func (s authorityTrustDataSet) trustedForBootManager(certs []*X509CertificateID) bool {
-	return s.determineTrust(certs)&authorityTrustBootCode > 0
+func (s authorityTrustDataSet) trustedForBootManager(certs []*X509CertificateID) authoritiesTrustLevel {
+	return s.trustedFor(certs, authorityTrustBootCode)
 }
 
-func (s authorityTrustDataSet) trustedForDrivers(certs []*X509CertificateID) bool {
-	return s.determineTrust(certs)&authorityTrustDrivers > 0
+func (s authorityTrustDataSet) trustedForDrivers(certs []*X509CertificateID) authoritiesTrustLevel {
+	return s.trustedFor(certs, authorityTrustDrivers)
 }
 
 type authorityTrustData struct {
 	Authority *internal_efi.SecureBootAuthorityIdentity
-	Trust     authorityTrust
+	Trust     authorityTrustFlags
 }
 
 var (
@@ -98,53 +112,78 @@ var (
 type PCRProfileOptionsFlags uint32
 
 const (
-	// PCRProfileOptionMostSecure is the most secure configuration by
-	// including all relevant TCG defined PCRs supported by the efi package
-	// (PCRs 0, 1, 2, 3, 4, 5 and 7).
+	// PCRProfileOptionLockToPlatformFirmware is used to lock the PCR
+	// profile to the platform firmware PCR using
+	// secboot_efi.WithPlatformFirmwareProfile.
+	PCRProfileOptionLockToPlatformFirmware PCRProfileOptionsFlags = 1 << iota
+
+	// PCRProfileOptionLockToPlatformConfig is used to lock the PCR
+	// profile to the platform config PCR.
 	//
-	// Note that this option will currently not work because the efi package
-	// does not support PCRs 1, 3 and 5, but will do in the future.
-	PCRProfileOptionMostSecure PCRProfileOptionsFlags = 1 << iota
+	// This option is currently unsupported and will result in an error.
+	PCRProfileOptionLockToPlatformConfig
 
-	// PCRProfileOptionTrustCAsForBootCode can omit PCR4 if CAs in the authorized
-	// signature database that were used to authenticate code on the current boot
-	// are not directly trusted to sign boot code, but a system administrator makes
-	// an explicit decision to trust these CAs. This might be because it uses custom
-	// CAs that are unrecognized for trust by this package.
-	PCRProfileOptionTrustCAsForBootCode
+	// PCRProfileOptionLockToDriversAndApps is used to lock the PCR
+	// profile to the drivers and apps PCR using
+	// secboot_efi.WithDriversAndAppsProfile.
+	PCRProfileOptionLockToDriversAndApps
 
-	// PCRProfileOptionTrustCAsForAddonDrivers can omit PCR2 if the CAs in the
-	// authorized signature database that were used to authenticate code on the current
-	// boot are not directly trusted to sign UEFI drivers, but a system administrator
-	// makes an explicit decision to trust these CAs. This might be because it uses
-	// custom CAs that are unrecognized for trust by this package.
-	PCRProfileOptionTrustCAsForAddonDrivers
+	// PCRProfileOptionLockToDriversAndAppsConfig is used to lock the PCR
+	// profile to the drivers and apps config PCR.
+	//
+	// This option is currently unsupported and will result in an error.
+	PCRProfileOptionLockToDriversAndAppsConfig
 
-	// PCRProfileOptionDistrustVARSuppliedNonHostCode can be used to include PCR2 if a
-	// system administrator makes an explicit decision to not trust non host code running
-	// on attached embedded controllers in value-added-retailer components - this is code
-	// that is not part of the host's trust chain but may still affect trust in the platform.
-	PCRProfileOptionDistrustVARSuppliedNonHostCode
+	// PCRProfileOptionLockToBootManagerCode is used to lock the PCR
+	// profile to the boot manager code PCR using
+	// secboot_efi.WithBootManagerCodeProfile.
+	PCRProfileOptionLockToBootManagerCode
 
-	// PCRProfileOptionPermitNoSecureBootPolicyProfle can be used to permit a fallback to
-	// a configuration without the secure boot policy included if the supplied CheckResult
-	// indicates that PCR7 cannot be used.
+	// PCRProfileOptionLockToBootManagerConfig is used to lock the PCR
+	// profile to the boot manager config PCR.
+	//
+	// This option is currently unsupported and will result in an error.
+	PCRProfileOptionLockToBootManagerConfig
+
+	// PCRProfileOptionTrustSecureBootAuthoritiesForBootCode can omit the boot
+	// manager code PCR if CAs in the authorized signature database that were used
+	// to authenticate code on the current boot are not recognized, but a system
+	// administrator makes an explicit decision to trust these CAs to sign boot
+	// code.
+	PCRProfileOptionTrustSecureBootAuthoritiesForBootCode
+
+	// PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers can omit the
+	// drivers and apps PCR if the CAs in the authorized signature database that were
+	// used to authenticate code on the current boot are not recognized, but a system
+	// administrator makes an explicit decision to trust these CAs to sign addon
+	// drivers.
+	PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers
+
+	// PCRProfileOptionPermitNoSecureBootPolicyProfle can be used to permit a fallback
+	// to a configuration without the secure boot policy profile included if the supplied
+	// CheckResult indicates that it cannot be used.
 	PCRProfileOptionPermitNoSecureBootPolicyProfile
 
-	// PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation can be used to omit PCR0
-	// from the profile on platforms that have a discrete TPM and where including PCR0 can
-	// provide limited mitigation of TPM reset attacks by preventing the PCR values from
-	// being reconstructed from software. This should only be used if a system administrator
-	// makes an explicit decision that they don't want the additional PCR fragility caused by
-	// this mitigation, perhaps because they consider that discrete TPMs still have other
-	// weaknesses to anyone with physical access to the device without any of their own
-	// mitigations. See the RequestPartialDiscreteTPMResetAttackMitigation CheckResultFlags
-	// flag description for more information.
+	// PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation can be used to omit the
+	// platform firmware PCR from the profile on platforms that have a discrete TPM and
+	// where including PCR0 can provide limited mitigation of TPM reset attacks by preventing
+	// the PCR values from being reconstructed from software. This should only be used if a
+	// system administrator makes an explicit decision that they don't want the additional PCR
+	// fragility caused by this mitigation, perhaps because they consider that discrete TPMs
+	// still have other weaknesses to anyone with physical access to the device without any of
+	// their own mitigations. See the RequestPartialDiscreteTPMResetAttackMitigation
+	// CheckResultFlags flag description for more information.
 	PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation
 
 	// PCRProfileOptionsDefault is the default PCR configuration. WithAutoTCGPCRProfile
 	// will select the most appropriate configuration depending on the CheckResult.
 	PCRProfileOptionsDefault PCRProfileOptionsFlags = 0
+
+	// PCRProfileOptionMostSecure is the most secure configuration by including all relevant
+	// TCG defined PCRs supported by the efi package.
+	//
+	// This option is currently unsupported and will result in an error.
+	PCRProfileOptionMostSecure = PCRProfileOptionLockToPlatformFirmware | PCRProfileOptionLockToPlatformConfig | PCRProfileOptionLockToDriversAndApps | PCRProfileOptionLockToDriversAndAppsConfig | PCRProfileOptionLockToBootManagerCode | PCRProfileOptionLockToBootManagerConfig
 )
 
 func (o PCRProfileOptionsFlags) toStringSlice() []string {
@@ -157,14 +196,22 @@ func (o PCRProfileOptionsFlags) toStringSlice() []string {
 
 		var str string
 		switch flag {
-		case PCRProfileOptionMostSecure:
-			str = "most-secure"
-		case PCRProfileOptionTrustCAsForBootCode:
-			str = "trust-cas-for-boot-code"
-		case PCRProfileOptionTrustCAsForAddonDrivers:
-			str = "trust-cas-for-addon-drivers"
-		case PCRProfileOptionDistrustVARSuppliedNonHostCode:
-			str = "distrust-var-supplied-nonhost-code"
+		case PCRProfileOptionLockToPlatformFirmware:
+			str = "lock-platform-firmware"
+		case PCRProfileOptionLockToPlatformConfig:
+			str = "lock-platform-config"
+		case PCRProfileOptionLockToDriversAndApps:
+			str = "lock-drivers-and-apps"
+		case PCRProfileOptionLockToDriversAndAppsConfig:
+			str = "lock-drivers-and-apps-config"
+		case PCRProfileOptionLockToBootManagerCode:
+			str = "lock-boot-manager-code"
+		case PCRProfileOptionLockToBootManagerConfig:
+			str = "lock-boot-manager-config"
+		case PCRProfileOptionTrustSecureBootAuthoritiesForBootCode:
+			str = "trust-authorities-for-boot-code"
+		case PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers:
+			str = "trust-authorities-for-addon-drivers"
 		case PCRProfileOptionPermitNoSecureBootPolicyProfile:
 			str = "permit-no-secure-boot-policy-profile"
 		case PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation:
@@ -196,14 +243,22 @@ func (o *PCRProfileOptionsFlags) UnmarshalJSON(data []byte) error {
 		var val PCRProfileOptionsFlags
 
 		switch flag {
-		case "most-secure":
-			val = PCRProfileOptionMostSecure
-		case "trust-cas-for-boot-code":
-			val = PCRProfileOptionTrustCAsForBootCode
-		case "trust-cas-for-addon-drivers":
-			val = PCRProfileOptionTrustCAsForAddonDrivers
-		case "distrust-var-supplied-nonhost-code":
-			val = PCRProfileOptionDistrustVARSuppliedNonHostCode
+		case "lock-platform-firmware":
+			val = PCRProfileOptionLockToPlatformFirmware
+		case "lock-platform-config":
+			val = PCRProfileOptionLockToPlatformConfig
+		case "lock-drivers-and-apps":
+			val = PCRProfileOptionLockToDriversAndApps
+		case "lock-drivers-and-apps-config":
+			val = PCRProfileOptionLockToDriversAndAppsConfig
+		case "lock-boot-manager-code":
+			val = PCRProfileOptionLockToBootManagerCode
+		case "lock-boot-manager-config":
+			val = PCRProfileOptionLockToBootManagerConfig
+		case "trust-authorities-for-boot-code":
+			val = PCRProfileOptionTrustSecureBootAuthoritiesForBootCode
+		case "trust-authorities-for-addon-drivers":
+			val = PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers
 		case "permit-no-secure-boot-policy-profile":
 			val = PCRProfileOptionPermitNoSecureBootPolicyProfile
 		case "no-partial-dtpm-reset-attack-mitigation":
@@ -259,127 +314,148 @@ func WithAutoTCGPCRProfile(r *CheckResult, opts PCRProfileOptionsFlags) PCRProfi
 }
 
 func (o *pcrProfileAutoSetPcrsOption) pcrOptions() ([]secboot_efi.PCRProfileEnablePCRsOption, error) {
+	pcrs := make(map[tpm2.Handle]bool)
 	switch {
-	case o.opts&PCRProfileOptionMostSecure > 0:
-		if o.opts != PCRProfileOptionMostSecure {
-			return nil, errors.New("PCRProfileOptionMostSecure can only be used on its own")
+	case o.result.Flags&NoSecureBootPolicyProfileSupport == 0 || o.opts&PCRProfileOptionPermitNoSecureBootPolicyProfile == 0:
+		// Always include secure boot policy when it is supported. We also
+		// run this branch if it isn't supported and the user hasn't opted
+		// in to allowing profiles without it. We'll eventually return an
+		// error with the appropriate set of required but unsupported PCRs.
+		pcrs[internal_efi.SecureBootPolicyPCR] = true
+
+		if o.opts&PCRProfileOptionLockToPlatformFirmware > 0 {
+			pcrs[internal_efi.PlatformFirmwarePCR] = true
 		}
-		const mask = NoPlatformFirmwareProfileSupport |
-			NoPlatformConfigProfileSupport |
-			NoDriversAndAppsProfileSupport |
-			NoDriversAndAppsConfigProfileSupport |
-			NoBootManagerCodeProfileSupport |
-			NoBootManagerConfigProfileSupport |
-			NoSecureBootPolicyProfileSupport
-		if o.result.Flags&mask > 0 {
-			return nil, fmt.Errorf("PCRProfileOptionMostSecure cannot be used: %w", newUnsupportedRequiredPCRsError(tpm2.HandleList{0, 1, 2, 3, 4, 5, 7}, o.result.Flags))
+		if o.opts&PCRProfileOptionLockToPlatformConfig > 0 {
+			pcrs[internal_efi.PlatformConfigPCR] = true
 		}
 
-		// TODO: remove this once the secboot_efi package implements support for the remaining PCRs
-		return nil, fmt.Errorf("PCRProfileOptionMostSecure cannot be used because it is currently unsupported: %w",
-			newUnsupportedRequiredPCRsError(tpm2.HandleList{0, 1, 2, 3, 4, 5, 7}, NoPlatformConfigProfileSupport|NoDriversAndAppsConfigProfileSupport|NoBootManagerConfigProfileSupport))
-		//		return []secboot_efi.PCRProfileEnablePCRsOption{
-		//			secboot_efi.WithPlatformFirmwareProfile(),
-		//			//secboot_efi.WithPlatformConfigProfile(), // TODO: implement in secboot_efi package
-		//			secboot_efi.WithDriversAndAppsProfile(),
-		//			//secboot_efi.WithDriversAndAppsConfigProfile() // TODO: implement in secboot_efi package
-		//			secboot_efi.WithBootManagerCodeProfile(),
-		//			//secboot_efi.WithBootManagerConfigProfile(), // TODO: implement in secboot_efi package
-		//			efi.WithSecureBootPolicyProfile(),
-		//		}, nil
-	default:
-		var opts []secboot_efi.PCRProfileEnablePCRsOption
+		lockToDriversAndApps := o.opts&PCRProfileOptionLockToDriversAndApps > 0
+		trustCAsForDrivers := o.opts&PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers > 0
+		trustLevelForDrivers := knownCAs.trustedForDrivers(o.result.UsedSecureBootCAs)
 		switch {
-		case o.result.Flags&NoSecureBootPolicyProfileSupport == 0:
-			// If PCR7 usage is ok, always include it
-			opts = append(opts, secboot_efi.WithSecureBootPolicyProfile())
-
-			if !knownCAs.trustedForBootManager(o.result.UsedSecureBootCAs) && o.opts&PCRProfileOptionTrustCAsForBootCode == 0 {
-				// We need to include PCR4 if any CAs used for verification are not generally trusted to sign boot applications
-				// (ie, they may have signed code in the past that can defeat our security model, such as versions of shim that
-				// don't extend anything to the TPM, breaking the root-of-trust. This is true of the Microsoft UEFI CA 2011,
-				// and for now, we assume to be true of the 2023 UEFI CA unless Microsoft are more transparent about what is
-				// signed under this CA). It's also assumed to be true for any unrecognized CAs.
-				// This can be overridden with PCRProfileOptionTrustCAsForBootCode.
-				if o.result.Flags&NoBootManagerCodeProfileSupport > 0 {
-					return nil, fmt.Errorf("cannot create a valid secure boot configuration: one or more CAs used for secure boot "+
-						"verification are not trusted to authenticate boot code and the PCRProfileOptionTrustCAsForBootCode "+
-						"option was not supplied: %w", newUnsupportedRequiredPCRsError(tpm2.HandleList{4}, o.result.Flags))
-				}
-				opts = append(opts, secboot_efi.WithBootManagerCodeProfile())
-			}
-
-			isPcr2Supported := o.result.Flags&NoDriversAndAppsProfileSupport == 0
-
-			includePcr2 := o.opts&PCRProfileOptionDistrustVARSuppliedNonHostCode > 0
-			if includePcr2 && !isPcr2Supported {
-				// Include PCR2 if the user explicitly distrusts non-host code running
-				// in attached embedded controllers.
-				return nil, fmt.Errorf("PCRProfileOptionDistrustVARSuppliedNonHostCode cannot be used: %w", newUnsupportedRequiredPCRsError(tpm2.HandleList{2}, o.result.Flags))
-			}
-			if !knownCAs.trustedForDrivers(o.result.UsedSecureBootCAs) && o.opts&PCRProfileOptionTrustCAsForAddonDrivers == 0 {
-				// We need to include PCR2 if any CAs used for verification are not generally trusted to sign UEFI drivers
-				// (ie, they may have signed code in the past that can defeat our security model. This is true of the Microsoft
-				// UEFI CA 2011, and for now, we assume to be true of the 2023 UEFI CA unless Microsoft are more transparent about
-				// what they sign under this CA). It's also assumed to be true for any unrecognized CAs.
-				// This can be overridden with PCRProfileOptionTrustCAsForAddonDrivers.
-				includePcr2 = true
-				if !isPcr2Supported {
-					return nil, fmt.Errorf("cannot create a valid secure boot configuration: one or more CAs used for secure boot "+
-						"verification are not trusted to authenticate value-added-retailer suppled drivers and the "+
-						"PCRProfileOptionTrustCAsForAddonDrivers option was not supplied: %w",
-						newUnsupportedRequiredPCRsError(tpm2.HandleList{2}, o.result.Flags))
-				}
-			}
-			if includePcr2 {
-				opts = append(opts, secboot_efi.WithDriversAndAppsProfile())
-			}
-		case o.opts&PCRProfileOptionPermitNoSecureBootPolicyProfile == 0:
-			// PCR 7 usage is not ok and the user hasn't opted into permitting configurations without it
-			return nil, fmt.Errorf("cannot create a valid configuration without secure boot policy and the "+
-				"PCRProfileOptionPermitNoSecureBootPolicyProfile option was not supplied: %w",
-				newUnsupportedRequiredPCRsError(tpm2.HandleList{7}, o.result.Flags))
+		case lockToDriversAndApps && trustCAsForDrivers:
+			// Invalid options.
+			return nil, fmt.Errorf("%q option is incompatible with %q option", PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers, PCRProfileOptionLockToDriversAndApps)
+		case lockToDriversAndApps:
+			// User opted to lock to PCR2.
+			pcrs[internal_efi.DriversAndAppsPCR] = true
+		case trustCAsForDrivers && trustLevelForDrivers == authoritiesNotTrusted:
+			// User opted to trust the active secure boot CAs for signing addon
+			// drivers but the active CAs are explicitly distrusted.
+			return nil, fmt.Errorf("%q option cannot be used when secure boot CAs that are explicitly distrusted for authenticating addon drivers are active", PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers)
+		case trustCAsForDrivers:
+			// User opted to trust unknown active secure boot CAs for signing
+			// addon drivers.
+		case trustLevelForDrivers == authoritiesTrusted:
+			// Active secure boot CAs are trusted for signing addon drivers.
 		default:
-			// PCR 7 usage is not ok and the user has opted into permitting configutations without it. We must include PCRs
-			// 1, 2, 3, 4 and 5 - none of these can be omitted.
-			// - PCR1 is required because we have to depend on platform config rather relying on security-relevant firmware
-			//   setting such as DMA protection changing the value of PCR7.
-			// - PCR2 is required to include all non-platform value-added-retailer supplied drivers that execute.
-			// - PCR3 is required for the same reason as PCR1, but for value-added-retailer driver configuration.
-			// - PCR4 is required for all system preparation applications and boot manager code that execute.
-			// - PCR5 is required for the same reason as PCR1, but for boot manager configuration.
-			const mask = NoPlatformConfigProfileSupport |
-				NoDriversAndAppsProfileSupport |
-				NoDriversAndAppsConfigProfileSupport |
-				NoBootManagerCodeProfileSupport |
-				NoBootManagerConfigProfileSupport
-			if o.result.Flags&mask > 0 {
-				return nil, fmt.Errorf("cannot create a valid configuration without secure boot policy: %w", newUnsupportedRequiredPCRsError(tpm2.HandleList{1, 2, 3, 4, 5}, o.result.Flags))
-			}
-
-			// TODO: remove this once the secboot_efi package implements support for the remaining PCRs
-			return nil, fmt.Errorf("cannot create a configuration without secure boot policy because this is currently unsupported: %w",
-				newUnsupportedRequiredPCRsError(tpm2.HandleList{1, 2, 3, 4, 5}, NoPlatformConfigProfileSupport|NoDriversAndAppsConfigProfileSupport|NoBootManagerConfigProfileSupport))
-			//			opts = append(opts,
-			//				//secboot_efi.WithPlatformConfigProfile(), // TODO: implement in efi package
-			//				secboot_efi.WithDriversAndAppsProfile(),
-			//				//secboot_efi.WithDriversAndAppsConfigProfile(), // TODO: implement in efi package
-			//				secboot_efi.WithBootManagerCodeProfile(),
-			//				//secboot_efi.WithBootManagerConfigProfile(), // TODO: implement in efi package
-			//			)
-
+			// Active secure boot CAs are not trusted for signing addon drivers.
+			pcrs[internal_efi.DriversAndAppsPCR] = true
 		}
-		if o.opts&PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation == 0 && o.result.Flags&RequestPartialDiscreteTPMResetAttackMitigation > 0 {
-			// Enable reset attack mitigations by including PCR0, because the startup locality
-			// is protected making it impossible to reconstruct PCR0 from software if the TPM is
-			// reset indepdendently of the host platform. Note that it is still possible for an
-			// adversary with physical access to reconstruct PCR0 by manipulating the bus between
-			// the host CPU and the discrete TPM directly, as this will allow them access to all
-			// localities.
-			opts = append(opts, secboot_efi.WithPlatformFirmwareProfile())
+
+		if o.opts&PCRProfileOptionLockToDriversAndAppsConfig > 0 {
+			pcrs[internal_efi.DriversAndAppsConfigPCR] = true
 		}
-		return opts, nil
+
+		lockToBootCode := o.opts&PCRProfileOptionLockToBootManagerCode > 0
+		trustCAsForBootCode := o.opts&PCRProfileOptionTrustSecureBootAuthoritiesForBootCode > 0
+		trustLevelForBootCode := knownCAs.trustedForBootManager(o.result.UsedSecureBootCAs)
+		switch {
+		case lockToBootCode && trustCAsForBootCode:
+			// Invalid options.
+			return nil, fmt.Errorf("%q option is incompatible with %q option", PCRProfileOptionTrustSecureBootAuthoritiesForBootCode, PCRProfileOptionLockToBootManagerCode)
+		case lockToBootCode:
+			// User opted to lock to PCR2.
+			pcrs[internal_efi.BootManagerCodePCR] = true
+		case trustCAsForBootCode && trustLevelForBootCode == authoritiesNotTrusted:
+			// User opted to trust the active secure boot CAs for signing boot
+			// code but the active CAs are explicitly distrusted.
+			return nil, fmt.Errorf("%q option cannot be used when secure boot CAs that are explicitly distrusted for authenticating boot code are active", PCRProfileOptionTrustSecureBootAuthoritiesForBootCode)
+		case trustCAsForBootCode:
+			// User opted to trust unknown active secure boot CAs for signing
+			// boot code.
+		case trustLevelForBootCode == authoritiesTrusted:
+			// Active secure boot CAs are trusted for signing boot code.
+		default:
+			// Active secure boot CAs are not trusted for signing boot code.
+			pcrs[internal_efi.BootManagerCodePCR] = true
+		}
+
+		if o.opts&PCRProfileOptionLockToBootManagerConfig > 0 {
+			pcrs[internal_efi.BootManagerConfigPCR] = true
+		}
+
+	default:
+		// Secure boot policy is not supported and the user opted in to
+		// allowing profiles without it. Include all other PCRs in this case:
+		// - PCR1 is required because we have to depend on platform config rather relying on security-relevant firmware
+		//   setting such as DMA protection changing the value of PCR7.
+		// - PCR2 is required to include all non-platform value-added-retailer supplied drivers that execute.
+		// - PCR3 is required for the same reason as PCR1, but for value-added-retailer driver configuration.
+		// - PCR4 is required for all system preparation applications and boot manager code that execute.
+		// - PCR5 is required for the same reason as PCR1, but for boot manager configuration.
+		pcrs[internal_efi.PlatformFirmwarePCR] = true
+		pcrs[internal_efi.PlatformConfigPCR] = true
+		pcrs[internal_efi.DriversAndAppsPCR] = true
+		pcrs[internal_efi.DriversAndAppsConfigPCR] = true
+		pcrs[internal_efi.BootManagerCodePCR] = true
+		pcrs[internal_efi.BootManagerConfigPCR] = true
+
+		if o.opts&PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers > 0 {
+			return nil, fmt.Errorf("%q option cannot be used when the secure boot policy profile isn't available", PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers)
+		}
+		if o.opts&PCRProfileOptionTrustSecureBootAuthoritiesForBootCode > 0 {
+			return nil, fmt.Errorf("%q option cannot be used when the secure boot policy profile isn't available", PCRProfileOptionTrustSecureBootAuthoritiesForBootCode)
+		}
 	}
+
+	if o.opts&PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation == 0 && o.result.Flags&RequestPartialDiscreteTPMResetAttackMitigation > 0 {
+		// Enable reset attack mitigations by including PCR0, because the startup locality
+		// is protected making it impossible to reconstruct PCR0 from software if the TPM is
+		// reset indepdendently of the host platform. Note that it is still possible for an
+		// adversary with physical access to reconstruct PCR0 by manipulating the bus between
+		// the host CPU and the discrete TPM directly, as this will allow them access to all
+		// localities.
+		pcrs[internal_efi.PlatformFirmwarePCR] = true
+	}
+
+	var (
+		mask        CheckResultFlags                         // the set of flags that must not be in the results.
+		resultFlags = o.result.Flags                         // save this locally because it can be modified below.
+		opts        []secboot_efi.PCRProfileEnablePCRsOption // the set of PCR options.
+		pcrHandles  tpm2.HandleList                          // the required PCRs.
+	)
+	for _, data := range []struct {
+		pcr             tpm2.Handle
+		unsupportedFlag CheckResultFlags
+		opt             func() secboot_efi.PCRProfileEnablePCRsOption
+	}{
+		{pcr: internal_efi.PlatformFirmwarePCR, unsupportedFlag: NoPlatformFirmwareProfileSupport, opt: secboot_efi.WithPlatformFirmwareProfile},
+		{pcr: internal_efi.PlatformConfigPCR, unsupportedFlag: NoPlatformConfigProfileSupport},
+		{pcr: internal_efi.DriversAndAppsPCR, unsupportedFlag: NoDriversAndAppsProfileSupport, opt: secboot_efi.WithDriversAndAppsProfile},
+		{pcr: internal_efi.DriversAndAppsConfigPCR, unsupportedFlag: NoDriversAndAppsConfigProfileSupport},
+		{pcr: internal_efi.BootManagerCodePCR, unsupportedFlag: NoBootManagerCodeProfileSupport, opt: secboot_efi.WithBootManagerCodeProfile},
+		{pcr: internal_efi.BootManagerConfigPCR, unsupportedFlag: NoBootManagerConfigProfileSupport},
+		{pcr: internal_efi.SecureBootPolicyPCR, unsupportedFlag: NoSecureBootPolicyProfileSupport, opt: secboot_efi.WithSecureBootPolicyProfile},
+	} {
+		if _, required := pcrs[data.pcr]; required {
+			mask |= data.unsupportedFlag
+			if data.opt != nil {
+				opts = append(opts, data.opt())
+			} else {
+				// This flag should already be in the results, but make sure it's there
+				// just in case.
+				resultFlags |= data.unsupportedFlag
+			}
+			pcrHandles = append(pcrHandles, data.pcr)
+		}
+	}
+	if resultFlags&mask > 0 {
+		return nil, newUnsupportedRequiredPCRsError(pcrHandles, resultFlags)
+	}
+
+	return opts, nil
 }
 
 // ApplyOptionTo implements [secboot_efi.PCRProfileOption].

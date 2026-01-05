@@ -1341,6 +1341,12 @@ C7E003CB
 func (s *runChecksContextSuite) TestRunGoodInvalidPCR2ValueWhenOmittedFromPCRProfileOpts(c *C) {
 	// Test a good case on a fTPM where the value of PCR2 is inconsistent
 	// with the log, but PCR2 isn't required for the specified profile options.
+	restore := MockKnownCAs(AuthorityTrustDataSet{
+		{internal_efi.MSUefiCA2011, AuthorityTrustDrivers},
+		{internal_efi.MSUefiCA2023, 0},
+	})
+	defer restore()
+
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -1395,7 +1401,7 @@ C7E003CB
 			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
 			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
 		},
-		profileOpts: PCRProfileOptionTrustCAsForAddonDrivers,
+		profileOpts: PCRProfileOptionTrustSecureBootAuthoritiesForAddonDrivers,
 		prepare: func(_ int) {
 			_, err := s.TPM.PCREvent(s.TPM.PCRHandleContext(2), []byte("foo"), nil)
 			c.Check(err, IsNil)
@@ -1419,6 +1425,12 @@ C7E003CB
 func (s *runChecksContextSuite) TestRunGoodInvalidPCR4ValueWhenOmittedFromPCRProfileOpts(c *C) {
 	// Test a good case on a fTPM where the value of PCR4 is inconsistent
 	// with the log, but PCR4 isn't required for the specified profile options.
+	restore := MockKnownCAs(AuthorityTrustDataSet{
+		{internal_efi.MSUefiCA2011, AuthorityTrustBootCode},
+		{internal_efi.MSUefiCA2023, 0},
+	})
+	defer restore()
+
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -1473,7 +1485,7 @@ C7E003CB
 			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
 			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
 		},
-		profileOpts: PCRProfileOptionTrustCAsForBootCode,
+		profileOpts: PCRProfileOptionTrustSecureBootAuthoritiesForBootCode,
 		prepare: func(_ int) {
 			_, err := s.TPM.PCREvent(s.TPM.PCRHandleContext(4), []byte("foo"), nil)
 			c.Check(err, IsNil)
@@ -2102,6 +2114,12 @@ C7E003CB
 func (s *runChecksContextSuite) TestRunGoodNoBootManagerCodeProfileSupportWhenOmittedFromPCRProfileOpts(c *C) {
 	// Test a good case on a fTPM where the launch digests in the log for OS components
 	// are invalid, but the profile options permits the omission of PCR4.
+	restore := MockKnownCAs(AuthorityTrustDataSet{
+		{internal_efi.MSUefiCA2011, AuthorityTrustBootCode},
+		{internal_efi.MSUefiCA2023, 0},
+	})
+	defer restore()
+
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -2161,7 +2179,7 @@ C7E003CB
 			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "80fd5a9364df79953369758a419f7cb167201cf580160b91f837aad455c55bcd")},
 			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "c49a23d0315fa446781686de3ee5c04288078911c89c39618c6a54d5fedddf44")},
 		},
-		profileOpts:               PCRProfileOptionTrustCAsForBootCode,
+		profileOpts:               PCRProfileOptionTrustSecureBootAuthoritiesForBootCode,
 		actions:                   []actionAndArgs{{action: ActionNone}},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
