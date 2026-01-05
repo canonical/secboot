@@ -52,7 +52,7 @@ type authorityTrustDataSet []authorityTrustData
 
 func (s authorityTrustDataSet) trustedFor(certs []*X509CertificateID, flags authorityTrustFlags) authoritiesTrustLevel {
 	for _, cert := range certs {
-		var certFound bool
+		var authFound bool
 		for _, auth := range s {
 			if !bytes.Equal(auth.Authority.Subject, cert.RawSubject()) {
 				continue
@@ -76,10 +76,11 @@ func (s authorityTrustDataSet) trustedFor(certs []*X509CertificateID, flags auth
 			if flags&auth.Trust != flags {
 				return authoritiesNotTrusted
 			}
-			certFound = true
+			authFound = true
 			break
 		}
-		if !certFound {
+		if !authFound {
+			// We have no information about this certificate because it isn't in our dataset.
 			return authoritiesTrustUnknown
 		}
 	}
@@ -438,7 +439,7 @@ func (o *pcrProfileAutoSetPcrsOption) pcrOptions() ([]secboot_efi.PCRProfileEnab
 		{pcr: internal_efi.BootManagerConfigPCR, unsupportedFlag: NoBootManagerConfigProfileSupport},
 		{pcr: internal_efi.SecureBootPolicyPCR, unsupportedFlag: NoSecureBootPolicyProfileSupport, opt: secboot_efi.WithSecureBootPolicyProfile},
 	} {
-		if _, exists := pcrs[data.pcr]; exists {
+		if _, required := pcrs[data.pcr]; required {
 			mask |= data.unsupportedFlag
 			if data.opt != nil {
 				opts = append(opts, data.opt())
