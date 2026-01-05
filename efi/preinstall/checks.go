@@ -202,9 +202,6 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	}
 
 	var checkTPMFlags checkTPM2DeviceFlags
-	if virtMode == detectVirtVM {
-		checkTPMFlags |= checkTPM2DeviceInVM
-	}
 	if flags&PostInstallChecks > 0 {
 		checkTPMFlags |= checkTPM2DevicePostInstall
 	}
