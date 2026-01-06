@@ -1642,7 +1642,6 @@ C7E003CB
 				c.Assert(errs, HasLen, 1)
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -1878,7 +1877,6 @@ C7E003CB
 `)
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format:         LoadedImageFormatPE,
 						Description:    "Mock sysprep app",
 						LoadOptionName: "SysPrep0001",
 						DevicePath: efi.DevicePath{
@@ -2331,7 +2329,6 @@ C7E003CB
 
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -2546,7 +2543,6 @@ C7E003CB
 
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -2691,7 +2687,6 @@ C7E003CB
 
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -5523,7 +5518,6 @@ C7E003CB
 
 	imageInfo := []*LoadedImageInfo{
 		{
-			Format: LoadedImageFormatPE,
 			DevicePath: efi.DevicePath{
 				&efi.ACPIDevicePathNode{
 					HID: 0x0a0341d0,
@@ -5645,7 +5639,6 @@ C7E003CB
 `)
 	imageInfo := []*LoadedImageInfo{
 		{
-			Format:         LoadedImageFormatPE,
 			Description:    "Mock sysprep app",
 			LoadOptionName: "SysPrep0001",
 			DevicePath: efi.DevicePath{
@@ -6194,7 +6187,6 @@ C7E003CB
 
 	imageInfo := []*LoadedImageInfo{
 		{
-			Format: LoadedImageFormatPE,
 			DevicePath: efi.DevicePath{
 				&efi.ACPIDevicePathNode{
 					HID: 0x0a0341d0,
@@ -6891,7 +6883,6 @@ C7E003CB
 				c.Check(errs, HasLen, 1)
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -7015,7 +7006,6 @@ C7E003CB
 				c.Check(errs, HasLen, 1)
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -7139,7 +7129,6 @@ C7E003CB
 				c.Check(errs, HasLen, 1)
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -7266,7 +7255,6 @@ C7E003CB
 
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
