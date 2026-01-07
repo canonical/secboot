@@ -137,6 +137,7 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 	c.Assert(params.actions, HasLen, iterations)
 
 	var result *CheckResult
+	var expectedErrsLen int
 	for i := 0; i < iterations; i++ {
 		if params.prepare != nil {
 			params.prepare(i)
@@ -153,9 +154,8 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 
 		var err error
 		result, err = ctx.Run(context.Background(), params.actions[i].action, args)
-		if err == nil {
-			c.Check(i, Equals, iterations-1)
-			break
+		if err != nil {
+			expectedErrsLen += 1
 		}
 
 		for _, e := range UnwrapCompoundError(err) {
@@ -177,18 +177,15 @@ func (s *runChecksContextSuite) testRun(c *C, params *testRunChecksContextRunPar
 	}
 
 	// Check errors that were captured from intermediate execution of the Run() loop.
-	expectedErrsLen := iterations - 1
-	if len(errs) > 0 {
-		// The final loop failed, so we're expecting an extra error.
-		expectedErrsLen += 1
-	}
 	c.Assert(ctx.Errors(), HasLen, expectedErrsLen)
 
 	// Make sure that LastError() is the same as the last value returned from Errors(),
 	// only if the last execution of the Run() loop failed else LastError() will
 	// return nil
-	if len(errs) > 0 && len(ctx.Errors()) > 0 {
+	if len(errs) > 0 {
 		c.Check(ctx.LastError(), Equals, ctx.Errors()[len(ctx.Errors())-1])
+	} else {
+		c.Check(ctx.LastError(), IsNil)
 	}
 
 	if len(errs) > 0 {
@@ -7397,6 +7394,137 @@ C7E003CB
 			Field:  "error-kinds",
 			Reason: InvalidActionArgumentReasonValue,
 		},
+		nil,
+		errs[0].Unwrap(),
+	))
+}
+
+func (s *runChecksContextSuite) TestRunChecksActionProceedUnexpectedErrorKind3(c *C) {
+	// Test that passing any ErrorKind as an argument to ActionProceed after
+	// already accepting all errors generates an error.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:                   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				IncludeDriverLaunch:          true,
+				PreOSVerificationUsesDigests: crypto.SHA256,
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices...),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		iterations:   3,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionProceed},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindAddonDriversPresent}},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Check(errs, HasLen, 2)
+
+				imageInfo := []*LoadedImageInfo{
+					{
+						Format: LoadedImageFormatPE,
+						DevicePath: efi.DevicePath{
+							&efi.ACPIDevicePathNode{
+								HID: 0x0a0341d0,
+								UID: 0x0,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x1c,
+								Device:   0x2,
+							},
+							&efi.PCIDevicePathNode{
+								Function: 0x0,
+								Device:   0x0,
+							},
+							&efi.MediaRelOffsetRangeDevicePathNode{
+								StartingOffset: 0x38,
+								EndingOffset:   0x11dff,
+							},
+						},
+						DigestAlg: tpm2.HashAlgorithmSHA256,
+						Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
+					},
+				}
+
+				c.Check(errs[0], ErrorMatches, `addon drivers were detected:
+- \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
+`)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindAddonDriversPresent,
+					LoadedImagesInfoArg(imageInfo),
+					[]Action{ActionProceed},
+					&AddonDriversPresentError{
+						Drivers: imageInfo,
+					},
+				))
+
+				c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindPreOSDigestVerificationDetected,
+					nil,
+					[]Action{ActionProceed},
+					ErrPreOSVerificationUsingDigests,
+				))
+			}
+		},
+		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `specified action is not expected`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindUnexpectedAction,
+		nil,
 		nil,
 		errs[0].Unwrap(),
 	))
