@@ -96,14 +96,9 @@ const (
 	// lifting pins.
 	RequestPartialDiscreteTPMResetAttackMitigation
 
-	// InsufficientDMAProtectionDetected indicates that DMA remapping was disabled in the pre-OS environment.
-	// This weakens security because it allows pre-OS DMA attacks to compromise system integrity.
-	// Support for this has to be opted into with the PermitInsufficientDMAProtection flag to RunChecks.
-	// This check may not run if the NoSecureBootPolicyProfileSupport flag is set.
-	InsufficientDMAProtectionDetected
-
 	discreteTPMDetected
 	startupLocalityNotProtected
+	insufficientDMAProtectionDetected
 )
 
 func (f CheckResultFlags) toStringSlice() []string {
@@ -132,8 +127,6 @@ func (f CheckResultFlags) toStringSlice() []string {
 			str = "no-secure-boot-policy-profile-support"
 		case RequestPartialDiscreteTPMResetAttackMitigation:
 			str = "request-partial-dtpm-reset-attack-mitigation"
-		case InsufficientDMAProtectionDetected:
-			str = "insufficient-dma-protection-detected"
 		default:
 			str = fmt.Sprintf("%#08x", uint32(flag))
 		}
@@ -179,7 +172,7 @@ func (f *CheckResultFlags) UnmarshalJSON(data []byte) error {
 		case "request-partial-dtpm-reset-attack-mitigation":
 			val = RequestPartialDiscreteTPMResetAttackMitigation
 		case "insufficient-dma-protection-detected":
-			val = InsufficientDMAProtectionDetected
+			val = insufficientDMAProtectionDetected
 		case "discrete-tpm-detected":
 			val = discreteTPMDetected
 		case "startup-locality-not-protected":
@@ -213,9 +206,10 @@ func (f CheckResultFlags) String() string {
 }
 
 type checkResultJSON struct {
-	PCRAlg            hashAlgorithmId      `json:"pcr-alg"`
-	UsedSecureBootCAs []*X509CertificateID `json:"used-secure-boot-cas"`
-	Flags             CheckResultFlags     `json:"flags"`
+	PCRAlg            hashAlgorithmId               `json:"pcr-alg"`
+	UsedSecureBootCAs []*X509CertificateID          `json:"used-secure-boot-cas"`
+	Flags             CheckResultFlags              `json:"flags"`
+	AcceptedErrors    map[ErrorKind]json.RawMessage `json:"accepted-errors,omitempty"`
 }
 
 // CheckResult is returned from [RunChecks] when it completes successfully.
@@ -232,6 +226,12 @@ type CheckResult struct {
 	// Flags contains a set of result flags
 	Flags CheckResultFlags
 
+	// AcceptedErrors are the errors that were initially accepted using ActionProceed.
+	// It is a map of each accepted error kind to a set of arguments associated with
+	// the accepted error. The arguments are currently unused and this is only here
+	// for future proofing.
+	AcceptedErrors map[ErrorKind]json.RawMessage
+
 	// Warnings contains any non-fatal errors that were detected when running the tests
 	// on the current platform with the specified configuration. Note that this field is
 	// not serialized.
@@ -244,6 +244,7 @@ func (r CheckResult) MarshalJSON() ([]byte, error) {
 		PCRAlg:            hashAlgorithmId(r.PCRAlg),
 		UsedSecureBootCAs: r.UsedSecureBootCAs,
 		Flags:             r.Flags,
+		AcceptedErrors:    r.AcceptedErrors,
 	}
 	return json.Marshal(res)
 }
@@ -259,7 +260,17 @@ func (r *CheckResult) UnmarshalJSON(data []byte) error {
 		PCRAlg:            tpm2.HashAlgorithmId(res.PCRAlg),
 		UsedSecureBootCAs: res.UsedSecureBootCAs,
 		Flags:             res.Flags,
+		AcceptedErrors:    res.AcceptedErrors,
 	}
+	if r.Flags&insufficientDMAProtectionDetected > 0 {
+		if r.AcceptedErrors == nil {
+			r.AcceptedErrors = make(map[ErrorKind]json.RawMessage)
+		}
+		r.AcceptedErrors[ErrorKindInsufficientDMAProtection] = nil
+		r.AcceptedErrors[ErrorKindNoKernelIOMMU] = nil
+		r.Flags &^= insufficientDMAProtectionDetected
+	}
+
 	return nil
 }
 

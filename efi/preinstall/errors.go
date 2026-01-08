@@ -102,6 +102,9 @@ type CompoundError interface {
 }
 
 func unwrapCompoundError(err error) []error {
+	if err == nil {
+		return nil
+	}
 	errs, ok := err.(CompoundError)
 	if !ok {
 		return []error{err}

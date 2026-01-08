@@ -56,6 +56,7 @@ const (
 	DtpmPartialResetAttackMitigationNotRequired = dtpmPartialResetAttackMitigationNotRequired
 	DtpmPartialResetAttackMitigationPreferred   = dtpmPartialResetAttackMitigationPreferred
 	DtpmPartialResetAttackMitigationUnavailable = dtpmPartialResetAttackMitigationUnavailable
+	InsufficientDMAProtectionDetected           = insufficientDMAProtectionDetected
 	SecureBootIncludesWeakAlg                   = secureBootIncludesWeakAlg
 	SecureBootPreOSVerificationIncludesDigest   = secureBootPreOSVerificationIncludesDigest
 	StartupLocalityNotProtected                 = startupLocalityNotProtected

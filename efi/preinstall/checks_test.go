@@ -4930,7 +4930,7 @@ C7E003CB
 		)),
 	}
 
-	_, err := s.testRunChecks(c, &testRunChecksParams{
+	warnings, err := s.testRunChecks(c, &testRunChecksParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
@@ -4969,7 +4969,31 @@ C7E003CB
 		},
 		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | InsufficientDMAProtectionDetected,
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 	})
 	c.Assert(err, IsNil)
+	c.Assert(warnings, HasLen, 5)
+
+	warning := warnings[0]
+	c.Check(warning, ErrorMatches, `the platform firmware indicates that DMA protections are insufficient`)
+	c.Check(errors.Is(warning, ErrInsufficientDMAProtection), testutil.IsTrue)
+
+	warning = warnings[1]
+	c.Check(warning, ErrorMatches, `no kernel IOMMU support was detected`)
+	c.Check(errors.Is(warning, ErrNoKernelIOMMU), testutil.IsTrue)
+
+	warning = warnings[2]
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	var pce *PlatformConfigPCRError
+	c.Check(errors.As(warning, &pce), testutil.IsTrue)
+
+	warning = warnings[3]
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	var dce *DriversAndAppsConfigPCRError
+	c.Check(errors.As(warning, &dce), testutil.IsTrue)
+
+	warning = warnings[4]
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	var bmce *BootManagerConfigPCRError
+	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
