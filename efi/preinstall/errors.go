@@ -579,60 +579,39 @@ func (e *DriversAndAppsPCRError) Unwrap() error {
 	return e.err
 }
 
-// LoadedImageFormat describes the format of a loaded image.
-type LoadedImageFormat string
-
-const (
-	// LoadedImageFormatPE is a PE image. These images are measured using the
-	// EV_EFI_BOOT_SERVICES_DRIVER, EV_EFI_RUNTIME_SERVICES_DRIVER and
-	// EV_EFI_BOOT_SERVICES_APPLICATION event types.
-	LoadedImageFormatPE LoadedImageFormat = "pe"
-
-	// LoadedImageFormatBlob is an opaque blob. These images are measured using
-	// the EV_EFI_PLATFORM_FIRMWARE_BLOB and EV_EFI_PLATFORM_FIRMWARE_BLOB2
-	// event types.
-	LoadedImageFormatBlob LoadedImageFormat = "blob"
-)
-
 type devicePathJSON struct {
 	String string `json:"string"`
 	Bytes  []byte `json:"bytes"`
 }
 
 type loadedImageInfoJSON struct {
-	Format         LoadedImageFormat `json:"format"`
-	Description    string            `json:"description,omitempty"`
-	LoadOptionName string            `json:"load-option-name,omitempty"`
-	DevicePath     devicePathJSON    `json:"device-path"`
-	DigestAlg      hashAlgorithmId   `json:"digest-alg"`
-	Digest         []byte            `json:"digest"`
+	Description    string          `json:"description,omitempty"`
+	LoadOptionName string          `json:"load-option-name,omitempty"`
+	DevicePath     devicePathJSON  `json:"device-path"`
+	DigestAlg      hashAlgorithmId `json:"digest-alg"`
+	Digest         []byte          `json:"digest"`
 }
 
 // LoadedImageInfo contains information about a loaded image, which may be a
 // driver or system preparation application.
 type LoadedImageInfo struct {
-	// Format is the format of the loaded image.
-	Format LoadedImageFormat
-
 	// Description is a human readable description of the loaded image,
 	// if there is one.
 	Description string
 
 	// LoadOptionName is the name of the EFI variable containing the
 	// associated EFI_LOAD_OPTION if there is one. This can be empty for
-	// option ROMs and is empty for firmware blobs.
+	// option ROMs.
 	LoadOptionName string
 
-	// DevicePath is the EFI device path of the loaded image if it is
-	// known.
+	// DevicePath is the EFI device path of the loaded image.
 	DevicePath efi.DevicePath
 
 	// DigestAlg is the algorithm of the digest in the Digest field.
 	DigestAlg tpm2.HashAlgorithmId
 
-	// Digest is the digest of the loaded image, using the algorithm
-	// specified in the DigestAlg field. When Format is LoadedImageFormatPE,
-	// this is the Authenticode digest.
+	// Digest is the Authenticode digest of the loaded image, using the
+	// algorithm specified in the DigestAlg field.
 	Digest tpm2.Digest
 }
 
@@ -644,7 +623,6 @@ func (i *LoadedImageInfo) MarshalJSON() ([]byte, error) {
 	}
 
 	info := &loadedImageInfoJSON{
-		Format:         i.Format,
 		Description:    i.Description,
 		LoadOptionName: i.LoadOptionName,
 		DevicePath: devicePathJSON{
@@ -670,7 +648,6 @@ func (i *LoadedImageInfo) UnmarshalJSON(data []byte) error {
 	}
 
 	*i = LoadedImageInfo{
-		Format:         info.Format,
 		Description:    info.Description,
 		LoadOptionName: info.LoadOptionName,
 		DevicePath:     path,
@@ -688,16 +665,8 @@ func (i *LoadedImageInfo) String() string {
 	} else {
 		io.WriteString(&b, "[no description]")
 	}
-	if len(i.DevicePath) > 0 {
-		fmt.Fprintf(&b, " path=%s", i.DevicePath)
-	}
-	switch i.Format {
-	case LoadedImageFormatPE:
-		io.WriteString(&b, " authenticode-digest")
-	default:
-		io.WriteString(&b, " digest")
-	}
-	fmt.Fprintf(&b, "=%v:%x", i.DigestAlg, i.Digest)
+	fmt.Fprintf(&b, " path=%s", i.DevicePath)
+	fmt.Fprintf(&b, " authenticode-digest=%v:%x", i.DigestAlg, i.Digest)
 	if i.LoadOptionName != "" {
 		fmt.Fprintf(&b, " load-option=%s", i.LoadOptionName)
 	}

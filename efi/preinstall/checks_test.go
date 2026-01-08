@@ -1546,7 +1546,6 @@ C7E003CB
 	c.Check(errors.As(warning, &adpe), testutil.IsTrue)
 	c.Check(adpe.Drivers, DeepEquals, []*LoadedImageInfo{
 		{
-			Format: LoadedImageFormatPE,
 			DevicePath: efi.DevicePath{
 				&efi.ACPIDevicePathNode{
 					HID: 0x0a0341d0,
@@ -1669,7 +1668,6 @@ C7E003CB
 	c.Check(errors.As(warning, &adpe), testutil.IsTrue)
 	c.Check(adpe.Drivers, DeepEquals, []*LoadedImageInfo{
 		{
-			Format: LoadedImageFormatPE,
 			DevicePath: efi.DevicePath{
 				&efi.ACPIDevicePathNode{
 					HID: 0x0a0341d0,
@@ -1802,7 +1800,6 @@ C7E003CB
 	c.Check(errors.As(warning, &spape), testutil.IsTrue)
 	c.Check(spape.Apps, DeepEquals, []*LoadedImageInfo{
 		{
-			Format:         LoadedImageFormatPE,
 			Description:    "Mock sysprep app",
 			LoadOptionName: "SysPrep0001",
 			DevicePath: efi.DevicePath{
@@ -1944,7 +1941,6 @@ C7E003CB
 	c.Check(errors.As(warning, &spape), testutil.IsTrue)
 	c.Check(spape.Apps, DeepEquals, []*LoadedImageInfo{
 		{
-			Format:         LoadedImageFormatPE,
 			Description:    "Mock sysprep app",
 			LoadOptionName: "SysPrep0001",
 			DevicePath: efi.DevicePath{
@@ -2327,7 +2323,6 @@ C7E003CB
 	c.Check(errors.As(warning, &adpe), testutil.IsTrue)
 	c.Check(adpe.Drivers, DeepEquals, []*LoadedImageInfo{
 		{
-			Format: LoadedImageFormatPE,
 			DevicePath: efi.DevicePath{
 				&efi.ACPIDevicePathNode{
 					HID: 0x0a0341d0,
@@ -2454,7 +2449,6 @@ C7E003CB
 	c.Check(errors.As(warning, &adpe), testutil.IsTrue)
 	c.Check(adpe.Drivers, DeepEquals, []*LoadedImageInfo{
 		{
-			Format: LoadedImageFormatPE,
 			DevicePath: efi.DevicePath{
 				&efi.ACPIDevicePathNode{
 					HID: 0x0a0341d0,
@@ -2572,7 +2566,6 @@ C7E003CB
 	c.Check(errors.As(warning, &adpe), testutil.IsTrue)
 	c.Check(adpe.Drivers, DeepEquals, []*LoadedImageInfo{
 		{
-			Format: LoadedImageFormatPE,
 			DevicePath: efi.DevicePath{
 				&efi.ACPIDevicePathNode{
 					HID: 0x0a0341d0,
@@ -2702,7 +2695,6 @@ C7E003CB
 	c.Check(errors.As(warning, &adpe), testutil.IsTrue)
 	c.Check(adpe.Drivers, DeepEquals, []*LoadedImageInfo{
 		{
-			Format: LoadedImageFormatPE,
 			DevicePath: efi.DevicePath{
 				&efi.ACPIDevicePathNode{
 					HID: 0x0a0341d0,
@@ -3801,7 +3793,6 @@ C7E003CB
 	c.Check(errors.As(errs[0], &adpe), testutil.IsTrue)
 	c.Check(adpe.Drivers, DeepEquals, []*LoadedImageInfo{
 		{
-			Format: LoadedImageFormatPE,
 			DevicePath: efi.DevicePath{
 				&efi.ACPIDevicePathNode{
 					HID: 0x0a0341d0,
@@ -3915,7 +3906,6 @@ C7E003CB
 	c.Check(errors.As(errs[0], &spape), testutil.IsTrue)
 	c.Check(spape.Apps, DeepEquals, []*LoadedImageInfo{
 		{
-			Format:         LoadedImageFormatPE,
 			Description:    "Mock sysprep app",
 			LoadOptionName: "SysPrep0001",
 			DevicePath: efi.DevicePath{

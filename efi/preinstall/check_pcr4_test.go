@@ -146,7 +146,6 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodWithSysprepApp(c *C)
 		expectedResult: &BootManagerCodeResult{
 			SysprepApps: []*LoadedImageInfo{
 				{
-					Format:         LoadedImageFormatPE,
 					Description:    "Mock sysprep app",
 					LoadOptionName: "SysPrep0001",
 					DevicePath: efi.DevicePath{
@@ -215,7 +214,6 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodWithSysprepAppSHA384
 		expectedResult: &BootManagerCodeResult{
 			SysprepApps: []*LoadedImageInfo{
 				{
-					Format:         LoadedImageFormatPE,
 					Description:    "Mock sysprep app",
 					LoadOptionName: "SysPrep0001",
 					DevicePath: efi.DevicePath{
