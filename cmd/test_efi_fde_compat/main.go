@@ -17,7 +17,6 @@ type options struct {
 		PostInstall                         bool `long:"post-install" description:"Run the checks post-install rather than pre-install"`
 		PermitVM                            bool `long:"permit-vm" description:"Permit running inside of a virtual machine"`
 		PermitWeakPCRBanks                  bool `long:"permit-weak-pcr-banks" description:"Permit selecting a weak PCR bank if no others are available"`
-		PermitEmptyPCRBanks                 bool `long:"permit-empty-pcr-banks" description:"Allow the platform firmware to leave one or more PCR banks empty. This potentially compromises remote attestation"`
 		PermitAddonDrivers                  bool `long:"permit-addon-drivers" description:"Allow addon drivers to be running. This increases fragility of profiles that include PCR2, and potentially PCR7"`
 		PermitSysPrepApplications           bool `long:"permit-sys-prep-apps" description:"Allow system preparation applications to load before the OS. This increases fragility of profiles that include PCR4, and potentially PCR7"`
 		PermitAbsolute                      bool `long:"permit-absolute" description:"Allow the Absolute endpoint management component to be running. This increases fragility of profiles that include PCR4"`
@@ -57,9 +56,6 @@ func run() error {
 	}
 	if opts.Check.PermitWeakPCRBanks {
 		checkFlags |= preinstall.PermitWeakPCRBanks
-	}
-	if opts.Check.PermitEmptyPCRBanks {
-		checkFlags |= preinstall.PermitEmptyPCRBanks
 	}
 	if opts.Check.PermitAddonDrivers {
 		checkFlags |= preinstall.PermitAddonDrivers
