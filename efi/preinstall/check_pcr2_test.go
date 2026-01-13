@@ -37,6 +37,83 @@ type pcr2Suite struct{}
 
 var _ = Suite(&pcr2Suite{})
 
+func (s *pcr2Suite) TestIsLaunchedFromFirmwareVolumeYes(c *C) {
+	yes, err := IsLaunchedFromFirmwareVolume(&tcglog.Event{
+		EventType: tcglog.EventTypeEFIBootServicesDriver,
+		Data: &tcglog.EFIImageLoadEvent{
+			DevicePath: efi.DevicePath{
+				efi.FWVolDevicePathNode(efi.MakeGUID(0xf0d99c58, 0x3e06, 0x430c, 0x8d02, [...]uint8{0x9a, 0xb8, 0x8b, 0xa1, 0x61, 0x20})),
+				efi.FWFileDevicePathNode(efi.MakeGUID(0x0c2c4003, 0x6551, 0x4eea, 0xb006, [...]uint8{0x0f, 0xec, 0xb4, 0xbb, 0x30, 0x0b})),
+			},
+		},
+	})
+	c.Check(err, IsNil)
+	c.Check(yes, testutil.IsTrue)
+}
+
+func (s *pcr2Suite) TestIsLaunchedFromFirmwareVolumeNo(c *C) {
+	yes, err := IsLaunchedFromFirmwareVolume(&tcglog.Event{
+		EventType: tcglog.EventTypeEFIBootServicesDriver,
+		Data: &tcglog.EFIImageLoadEvent{
+			DevicePath: efi.DevicePath{
+				&efi.ACPIDevicePathNode{
+					HID: 0x0a0341d0,
+					UID: 0x0,
+				},
+				&efi.PCIDevicePathNode{
+					Function: 0x1c,
+					Device:   0x2,
+				},
+				&efi.PCIDevicePathNode{
+					Function: 0x0,
+					Device:   0x0,
+				},
+				&efi.MediaRelOffsetRangeDevicePathNode{
+					StartingOffset: 0x38,
+					EndingOffset:   0x11dff,
+				},
+			},
+		},
+	})
+	c.Check(err, IsNil)
+	c.Check(yes, testutil.IsFalse)
+}
+
+func (s *pcr2Suite) TestIsLaunchedFromFirmwareVolumeYesRuntimeDriver(c *C) {
+	yes, err := IsLaunchedFromFirmwareVolume(&tcglog.Event{
+		EventType: tcglog.EventTypeEFIRuntimeServicesDriver,
+		Data: &tcglog.EFIImageLoadEvent{
+			DevicePath: efi.DevicePath{
+				efi.FWVolDevicePathNode(efi.MakeGUID(0xf0d99c58, 0x3e06, 0x430c, 0x8d02, [...]uint8{0x9a, 0xb8, 0x8b, 0xa1, 0x61, 0x20})),
+				efi.FWFileDevicePathNode(efi.MakeGUID(0x0c2c4003, 0x6551, 0x4eea, 0xb006, [...]uint8{0x0f, 0xec, 0xb4, 0xbb, 0x30, 0x0b})),
+			},
+		},
+	})
+	c.Check(err, IsNil)
+	c.Check(yes, testutil.IsTrue)
+}
+
+func (s *pcr2Suite) TestIsLaunchedFromFirmwareVolumeErrInvalidEventType(c *C) {
+	_, err := IsLaunchedFromFirmwareVolume(&tcglog.Event{EventType: tcglog.EventTypeSeparator})
+	c.Check(err, ErrorMatches, `unexpected event type EV_SEPARATOR`)
+}
+
+func (s *pcr2Suite) TestIsLaunchedFromFirmwareVolumeErrInvalidEventData(c *C) {
+	_, err := IsLaunchedFromFirmwareVolume(&tcglog.Event{
+		EventType: tcglog.EventTypeEFIBootServicesDriver,
+		Data:      &invalidEventData{errors.New("some error")},
+	})
+	c.Check(err, ErrorMatches, `event has invalid event data: some error`)
+}
+
+func (s *pcr2Suite) TestIsLaunchedFromFirmwareVolumeErrEmptyPath(c *C) {
+	_, err := IsLaunchedFromFirmwareVolume(&tcglog.Event{
+		EventType: tcglog.EventTypeEFIBootServicesDriver,
+		Data:      &tcglog.EFIImageLoadEvent{},
+	})
+	c.Check(err, ErrorMatches, `empty device path`)
+}
+
 type testCheckDriversAndAppsMeasurementsParams struct {
 	env            internal_efi.HostEnvironment
 	pcrAlg         tpm2.HashAlgorithmId
@@ -78,7 +155,6 @@ func (s *pcr2Suite) TestCheckDriversAndAppsMeasurementsGoodOptionROMPresent(c *C
 		pcrAlg: tpm2.HashAlgorithmSHA256,
 		expectedResult: []*LoadedImageInfo{
 			{
-				Format: LoadedImageFormatPE,
 				DevicePath: efi.DevicePath{
 					&efi.ACPIDevicePathNode{
 						HID: 0x0a0341d0,
@@ -143,7 +219,6 @@ func (s *pcr2Suite) TestCheckDriversAndAppsMeasurementsGoodDriverPresent(c *C) {
 		pcrAlg: tpm2.HashAlgorithmSHA256,
 		expectedResult: []*LoadedImageInfo{
 			{
-				Format:         LoadedImageFormatPE,
 				Description:    "Mock EFI driver",
 				LoadOptionName: "Driver0000",
 				DevicePath:     path,
@@ -167,7 +242,6 @@ func (s *pcr2Suite) TestCheckDriversAndAppsMeasurementsGoodOptionROMPresentSHA38
 		pcrAlg: tpm2.HashAlgorithmSHA384,
 		expectedResult: []*LoadedImageInfo{
 			{
-				Format: LoadedImageFormatPE,
 				DevicePath: efi.DevicePath{
 					&efi.ACPIDevicePathNode{
 						HID: 0x0a0341d0,
@@ -194,9 +268,7 @@ func (s *pcr2Suite) TestCheckDriversAndAppsMeasurementsGoodOptionROMPresentSHA38
 	c.Check(err, IsNil)
 }
 
-func (s *pcr2Suite) TestCheckDriversAndAppsMeasurementsGoodFirmwareBlobPresent(c *C) {
-	blobDigest := testutil.DecodeHexString(c, "111ae52b17b2487348b3dabc80b895bc25e457ab0559270acaf34601a007729d")
-
+func (s *pcr2Suite) TestCheckDriversAndAppsMeasurementsGoodDriverFromFwVolPresent(c *C) {
 	// TODO: Add this functionality to efitest later on.
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
 	var events []*tcglog.Event
@@ -208,52 +280,15 @@ func (s *pcr2Suite) TestCheckDriversAndAppsMeasurementsGoodFirmwareBlobPresent(c
 
 		events = append(events, &tcglog.Event{
 			PCRIndex:  internal_efi.DriversAndAppsPCR,
-			EventType: tcglog.EventTypeEFIPlatformFirmwareBlob,
+			EventType: tcglog.EventTypeEFIBootServicesDriver,
 			Digests: map[tpm2.HashAlgorithmId]tpm2.Digest{
-				tpm2.HashAlgorithmSHA256: blobDigest,
+				tpm2.HashAlgorithmSHA256: testutil.DecodeHexString(c, "382805bd31232813ae8779cc933b0e8b4dcab68e0a819dc13c3f6dc2c3417206"),
 			},
-			Data: new(tcglog.EFIPlatformFirmwareBlob),
-		})
-	}
-	log.Events = events
-
-	err := s.testCheckDriversAndAppsMeasurements(c, &testCheckDriversAndAppsMeasurementsParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithMockVars(efitest.MockVars{}),
-			efitest.WithLog(log),
-		),
-		pcrAlg: tpm2.HashAlgorithmSHA256,
-		expectedResult: []*LoadedImageInfo{
-			{
-				Format:    LoadedImageFormatBlob,
-				DigestAlg: tpm2.HashAlgorithmSHA256,
-				Digest:    blobDigest,
-			},
-		},
-	})
-	c.Check(err, IsNil)
-}
-
-func (s *pcr2Suite) TestCheckDriversAndAppsMeasurementsGoodFirmwareBlob2Present(c *C) {
-	blobDigest := testutil.DecodeHexString(c, "111ae52b17b2487348b3dabc80b895bc25e457ab0559270acaf34601a007729d")
-
-	// TODO: Add this functionality to efitest later on.
-	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
-	var events []*tcglog.Event
-	for _, ev := range log.Events {
-		events = append(events, ev)
-		if ev.PCRIndex != internal_efi.SecureBootPolicyPCR || ev.EventType != tcglog.EventTypeSeparator {
-			continue
-		}
-
-		events = append(events, &tcglog.Event{
-			PCRIndex:  internal_efi.DriversAndAppsPCR,
-			EventType: tcglog.EventTypeEFIPlatformFirmwareBlob2,
-			Digests: map[tpm2.HashAlgorithmId]tpm2.Digest{
-				tpm2.HashAlgorithmSHA256: blobDigest,
-			},
-			Data: &tcglog.EFIPlatformFirmwareBlob2{
-				BlobDescription: "Mock firmware blob",
+			Data: &tcglog.EFIImageLoadEvent{
+				DevicePath: efi.DevicePath{
+					efi.FWVolDevicePathNode(efi.MakeGUID(0xf0d99c58, 0x3e06, 0x430c, 0x8d02, [...]uint8{0x9a, 0xb8, 0x8b, 0xa1, 0x61, 0x20})),
+					efi.FWFileDevicePathNode(efi.MakeGUID(0x0c2c4003, 0x6551, 0x4eea, 0xb006, [...]uint8{0x0f, 0xec, 0xb4, 0xbb, 0x30, 0x0b})),
+				},
 			},
 		})
 	}
@@ -265,14 +300,6 @@ func (s *pcr2Suite) TestCheckDriversAndAppsMeasurementsGoodFirmwareBlob2Present(
 			efitest.WithLog(log),
 		),
 		pcrAlg: tpm2.HashAlgorithmSHA256,
-		expectedResult: []*LoadedImageInfo{
-			{
-				Format:      LoadedImageFormatBlob,
-				Description: "Mock firmware blob",
-				DigestAlg:   tpm2.HashAlgorithmSHA256,
-				Digest:      blobDigest,
-			},
-		},
 	})
 	c.Check(err, IsNil)
 }

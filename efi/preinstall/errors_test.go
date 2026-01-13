@@ -64,7 +64,6 @@ func (s *errorsSuite) TestJoinErrorOneError(c *C) {
 
 func (s *errorsSuite) TestLoadedImageInfoMarshalJSON1(c *C) {
 	info := &LoadedImageInfo{
-		Format: LoadedImageFormatPE,
 		DevicePath: efi.DevicePath{
 			&efi.ACPIDevicePathNode{
 				HID: 0x0a0341d0,
@@ -89,24 +88,11 @@ func (s *errorsSuite) TestLoadedImageInfoMarshalJSON1(c *C) {
 
 	data, err := json.Marshal(info)
 	c.Check(err, IsNil)
-	c.Check(data, DeepEquals, []byte(`{"format":"pe","device-path":{"string":"\\PciRoot(0x0)\\Pci(0x2,0x1c)\\Pci(0x0,0x0)\\Offset(0x38,0x11dff)","bytes":"AgEMANBBAwoAAAAAAQEGABwCAQEGAAAABAgYAAAAAAA4AAAAAAAAAP8dAQAAAAAAf/8EAA=="},"digest-alg":"sha256","digest":"HpSq7SrVmkQJ8yMNyirYwD744/3nfMR9x7gbuLJC8+Y="}`))
+	c.Check(data, DeepEquals, []byte(`{"device-path":{"string":"\\PciRoot(0x0)\\Pci(0x2,0x1c)\\Pci(0x0,0x0)\\Offset(0x38,0x11dff)","bytes":"AgEMANBBAwoAAAAAAQEGABwCAQEGAAAABAgYAAAAAAA4AAAAAAAAAP8dAQAAAAAAf/8EAA=="},"digest-alg":"sha256","digest":"HpSq7SrVmkQJ8yMNyirYwD744/3nfMR9x7gbuLJC8+Y="}`))
 }
 
 func (s *errorsSuite) TestLoadedImageInfoMarshalJSON2(c *C) {
 	info := &LoadedImageInfo{
-		Format:    LoadedImageFormatBlob,
-		DigestAlg: tpm2.HashAlgorithmSHA256,
-		Digest:    testutil.DecodeHexString(c, "111ae52b17b2487348b3dabc80b895bc25e457ab0559270acaf34601a007729d"),
-	}
-
-	data, err := json.Marshal(info)
-	c.Check(err, IsNil)
-	c.Check(data, DeepEquals, []byte(`{"format":"blob","device-path":{"string":"","bytes":"f/8EAA=="},"digest-alg":"sha256","digest":"ERrlKxeySHNIs9q8gLiVvCXkV6sFWScKyvNGAaAHcp0="}`))
-}
-
-func (s *errorsSuite) TestLoadedImageInfoMarshalJSON3(c *C) {
-	info := &LoadedImageInfo{
-		Format:         LoadedImageFormatPE,
 		Description:    "Mock sysprep app",
 		LoadOptionName: "SysPrep0001",
 		DevicePath: efi.DevicePath{
@@ -136,7 +122,7 @@ func (s *errorsSuite) TestLoadedImageInfoMarshalJSON3(c *C) {
 
 	data, err := json.Marshal(info)
 	c.Check(err, IsNil)
-	c.Check(data, DeepEquals, []byte(`{"format":"pe","description":"Mock sysprep app","load-option-name":"SysPrep0001","device-path":{"string":"\\PciRoot(0x0)\\Pci(0x1d,0x0)\\Pci(0x0,0x0)\\NVMe(0x1,00-00-00-00-00-00-00-00)\\HD(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960)\\\\EFI\\Dell\\sysprep.efi","bytes":"AgEMANBBAwoAAAAAAQEGAAAdAQEGAAAAAxcQAAEAAAAAAAAAAAAAAAQBKgABAAAAAAgAAAAAAAAAABAAAAAAAHuU3may/SVFt1Iw1muyuWACAgQEMABcAEUARgBJAFwARABlAGwAbABcAHMAeQBzAHAAcgBlAHAALgBlAGYAaQAAAH//BAA="},"digest-alg":"sha384","digest":"EaTQODPa+g+Zuo2YPFKzXQsm7ZfZYAMTunwn++zab8y6Ch8KlMmXDnPOdZbTpL9E"}`))
+	c.Check(data, DeepEquals, []byte(`{"description":"Mock sysprep app","load-option-name":"SysPrep0001","device-path":{"string":"\\PciRoot(0x0)\\Pci(0x1d,0x0)\\Pci(0x0,0x0)\\NVMe(0x1,00-00-00-00-00-00-00-00)\\HD(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960)\\\\EFI\\Dell\\sysprep.efi","bytes":"AgEMANBBAwoAAAAAAQEGAAAdAQEGAAAAAxcQAAEAAAAAAAAAAAAAAAQBKgABAAAAAAgAAAAAAAAAABAAAAAAAHuU3may/SVFt1Iw1muyuWACAgQEMABcAEUARgBJAFwARABlAGwAbABcAHMAeQBzAHAAcgBlAHAALgBlAGYAaQAAAH//BAA="},"digest-alg":"sha384","digest":"EaTQODPa+g+Zuo2YPFKzXQsm7ZfZYAMTunwn++zab8y6Ch8KlMmXDnPOdZbTpL9E"}`))
 }
 
 func (s *errorsSuite) TestLoadedImageInfoUnmashalJSON1(c *C) {
@@ -145,7 +131,6 @@ func (s *errorsSuite) TestLoadedImageInfoUnmashalJSON1(c *C) {
 	var info *LoadedImageInfo
 	c.Check(json.Unmarshal(data, &info), IsNil)
 	c.Check(info, DeepEquals, &LoadedImageInfo{
-		Format: LoadedImageFormatPE,
 		DevicePath: efi.DevicePath{
 			&efi.ACPIDevicePathNode{
 				HID: 0x0a0341d0,
@@ -170,24 +155,11 @@ func (s *errorsSuite) TestLoadedImageInfoUnmashalJSON1(c *C) {
 }
 
 func (s *errorsSuite) TestLoadedImageInfoUnmashalJSON2(c *C) {
-	data := []byte(`{"format":"blob","device-path":{"string":"","bytes":"f/8EAA=="},"digest-alg":"sha256","digest":"ERrlKxeySHNIs9q8gLiVvCXkV6sFWScKyvNGAaAHcp0="}`)
+	data := []byte(`{"description":"Mock sysprep app","load-option-name":"SysPrep0001","device-path":{"string":"\\PciRoot(0x0)\\Pci(0x1d,0x0)\\Pci(0x0,0x0)\\NVMe(0x1,00-00-00-00-00-00-00-00)\\HD(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960)\\\\EFI\\Dell\\sysprep.efi","bytes":"AgEMANBBAwoAAAAAAQEGAAAdAQEGAAAAAxcQAAEAAAAAAAAAAAAAAAQBKgABAAAAAAgAAAAAAAAAABAAAAAAAHuU3may/SVFt1Iw1muyuWACAgQEMABcAEUARgBJAFwARABlAGwAbABcAHMAeQBzAHAAcgBlAHAALgBlAGYAaQAAAH//BAA="},"digest-alg":"sha384","digest":"EaTQODPa+g+Zuo2YPFKzXQsm7ZfZYAMTunwn++zab8y6Ch8KlMmXDnPOdZbTpL9E"}`)
 
 	var info *LoadedImageInfo
 	c.Check(json.Unmarshal(data, &info), IsNil)
 	c.Check(info, DeepEquals, &LoadedImageInfo{
-		Format:    LoadedImageFormatBlob,
-		DigestAlg: tpm2.HashAlgorithmSHA256,
-		Digest:    testutil.DecodeHexString(c, "111ae52b17b2487348b3dabc80b895bc25e457ab0559270acaf34601a007729d"),
-	})
-}
-
-func (s *errorsSuite) TestLoadedImageInfoUnmashalJSON3(c *C) {
-	data := []byte(`{"format":"pe","description":"Mock sysprep app","load-option-name":"SysPrep0001","device-path":{"string":"\\PciRoot(0x0)\\Pci(0x1d,0x0)\\Pci(0x0,0x0)\\NVMe(0x1,00-00-00-00-00-00-00-00)\\HD(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960)\\\\EFI\\Dell\\sysprep.efi","bytes":"AgEMANBBAwoAAAAAAQEGAAAdAQEGAAAAAxcQAAEAAAAAAAAAAAAAAAQBKgABAAAAAAgAAAAAAAAAABAAAAAAAHuU3may/SVFt1Iw1muyuWACAgQEMABcAEUARgBJAFwARABlAGwAbABcAHMAeQBzAHAAcgBlAHAALgBlAGYAaQAAAH//BAA="},"digest-alg":"sha384","digest":"EaTQODPa+g+Zuo2YPFKzXQsm7ZfZYAMTunwn++zab8y6Ch8KlMmXDnPOdZbTpL9E"}`)
-
-	var info *LoadedImageInfo
-	c.Check(json.Unmarshal(data, &info), IsNil)
-	c.Check(info, DeepEquals, &LoadedImageInfo{
-		Format:         LoadedImageFormatPE,
 		Description:    "Mock sysprep app",
 		LoadOptionName: "SysPrep0001",
 		DevicePath: efi.DevicePath{
@@ -217,14 +189,14 @@ func (s *errorsSuite) TestLoadedImageInfoUnmashalJSON3(c *C) {
 }
 
 func (s *errorsSuite) TestLoadedImageInfoUnmashalErrInvalidValue(c *C) {
-	data := []byte(`{"format":"blob","device-path":{"string":"","bytes":"f/8EAA=="},"digest-alg":"","digest":"ERrlKxeySHNIs9q8gLiVvCXkV6sFWScKyvNGAaAHcp0="}`)
+	data := []byte(`{"device-path":{"string":"\\PciRoot(0x0)\\Pci(0x2,0x1c)\\Pci(0x0,0x0)\\Offset(0x38,0x11dff)","bytes":"AgEMANBBAwoAAAAAAQEGABwCAQEGAAAABAgYAAAAAAA4AAAAAAAAAP8dAQAAAAAAf/8EAA=="},"digest-alg":"","digest":"HpSq7SrVmkQJ8yMNyirYwD744/3nfMR9x7gbuLJC8+Y="}`)
 
 	var info *LoadedImageInfo
 	c.Check(json.Unmarshal(data, &info), ErrorMatches, `unrecognized hash algorithm`)
 }
 
 func (s *errorsSuite) TestLoadedImageInfoUnmashalErrInvalidDevicePath(c *C) {
-	data := []byte(`{"format":"blob","device-path":{"string":"","bytes":""},"digest-alg":"sha256","digest":"ERrlKxeySHNIs9q8gLiVvCXkV6sFWScKyvNGAaAHcp0="}`)
+	data := []byte(`{"device-path":{"string":"","bytes":""},"digest-alg":"sha256","digest":"HpSq7SrVmkQJ8yMNyirYwD744/3nfMR9x7gbuLJC8+Y="}`)
 
 	var info *LoadedImageInfo
 	c.Check(json.Unmarshal(data, &info), ErrorMatches, `cannot decode device path: cannot decode node 0: unexpected EOF`)
@@ -232,7 +204,6 @@ func (s *errorsSuite) TestLoadedImageInfoUnmashalErrInvalidDevicePath(c *C) {
 
 func (s *errorsSuite) TestLoadedImageInfoMarshalString1(c *C) {
 	info := &LoadedImageInfo{
-		Format: LoadedImageFormatPE,
 		DevicePath: efi.DevicePath{
 			&efi.ACPIDevicePathNode{
 				HID: 0x0a0341d0,
@@ -260,17 +231,6 @@ func (s *errorsSuite) TestLoadedImageInfoMarshalString1(c *C) {
 
 func (s *errorsSuite) TestLoadedImageInfoMarshalString2(c *C) {
 	info := &LoadedImageInfo{
-		Format:    LoadedImageFormatBlob,
-		DigestAlg: tpm2.HashAlgorithmSHA256,
-		Digest:    testutil.DecodeHexString(c, "111ae52b17b2487348b3dabc80b895bc25e457ab0559270acaf34601a007729d"),
-	}
-
-	c.Check(info.String(), Equals, `[no description] digest=TPM_ALG_SHA256:111ae52b17b2487348b3dabc80b895bc25e457ab0559270acaf34601a007729d`)
-}
-
-func (s *errorsSuite) TestLoadedImageInfoMarshalString3(c *C) {
-	info := &LoadedImageInfo{
-		Format:         LoadedImageFormatPE,
 		Description:    "Mock sysprep app",
 		LoadOptionName: "SysPrep0001",
 		DevicePath: efi.DevicePath{
