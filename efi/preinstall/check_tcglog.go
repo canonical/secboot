@@ -608,8 +608,7 @@ func checkPCRBankNotEnabledAndEmpty(tpm *tpm2.TPMContext, alg tpm2.HashAlgorithm
 type checkFirmwareLogFlags int
 
 const (
-	checkFirmwareLogPermitEmptyPCRBanks checkFirmwareLogFlags = 1 << iota
-	checkFirmwareLogPermitWeakPCRBanks
+	checkFirmwareLogPermitWeakPCRBanks checkFirmwareLogFlags = 1 << iota
 )
 
 // checkFirmwareLogAndChoosePCRBank verifies that the firmware TCG log is in crypto-agile form and
@@ -675,16 +674,14 @@ func checkFirmwareLogAndChoosePCRBank(tpm *tpm2.TPMContext, log *tcglog.Log, man
 		case tpm2.IsTPMError(err, tpm2.AnyErrorCode, tpm2.AnyCommandCode):
 			return nil, fmt.Errorf("cannot check TCG log against TPM for algorithm %v: %w", alg, err)
 		case errors.Is(err, ErrPCRBankMissingFromLog):
-			if flags&checkFirmwareLogPermitEmptyPCRBanks == 0 {
-				// Make sure that the TPM PCR bank is not enabled, and if it is,
-				// that it doesn't contain any empty PCRs.
-				emptyPcrs, err := checkPCRBankNotEnabledAndEmpty(tpm, alg)
-				switch {
-				case err != nil:
-					return nil, fmt.Errorf("cannot determine whether PCR bank %v is active but empty on the TPM: %w", alg, err)
-				case len(emptyPcrs) > 0:
-					emptyBanks = append(emptyBanks, alg)
-				}
+			// Make sure that the TPM PCR bank is not enabled, and if it is,
+			// that it doesn't contain any empty PCRs.
+			emptyPcrs, err := checkPCRBankNotEnabledAndEmpty(tpm, alg)
+			switch {
+			case err != nil:
+				return nil, fmt.Errorf("cannot determine whether PCR bank %v is active but empty on the TPM: %w", alg, err)
+			case len(emptyPcrs) > 0:
+				emptyBanks = append(emptyBanks, alg)
 			}
 			fallthrough
 		case err != nil:

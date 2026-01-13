@@ -30,6 +30,29 @@ import (
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
+// isLaunchedFromFirmwareVolume indicates that the supplied event is associated
+// with an image launch from a firmware volume.
+func isLaunchedFromFirmwareVolume(ev *tcglog.Event) (yes bool, err error) {
+	// The caller should check this.
+	switch ev.EventType {
+	case tcglog.EventTypeEFIBootServicesDriver, tcglog.EventTypeEFIRuntimeServicesDriver, tcglog.EventTypeEFIBootServicesApplication:
+		// ok
+	default:
+		return false, fmt.Errorf("unexpected event type %v", ev.EventType)
+	}
+
+	data, ok := ev.Data.(*tcglog.EFIImageLoadEvent)
+	if !ok {
+		return false, fmt.Errorf("event has invalid event data: %w", ev.Data.(error))
+	}
+
+	if len(data.DevicePath) == 0 {
+		return false, errors.New("empty device path")
+	}
+
+	return data.DevicePath[0].CompoundType() == efi.DevicePathNodeFwVolType, nil
+}
+
 // checkDriversAndAppsMeasurements performs minimal checks on PCR 2, which is where
 // addon code from value-added-retailer components such as option ROMs and UEFI
 // drivers are measured.
@@ -75,49 +98,54 @@ func checkDriversAndAppsMeasurements(ctx context.Context, env internal_efi.HostE
 			continue
 		}
 
+		// Only look for events related to loading of PE images that are authenticated using
+		// the authorized signature database. We ignore EV_EFI_PLATFORM_FIRMWARE_BLOB and
+		// EV_EFI_PLATFORM_FIRMWARE_BLOB2 events because these need to be authenticated using
+		// some other platform specific method.
 		switch ev.EventType {
 		case tcglog.EventTypeEFIBootServicesApplication, tcglog.EventTypeEFIBootServicesDriver, tcglog.EventTypeEFIRuntimeServicesDriver:
 			data, ok := ev.Data.(*tcglog.EFIImageLoadEvent)
 			if !ok {
 				return nil, fmt.Errorf("invalid %v event data: %w", ev.EventType, ev.Data.(error))
 			}
-			opt, n, err := matchLaunchToLoadOption(ev, driverLoadOrder, driverLoadOpts...)
-			if err != nil {
-				return nil, fmt.Errorf("cannot match %v event for %v to a driver load option: %w", ev.EventType, data.DevicePath, err)
+
+			// Ignore the launch if it's loaded from a firmware volume (these are stored on the
+			// SPI flash). We only want to keep launches that are authenticated using the secure boot
+			// authorized signature database so that we can surface drivers that are signed by a secure
+			// boot authority that's not trusted to do so. The platform firmware will contain a policy
+			// that determines whether image verification is required based on the source of the image (eg,
+			// flash volume, internal storage, removable storage, option ROM). We don't know the policy
+			// but this will generally be configured to not require image verification for firmware
+			// volumes (as early firmware code verifies firmware volumes separately) and to require image
+			// verification for everything else. Drivers loaded from firmware volumes are not really addon
+			// drivers in any case.
+			switch yes, err := isLaunchedFromFirmwareVolume(ev); {
+			case err != nil:
+				return nil, fmt.Errorf("cannot determine if %v event for %v was loaded from an option ROM: %w", ev.EventType, data.DevicePath, err)
+			case yes:
+				// ignore
+			default:
+				opt, n, err := matchLaunchToLoadOption(ev, driverLoadOrder, driverLoadOpts...)
+				if err != nil {
+					return nil, fmt.Errorf("cannot match %v event for %v to a driver load option: %w", ev.EventType, data.DevicePath, err)
+				}
+				var (
+					description    string
+					loadOptionName string
+				)
+				if opt != nil {
+					description = opt.Description
+					loadOptionName = efi.FormatLoadOptionVariableName(efi.LoadOptionClassDriver, n)
+				}
+
+				addonDrivers = append(addonDrivers, &LoadedImageInfo{
+					Description:    description,
+					LoadOptionName: loadOptionName,
+					DevicePath:     data.DevicePath,
+					DigestAlg:      pcrAlg,
+					Digest:         ev.Digests[pcrAlg],
+				})
 			}
-			var (
-				description    string
-				loadOptionName string
-			)
-			if opt != nil {
-				description = opt.Description
-				loadOptionName = efi.FormatLoadOptionVariableName(efi.LoadOptionClassDriver, n)
-			}
-			addonDrivers = append(addonDrivers, &LoadedImageInfo{
-				Format:         LoadedImageFormatPE,
-				Description:    description,
-				LoadOptionName: loadOptionName,
-				DevicePath:     data.DevicePath,
-				DigestAlg:      pcrAlg,
-				Digest:         ev.Digests[pcrAlg],
-			})
-		case tcglog.EventTypeEFIPlatformFirmwareBlob:
-			addonDrivers = append(addonDrivers, &LoadedImageInfo{
-				Format:    LoadedImageFormatBlob,
-				DigestAlg: pcrAlg,
-				Digest:    ev.Digests[pcrAlg],
-			})
-		case tcglog.EventTypeEFIPlatformFirmwareBlob2:
-			data, ok := ev.Data.(*tcglog.EFIPlatformFirmwareBlob2)
-			if !ok {
-				return nil, fmt.Errorf("invalid EV_EFI_PLATFORM_FIRMWARE_BLOB2 event data: %w", ev.Data.(error))
-			}
-			addonDrivers = append(addonDrivers, &LoadedImageInfo{
-				Format:      LoadedImageFormatBlob,
-				Description: data.BlobDescription,
-				DigestAlg:   pcrAlg,
-				Digest:      ev.Digests[pcrAlg],
-			})
 		}
 	}
 
