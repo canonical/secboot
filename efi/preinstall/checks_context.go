@@ -61,6 +61,9 @@ var errorKindToActions map[ErrorKind][]Action
 // to ignore the error. Not all errors can be ignored in this way.
 var errorKindToProceedFlag map[ErrorKind]CheckFlags
 
+// unsupportedPcrs are the PCRs that are currently unsupported.
+var unsupportedPcrs tpm2.HandleList
+
 func init() {
 	errorKindToActions = map[ErrorKind][]Action{
 		ErrorKindShutdownRequired: []Action{
@@ -162,6 +165,12 @@ func init() {
 		ErrorKindAbsolutePresent:                  PermitAbsoluteComputrace,
 		ErrorKindWeakSecureBootAlgorithmsDetected: PermitWeakSecureBootAlgorithms,
 		ErrorKindPreOSDigestVerificationDetected:  PermitPreOSVerificationUsingDigests,
+	}
+
+	unsupportedPcrs = tpm2.HandleList{
+		internal_efi.PlatformConfigPCR,
+		internal_efi.DriversAndAppsConfigPCR,
+		internal_efi.BootManagerConfigPCR,
 	}
 }
 
@@ -515,8 +524,8 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 	var pcPcrErr *PlatformConfigPCRError
 	if errors.As(err, &pcPcrErr) {
 		return errorInfo{
-			kind: ErrorKindPCRUnsupported,
-			args: &PCRUnsupportedArgs{PCR: internal_efi.PlatformConfigPCR, URL: "https://github.com/canonical/secboot/issues/322"},
+			kind: ErrorKindPCRUnusable,
+			args: PCRUnusableArg(internal_efi.PlatformConfigPCR),
 		}, nil
 	}
 
@@ -540,8 +549,8 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 	var dacPcrErr *DriversAndAppsConfigPCRError
 	if errors.As(err, &dacPcrErr) {
 		return errorInfo{
-			kind: ErrorKindPCRUnsupported,
-			args: &PCRUnsupportedArgs{PCR: internal_efi.DriversAndAppsConfigPCR, URL: "https://github.com/canonical/secboot/issues/341"},
+			kind: ErrorKindPCRUnusable,
+			args: PCRUnusableArg(internal_efi.DriversAndAppsConfigPCR),
 		}, nil
 	}
 
@@ -567,8 +576,8 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 	var bmccPcrErr *BootManagerConfigPCRError
 	if errors.As(err, &bmccPcrErr) {
 		return errorInfo{
-			kind: ErrorKindPCRUnsupported,
-			args: &PCRUnsupportedArgs{PCR: internal_efi.BootManagerConfigPCR, URL: "https://github.com/canonical/secboot/issues/323"},
+			kind: ErrorKindPCRUnusable,
+			args: PCRUnusableArg(internal_efi.BootManagerConfigPCR),
 		}, nil
 	}
 
@@ -908,6 +917,18 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 					)
 				}
 
+				if info.kind == ErrorKindPCRUnusable {
+					pcr := tpm2.Handle(info.args.(PCRUnusableArg))
+					for _, unsupported := range unsupportedPcrs {
+						if pcr == unsupported {
+							// Drop actions for a PCR that we don't yet support.
+							// The only assigned action is ActionContactOEM, but that's
+							// not appropriate in this scenario.
+							actions = nil
+							break
+						}
+					}
+				}
 				if _, canProceed := errorKindToProceedFlag[info.kind]; !canProceed {
 					// This error kind doesn't support ActionProceed. Don't
 					// permit it at all for now, waiting until all of the errors

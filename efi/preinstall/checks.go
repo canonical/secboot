@@ -350,7 +350,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 
 	if logResults.Lookup(internal_efi.PlatformConfigPCR).Ok() {
 		// PCR1 profiles are not supported yet.
-		err := &PlatformConfigPCRError{errors.New("generating profiles for PCR 1 is not supported yet")}
+		err := &PlatformConfigPCRError{errors.New("generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322")}
 		switch {
 		case flags&PermitNoPlatformConfigProfileSupport == 0:
 			deferredErrs = append(deferredErrs, err)
@@ -375,7 +375,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 
 	if logResults.Lookup(internal_efi.DriversAndAppsConfigPCR).Ok() {
 		// PCR3 profiles are not supported yet
-		err := &DriversAndAppsConfigPCRError{errors.New("generating profiles for PCR 3 is not supported yet")}
+		err := &DriversAndAppsConfigPCRError{errors.New("generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341")}
 		switch {
 		case flags&PermitNoDriversAndAppsConfigProfileSupport == 0:
 			deferredErrs = append(deferredErrs, err)
@@ -407,7 +407,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 
 	if logResults.Lookup(internal_efi.BootManagerConfigPCR).Ok() {
 		// PCR5 profiles are not supported yet
-		err := &BootManagerConfigPCRError{errors.New("generating profiles for PCR 5 is not supported yet")}
+		err := &BootManagerConfigPCRError{errors.New("generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323")}
 		switch {
 		case flags&PermitNoBootManagerConfigProfileSupport == 0:
 			deferredErrs = append(deferredErrs, err)
