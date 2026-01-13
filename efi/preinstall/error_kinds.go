@@ -131,16 +131,6 @@ const (
 	// a more specific error kind.
 	ErrorKindMeasuredBoot ErrorKind = "measured-boot"
 
-	// ErrorKindEmptyPCRBanks indicates that one or more PCR banks thar are not
-	// present in the TCG log are enabled but have unused PCRs in the TCG defined
-	// space (ie, any of PCRs 0-7 are at their reset value). Whilst this isn't an
-	// issue for the FDE use case because we can just select a good bank, it does
-	// break remote attestation from this device, permitting an adversary to spoof
-	// arbitrary trusted platforms by replaying PCR extends from software. This
-	// will be accompanied with an argument of the type EmptyPCRBanksError. The
-	// EmptyPCRBanksError type describes the JSON format of the arguments.
-	ErrorKindEmptyPCRBanks ErrorKind = "empty-pcr-banks"
-
 	// ErrorKindTPMCommandFailed indicates that an error occurred whilst
 	// executing a TPM command. It will be accompanied with an argument of the
 	// type TPMErrorResponse. The TPMErrorResponse type describes the JSON format

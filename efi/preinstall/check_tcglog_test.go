@@ -340,26 +340,6 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankMultipleSHA384(c *C) {
 	})
 }
 
-func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSHA256WithEmptySHA384Bank(c *C) {
-	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
-	s.testCheckFirmwareLogAndChoosePCRBank(c, &testCheckFirmwareLogAndChoosePCRBankParams{
-		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
-		logAlgs:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		mandatoryPcrs: tpm2.HandleList{
-			internal_efi.PlatformFirmwarePCR,
-			internal_efi.PlatformConfigPCR,
-			internal_efi.DriversAndAppsPCR,
-			internal_efi.DriversAndAppsConfigPCR,
-			internal_efi.BootManagerCodePCR,
-			internal_efi.BootManagerConfigPCR,
-			internal_efi.PlatformManufacturerPCR,
-			internal_efi.SecureBootPolicyPCR,
-		},
-		flags:       CheckFirmwareLogPermitEmptyPCRBanks,
-		expectedAlg: tpm2.HashAlgorithmSHA256,
-	})
-}
-
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankSHA256StartupLocality3(c *C) {
 	s.testCheckFirmwareLogAndChoosePCRBank(c, &testCheckFirmwareLogAndChoosePCRBankParams{
 		enabledBanks:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
@@ -1025,7 +1005,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankTruncatedLog(c *C) {
 	c.Check(err, ErrorMatches, `reached the end of the log without seeing EV_SEPARATOR events in all TCG defined PCRs`)
 }
 
-func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankEmptyPCRBanksNotAllowed(c *C) {
+func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankWithEmptyPCRBanks(c *C) {
 	// Test that we get EmptyPCRBanksError when one PCR bank is empty.
 	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
 	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384)
@@ -1060,7 +1040,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankEmptyPCRBanksNotAllowe
 	c.Check(results.Ok(), testutil.IsTrue)
 }
 
-func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankMultipleEmptyPCRBanksNotAllowed(c *C) {
+func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankWithMultipleEmptyPCRBanks(c *C) {
 	// Test that EmptyPCRBanksError for multiple PCRs works.
 	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
 	s.allocatePCRBanks(c, tpm2.HashAlgorithmSHA1, tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384)

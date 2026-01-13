@@ -107,10 +107,6 @@ func init() {
 			ActionContactOEM,         // suggest contacting the OEM because of a firmware bug
 			// TODO: Add an action to reconfigure PCR banks via the PPI.
 		},
-		ErrorKindEmptyPCRBanks: []Action{
-			ActionContactOEM, // suggest contacting the OEM because of a firmware bug
-			// TODO: Add an action to reconfigure PCR banks via the PPI
-		},
 		ErrorKindInsufficientDMAProtection: []Action{
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to enable DMA protection.
 			ActionContactOEM,         // suggest contacting the OEM because of a firmware bug.
@@ -151,7 +147,6 @@ func init() {
 
 	errorKindToProceedFlag = map[ErrorKind]CheckFlags{
 		ErrorKindRunningInVM:                      PermitVirtualMachine,
-		ErrorKindEmptyPCRBanks:                    PermitEmptyPCRBanks,
 		ErrorKindInsufficientDMAProtection:        PermitInsufficientDMAProtection,
 		ErrorKindNoKernelIOMMU:                    PermitInsufficientDMAProtection,
 		ErrorKindAddonDriversPresent:              PermitAddonDrivers,
@@ -464,14 +459,6 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 			// TODO: Test this case
 			return errorInfo{kind: ErrorKindTPMCommunication}, nil
 		}
-	}
-
-	var emptyPcrsErr *EmptyPCRBanksError
-	if errors.As(err, &emptyPcrsErr) {
-		return errorInfo{
-			kind: ErrorKindEmptyPCRBanks,
-			args: emptyPcrsErr,
-		}, nil
 	}
 
 	var upErr *UnsupportedPlatformError

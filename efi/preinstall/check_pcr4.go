@@ -234,7 +234,6 @@ NextEvent:
 						}
 						if ok {
 							result.SysprepApps = append(result.SysprepApps, &LoadedImageInfo{
-								Format:         LoadedImageFormatPE,
 								Description:    opt.Description,
 								LoadOptionName: efi.FormatLoadOptionVariableName(efi.LoadOptionClassSysPrep, n),
 								DevicePath:     data.DevicePath,

@@ -429,174 +429,6 @@ C7E003CB
 
 // TODO: Test a good case that selects SHA1 without supplying the initial flag when we have an action to enable PermitWeakPCRBanks.
 
-func (s *runChecksContextSuite) TestRunGoodEmptySHA384FromInitialFlags(c *C) {
-	// Good test case on a fTPM despite an empty PCR bank, permitted by using
-	// PermitEmptyPCRBanks as an initial flag.
-	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
-
-	meiAttrs := map[string][]byte{
-		"fw_ver": []byte(`0:16.1.27.2176
-0:16.1.27.2176
-0:16.0.15.1624
-`),
-		"fw_status": []byte(`94000245
-09F10506
-00000020
-00004000
-00041F03
-C7E003CB
-`),
-	}
-	devices := []internal_efi.SysfsDevice{
-		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
-		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
-		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
-			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
-		)),
-	}
-
-	errs := s.testRun(c, &testRunChecksContextRunParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
-			efitest.WithSysfsDevices(devices...),
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
-				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
-		),
-		tpmPropertyModifiers: map[tpm2.Property]uint32{
-			tpm2.PropertyNVCountersMax:     0,
-			tpm2.PropertyPSFamilyIndicator: 1,
-			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
-		},
-		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
-		initialFlags: PermitEmptyPCRBanks,
-		loadedImages: []secboot_efi.Image{
-			&mockImage{
-				contents: []byte("mock shim executable"),
-				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
-				signatures: []*efi.WinCertificateAuthenticode{
-					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
-				},
-			},
-			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
-			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
-		},
-		profileOpts:               PCRProfileOptionsDefault,
-		actions:                   []actionAndArgs{{action: ActionNone}},
-		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
-		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
-		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
-			ErrorKindEmptyPCRBanks: nil,
-		},
-		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
-`,
-	})
-	c.Check(errs, HasLen, 0)
-}
-
-func (s *runChecksContextSuite) TestRunGoodActionProceedPermitEmptyPCRBanks(c *C) {
-	// Test that ActionProceed turns on PermitEmptyPCRBanks.
-	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
-
-	meiAttrs := map[string][]byte{
-		"fw_ver": []byte(`0:16.1.27.2176
-0:16.1.27.2176
-0:16.0.15.1624
-`),
-		"fw_status": []byte(`94000245
-09F10506
-00000020
-00004000
-00041F03
-C7E003CB
-`),
-	}
-	devices := []internal_efi.SysfsDevice{
-		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
-		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
-		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
-			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
-		)),
-	}
-
-	errs := s.testRun(c, &testRunChecksContextRunParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
-			efitest.WithSysfsDevices(devices...),
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
-				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
-		),
-		tpmPropertyModifiers: map[tpm2.Property]uint32{
-			tpm2.PropertyNVCountersMax:     0,
-			tpm2.PropertyPSFamilyIndicator: 1,
-			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
-		},
-		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
-		iterations:   2,
-		loadedImages: []secboot_efi.Image{
-			&mockImage{
-				contents: []byte("mock shim executable"),
-				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
-				signatures: []*efi.WinCertificateAuthenticode{
-					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
-				},
-			},
-			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
-			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
-		},
-		profileOpts: PCRProfileOptionsDefault,
-		actions: []actionAndArgs{
-			{action: ActionNone},
-			{action: ActionProceed},
-		},
-		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
-			switch i {
-			case 0:
-				c.Assert(errs, HasLen, 1)
-				c.Check(errs[0], DeepEquals, NewWithKindAndActionsErrorForTest(
-					ErrorKindEmptyPCRBanks,
-					map[string]json.RawMessage{"algs": []byte("[12]")},
-					[]Action{ActionProceed, ActionContactOEM},
-					&EmptyPCRBanksError{Algs: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384}},
-				))
-			}
-		},
-		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
-		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
-		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
-			ErrorKindEmptyPCRBanks: nil,
-		},
-		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
-`,
-	})
-	c.Check(errs, HasLen, 0)
-}
-
 func (s *runChecksContextSuite) TestRunGoodPermitInsufficientDMAProtectionFromInitialFlags(c *C) {
 	// Test case where there is an empty PCR bank, but it is permitted by
 	// supplying PermitInsufficientDMAProtection as an initial flag.
@@ -1682,7 +1514,6 @@ C7E003CB
 				c.Assert(errs, HasLen, 1)
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -1924,7 +1755,6 @@ C7E003CB
 `)
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format:         LoadedImageFormatPE,
 						Description:    "Mock sysprep app",
 						LoadOptionName: "SysPrep0001",
 						DevicePath: efi.DevicePath{
@@ -2396,7 +2226,6 @@ C7E003CB
 
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -2620,7 +2449,6 @@ C7E003CB
 
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -2770,7 +2598,6 @@ C7E003CB
 
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -5497,79 +5324,6 @@ C7E003CB
 	c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, &PCRUnsupportedArgs{PCR: 5, URL: "https://github.com/canonical/secboot/issues/323"}, nil, errs[2].Unwrap()))
 }
 
-func (s *runChecksContextSuite) TestRunBadEmptySHA384(c *C) {
-	// Test the error case where the TPM has a SHA384 bank enabled but
-	// unused by the firmware.
-	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
-
-	meiAttrs := map[string][]byte{
-		"fw_ver": []byte(`0:16.1.27.2176
-0:16.1.27.2176
-0:16.0.15.1624
-`),
-		"fw_status": []byte(`94000245
-09F10506
-00000020
-00004000
-00041F03
-C7E003CB
-`),
-	}
-	devices := []internal_efi.SysfsDevice{
-		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
-		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
-		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
-			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
-		)),
-	}
-
-	errs := s.testRun(c, &testRunChecksContextRunParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
-			efitest.WithSysfsDevices(devices...),
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
-				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
-		),
-		tpmPropertyModifiers: map[tpm2.Property]uint32{
-			tpm2.PropertyNVCountersMax:     0,
-			tpm2.PropertyPSFamilyIndicator: 1,
-			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
-		},
-		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
-		loadedImages: []secboot_efi.Image{
-			&mockImage{
-				contents: []byte("mock shim executable"),
-				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
-				signatures: []*efi.WinCertificateAuthenticode{
-					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
-				},
-			},
-			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
-			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
-		},
-		profileOpts:    PCRProfileOptionsDefault,
-		actions:        []actionAndArgs{{action: ActionNone}},
-		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
-	})
-	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsErrorForTest(
-		ErrorKindEmptyPCRBanks,
-		map[string]json.RawMessage{"algs": []byte("[12]")},
-		[]Action{ActionProceed, ActionContactOEM},
-		&EmptyPCRBanksError{Algs: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384}},
-	))
-}
-
 func (s *runChecksContextSuite) TestRunBadAddonDriversPresent(c *C) {
 	// Test the error case where value-added-retailer drivers have been detected
 	// but the initial flags do not permit these.
@@ -5638,7 +5392,6 @@ C7E003CB
 
 	imageInfo := []*LoadedImageInfo{
 		{
-			Format: LoadedImageFormatPE,
 			DevicePath: efi.DevicePath{
 				&efi.ACPIDevicePathNode{
 					HID: 0x0a0341d0,
@@ -5760,7 +5513,6 @@ C7E003CB
 `)
 	imageInfo := []*LoadedImageInfo{
 		{
-			Format:         LoadedImageFormatPE,
 			Description:    "Mock sysprep app",
 			LoadOptionName: "SysPrep0001",
 			DevicePath: efi.DevicePath{
@@ -6309,7 +6061,6 @@ C7E003CB
 
 	imageInfo := []*LoadedImageInfo{
 		{
-			Format: LoadedImageFormatPE,
 			DevicePath: efi.DevicePath{
 				&efi.ACPIDevicePathNode{
 					HID: 0x0a0341d0,
@@ -6518,8 +6269,8 @@ C7E003CB
 //	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, PCRUnusableArg(4), []Action{ActionContactOEM}, errs[1].Unwrap()))
 //}
 
-func (s *runChecksContextSuite) TestRunChecksBadEmptyPCRBankAndNoKernelIOMMU(c *C) {
-	// Test with a system that has an empty PCR bank and no kernel IOMMU.
+func (s *runChecksContextSuite) TestRunChecksBadInsufficientDMAProtectionAndNoKernelIOMMU(c *C) {
+	// Test with a system that has insufficient DMA protection and no kernel IOMMU.
 	// As both errors support ActionProceed, it is a valid action for
 	// both of the returned errors.
 	s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
@@ -6548,7 +6299,9 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
-				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				DMAProtection: efitest.DMAProtectionDisabled,
+			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
@@ -6565,7 +6318,7 @@ C7E003CB
 			tpm2.PropertyPSFamilyIndicator: 1,
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
-		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -6583,11 +6336,11 @@ C7E003CB
 	})
 	c.Assert(errs, HasLen, 2)
 
-	c.Check(errs[0], ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM`)
+	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware indicates that DMA protections are insufficient`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-		ErrorKindEmptyPCRBanks,
-		&EmptyPCRBanksError{Algs: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384}},
-		[]Action{ActionProceed, ActionContactOEM},
+		ErrorKindInsufficientDMAProtection,
+		nil,
+		[]Action{ActionRebootToFWSettings, ActionProceed, ActionContactOEM},
 		errs[0].Unwrap(),
 	))
 
@@ -6921,7 +6674,8 @@ C7E003CB
 				nil,
 			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
-				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				DMAProtection: efitest.DMAProtectionDisabled,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
@@ -6932,7 +6686,7 @@ C7E003CB
 			tpm2.PropertyPSFamilyIndicator: 1,
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
-		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		prepare: func(_ int) {
 			// Set an authorization value for the storage hierarchy.
 			s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("1234"))
@@ -6952,12 +6706,12 @@ C7E003CB
 		errs[0].Unwrap(),
 	))
 
-	c.Check(errs[1], ErrorMatches, `the PCR bank for TPM_ALG_SHA384 is missing from the TCG log but active and with one or more empty PCRs on the TPM`)
-	c.Check(errs[1], DeepEquals, NewWithKindAndActionsErrorForTest(
-		ErrorKindEmptyPCRBanks,
-		map[string]json.RawMessage{"algs": []byte("[12]")},
-		[]Action{ActionContactOEM},
-		&EmptyPCRBanksError{Algs: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA384}},
+	c.Check(errs[1], ErrorMatches, `error with system security: the platform firmware indicates that DMA protections are insufficient`)
+	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindInsufficientDMAProtection,
+		nil,
+		[]Action{ActionRebootToFWSettings, ActionContactOEM},
+		errs[1].Unwrap(),
 	))
 }
 
@@ -7033,7 +6787,6 @@ C7E003CB
 				c.Check(errs, HasLen, 1)
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -7157,7 +6910,6 @@ C7E003CB
 				c.Check(errs, HasLen, 1)
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -7281,7 +7033,6 @@ C7E003CB
 				c.Check(errs, HasLen, 1)
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -7408,7 +7159,6 @@ C7E003CB
 
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,
@@ -7550,7 +7300,6 @@ C7E003CB
 
 				imageInfo := []*LoadedImageInfo{
 					{
-						Format: LoadedImageFormatPE,
 						DevicePath: efi.DevicePath{
 							&efi.ACPIDevicePathNode{
 								HID: 0x0a0341d0,

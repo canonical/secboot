@@ -47,7 +47,6 @@ type (
 const (
 	AuthorityTrustBootCode                      = authorityTrustBootCode
 	AuthorityTrustDrivers                       = authorityTrustDrivers
-	CheckFirmwareLogPermitEmptyPCRBanks         = checkFirmwareLogPermitEmptyPCRBanks
 	CheckFirmwareLogPermitWeakPCRBanks          = checkFirmwareLogPermitWeakPCRBanks
 	CheckTPM2DevicePostInstall                  = checkTPM2DevicePostInstall
 	DetectVirtNone                              = detectVirtNone
@@ -77,6 +76,7 @@ var (
 	DetectVirtualization                                  = detectVirtualization
 	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
 	InsertActionProceed                                   = insertActionProceed
+	IsLaunchedFromFirmwareVolume                          = isLaunchedFromFirmwareVolume
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
 	IsPPIActionAvailable                                  = isPPIActionAvailable
 	IsTPMDiscrete                                         = isTPMDiscrete
