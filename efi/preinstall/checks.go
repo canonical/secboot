@@ -138,12 +138,6 @@ const (
 	// advisable.
 	PermitPreOSVerificationUsingDigests
 
-	// PermitEmptyPCRBanks will prevent RunChecks from returning an error if there are any PCR banks
-	// (those are PCR banks that are enabled but which firmware doesn't perform measurements to). This
-	// is generally ok for full-disk encryption, but completely breaks the remote attestation model
-	// because it allows an adversary to trivially spoof an entire trusted platform from software.
-	PermitEmptyPCRBanks
-
 	// PermitInsufficientDMAProtection will prevent RunChecks from returning an error if
 	// the firmware indicates that DMA remapping was disabled in the pre-OS environment,
 	// and/or if no kernel IOMMU support was detected.
@@ -265,9 +259,6 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	}
 
 	var checkLogFlags checkFirmwareLogFlags
-	if flags&PermitEmptyPCRBanks > 0 {
-		checkLogFlags |= checkFirmwareLogPermitEmptyPCRBanks
-	}
 	if flags&PermitWeakPCRBanks > 0 {
 		checkLogFlags |= checkFirmwareLogPermitWeakPCRBanks
 	}
@@ -279,8 +270,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		isInvalidTPMResponse(err) || isTPMCommunicationError(err):
 		return nil, &TPM2DeviceError{err}
 	case isEmptyPCRBanksError(err):
-		// Save this error and return it unwrapped when the checks complete
-		deferredErrs = append(deferredErrs, err)
+		// This is only a warning.
+		warnings = append(warnings, err)
 	case err != nil:
 		return nil, &MeasuredBootError{err}
 	}

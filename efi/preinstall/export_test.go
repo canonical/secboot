@@ -47,7 +47,6 @@ type (
 const (
 	AuthorityTrustBootCode                      = authorityTrustBootCode
 	AuthorityTrustDrivers                       = authorityTrustDrivers
-	CheckFirmwareLogPermitEmptyPCRBanks         = checkFirmwareLogPermitEmptyPCRBanks
 	CheckFirmwareLogPermitWeakPCRBanks          = checkFirmwareLogPermitWeakPCRBanks
 	CheckTPM2DevicePostInstall                  = checkTPM2DevicePostInstall
 	DetectVirtNone                              = detectVirtNone
