@@ -172,12 +172,6 @@ const (
 	// of the argument.
 	ErrorKindPCRUnusable ErrorKind = "tpm-pcr-unusable"
 
-	// ErrorKindPCRUnsupported indicates that a required PCR is currently unsupported
-	// by the efi sub-package. This will be accompanied by a PCRUnsupportedArgs argument to
-	// indicate the unsupported PCR and which contains a URL to a github issue. The
-	// PCRUnsupportedArgs type describes the JSON format of the arguments.
-	ErrorKindPCRUnsupported ErrorKind = "tpm-pcr-unsupported"
-
 	// ErrorKindAddonDriversPresent indicates that drivers running from value-added-retailer
 	// components were detected. Whilst these should generally be authenticated as part of the
 	// secure boot chain and the digsts of the executed code measured to the TPM, the presence of
@@ -248,13 +242,6 @@ func (a *PCRUnusableArg) UnmarshalJSON(data []byte) error {
 // PCR returns this argument as a PCR handle.
 func (a PCRUnusableArg) PCR() tpm2.Handle {
 	return tpm2.Handle(a)
-}
-
-// PCRUnsupportedArgs represents an unsupported PCR handle that can be
-// serialized to JSON.
-type PCRUnsupportedArgs struct {
-	PCR tpm2.Handle `json:"pcr"` // The unsupported PCR.
-	URL string      `json:"url"` // A URL to a github issue.
 }
 
 // LoadedImagesInfoArg provides information about loaded drivers or applications.

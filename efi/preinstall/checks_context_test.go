@@ -275,9 +275,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -347,9 +347,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -419,9 +419,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -501,9 +501,9 @@ C7E003CB
 		},
 		expectedWarningsMatch: `4 errors detected:
 - the platform firmware indicates that DMA protections are insufficient
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Assert(errs, HasLen, 0)
@@ -595,9 +595,9 @@ C7E003CB
 		},
 		expectedWarningsMatch: `4 errors detected:
 - the platform firmware indicates that DMA protections are insufficient
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Assert(errs, HasLen, 0)
@@ -669,9 +669,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -740,9 +740,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -790,9 +790,9 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `4 errors detected:
 - availability of TPM's lockout hierarchy was not checked because the lockout hierarchy has an authorization value set
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -866,9 +866,9 @@ C7E003CB
 		},
 		expectedWarningsMatch: `4 errors detected:
 - virtual machine environment detected
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -956,9 +956,9 @@ C7E003CB
 		},
 		expectedWarningsMatch: `4 errors detected:
 - virtual machine environment detected
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -1030,9 +1030,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -1106,9 +1106,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -1185,9 +1185,9 @@ C7E003CB
 		expectedFlags:             NoPlatformFirmwareProfileSupport | NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `4 errors detected:
 - error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0xe9995745ca25279ec699688b70488116fe4d9f053cb0991dd71e82e7edfa66b5, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\)
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -1269,9 +1269,9 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `4 errors detected:
 - error with drivers and apps \(PCR2\) measurements: PCR value mismatch \(actual from TPM 0xfa734a6a4d262d7405d47d48c0a1b127229ca808032555ad919ed5dd7c1f6519, reconstructed from log 0x3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969\)
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -1353,9 +1353,9 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `4 errors detected:
 - error with boot manager code \(PCR4\) measurements: PCR value mismatch \(actual from TPM 0x1c93930d6b26232e061eaa33ecf6341fae63ce598a0c6a26ee96a0828639c044, reconstructed from log 0x4bc74f3ffe49b4dd275c9f475887b68193e2db8348d72e1c3c9099c2dcfa85b0\)
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -1435,11 +1435,11 @@ C7E003CB
 			ErrorKindAddonDriversPresent: nil,
 		},
 		expectedWarningsMatch: `4 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - addon drivers were detected:
   - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -1561,11 +1561,11 @@ C7E003CB
 			ErrorKindAddonDriversPresent: nil,
 		},
 		expectedWarningsMatch: `4 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - addon drivers were detected:
   - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -1656,11 +1656,11 @@ C7E003CB
 			ErrorKindSysPrepApplicationsPresent: nil,
 		},
 		expectedWarningsMatch: `4 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
 - system preparation applications were detected:
   - Mock sysprep app path=\\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\Dell\\sysprep.efi authenticode-digest=TPM_ALG_SHA256:11b68a5ce0facfa4233cb71140e3d59c686bc7a176a49a520947c57247fe86f4 load-option=SysPrep0001
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -1800,11 +1800,11 @@ C7E003CB
 			ErrorKindSysPrepApplicationsPresent: nil,
 		},
 		expectedWarningsMatch: `4 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
 - system preparation applications were detected:
   - Mock sysprep app path=\\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\Dell\\sysprep.efi authenticode-digest=TPM_ALG_SHA256:11b68a5ce0facfa4233cb71140e3d59c686bc7a176a49a520947c57247fe86f4 load-option=SysPrep0001
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Assert(errs, HasLen, 0)
@@ -1880,10 +1880,10 @@ C7E003CB
 			ErrorKindAbsolutePresent: nil,
 		},
 		expectedWarningsMatch: `4 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
 - Absolute was detected to be active and it is advised that this is disabled
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -1973,10 +1973,10 @@ C7E003CB
 			ErrorKindAbsolutePresent: nil,
 		},
 		expectedWarningsMatch: `4 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
 - Absolute was detected to be active and it is advised that this is disabled
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -2058,10 +2058,10 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `4 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
 - error with boot manager code \(PCR4\) measurements: log contains unexpected EV_EFI_BOOT_SERVICES_APPLICATION digest for OS-present application mock image: log digest matches flat file digest \(0xd5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0\) which suggests an image loaded outside of the LoadImage API and firmware lacking support for the EFI_TCG2_PROTOCOL and/or the PE_COFF_IMAGE flag
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -2140,11 +2140,11 @@ C7E003CB
 			ErrorKindPreOSDigestVerificationDetected: nil,
 		},
 		expectedWarningsMatch: `5 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - addon drivers were detected:
   - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 - some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
 `,
 	})
@@ -2277,11 +2277,11 @@ C7E003CB
 			ErrorKindPreOSDigestVerificationDetected: nil,
 		},
 		expectedWarningsMatch: `5 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - addon drivers were detected:
   - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 - some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
 `,
 	})
@@ -2362,11 +2362,11 @@ C7E003CB
 			ErrorKindPreOSDigestVerificationDetected:  nil,
 		},
 		expectedWarningsMatch: `6 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - addon drivers were detected:
   - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 - a weak cryptographic algorithm was detected during secure boot verification
 - some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
 `,
@@ -2508,11 +2508,11 @@ C7E003CB
 			ErrorKindPreOSDigestVerificationDetected:  nil,
 		},
 		expectedWarningsMatch: `6 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - addon drivers were detected:
   - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 - a weak cryptographic algorithm was detected during secure boot verification
 - some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
 `,
@@ -2680,11 +2680,11 @@ C7E003CB
 			ErrorKindPreOSDigestVerificationDetected:  nil,
 		},
 		expectedWarningsMatch: `6 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - addon drivers were detected:
   - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 - a weak cryptographic algorithm was detected during secure boot verification
 - some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
 `,
@@ -2777,9 +2777,9 @@ C7E003CB
 		expectedWarningsMatch: `5 errors detected:
 - availability of TPM's lockout hierarchy was not checked because the lockout hierarchy has an authorization value set
 - error with TPM2 device: TPM is in DA lockout mode
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -2881,9 +2881,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -2989,9 +2989,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -3098,9 +3098,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -3174,9 +3174,9 @@ C7E003CB
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `4 errors detected:
 - error with system security: cannot enable partial mitigation against discrete TPM reset attacks
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -3254,9 +3254,9 @@ C7E003CB
 		expectedWarningsMatch: `5 errors detected:
 - error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0x420bd3899738e6b41dccd18253a556e152e2b107559b89cbf0cbf1661ff6ee55, reconstructed from log 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef\)
 - error with system security: cannot enable partial mitigation against discrete TPM reset attacks
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Assert(errs, HasLen, 0)
@@ -5236,14 +5236,14 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 3)
-	c.Check(errs[0], ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, &PCRUnsupportedArgs{PCR: 1, URL: "https://github.com/canonical/secboot/issues/322"}, nil, errs[0].Unwrap()))
+	c.Check(errs[0], ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, PCRUnusableArg(1), nil, errs[0].Unwrap()))
 
-	c.Check(errs[1], ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
-	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, &PCRUnsupportedArgs{PCR: 3, URL: "https://github.com/canonical/secboot/issues/341"}, nil, errs[1].Unwrap()))
+	c.Check(errs[1], ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
+	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, PCRUnusableArg(3), nil, errs[1].Unwrap()))
 
-	c.Check(errs[2], ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
-	c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, &PCRUnsupportedArgs{PCR: 5, URL: "https://github.com/canonical/secboot/issues/323"}, nil, errs[2].Unwrap()))
+	c.Check(errs[2], ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
+	c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, PCRUnusableArg(5), nil, errs[2].Unwrap()))
 }
 
 func (s *runChecksContextSuite) TestRunBadInvalidPCR7ValuePCRProfilePermitNoSecureBoot(c *C) {
@@ -5314,14 +5314,14 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 3)
-	c.Check(errs[0], ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, &PCRUnsupportedArgs{PCR: 1, URL: "https://github.com/canonical/secboot/issues/322"}, nil, errs[0].Unwrap()))
+	c.Check(errs[0], ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, PCRUnusableArg(1), nil, errs[0].Unwrap()))
 
-	c.Check(errs[1], ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
-	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, &PCRUnsupportedArgs{PCR: 3, URL: "https://github.com/canonical/secboot/issues/341"}, nil, errs[1].Unwrap()))
+	c.Check(errs[1], ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
+	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, PCRUnusableArg(3), nil, errs[1].Unwrap()))
 
-	c.Check(errs[2], ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
-	c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnsupported, &PCRUnsupportedArgs{PCR: 5, URL: "https://github.com/canonical/secboot/issues/323"}, nil, errs[2].Unwrap()))
+	c.Check(errs[2], ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
+	c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, PCRUnusableArg(5), nil, errs[2].Unwrap()))
 }
 
 func (s *runChecksContextSuite) TestRunBadAddonDriversPresent(c *C) {
@@ -7615,9 +7615,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Assert(errs, HasLen, 1)
@@ -7730,9 +7730,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Assert(errs, HasLen, 1)
@@ -7858,9 +7858,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Assert(errs, HasLen, 1)
@@ -7970,9 +7970,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Assert(errs, HasLen, 1)
@@ -8087,9 +8087,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Assert(errs, HasLen, 1)
@@ -8206,9 +8206,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Assert(errs, HasLen, 1)
@@ -8330,9 +8330,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedWarningsMatch: `3 errors detected:
-- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet
-- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet
-- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 	})
 	c.Assert(errs, HasLen, 1)

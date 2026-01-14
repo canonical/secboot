@@ -61,6 +61,9 @@ var errorKindToActions map[ErrorKind][]Action
 // to ignore the error. Not all errors can be ignored in this way.
 var errorKindToProceedFlag map[ErrorKind]CheckFlags
 
+// unsupportedPcrs are the PCRs that are currently unsupported.
+var unsupportedPcrs tpm2.HandleList
+
 func init() {
 	errorKindToActions = map[ErrorKind][]Action{
 		ErrorKindShutdownRequired: []Action{
@@ -154,6 +157,12 @@ func init() {
 		ErrorKindAbsolutePresent:                  PermitAbsoluteComputrace,
 		ErrorKindWeakSecureBootAlgorithmsDetected: PermitWeakSecureBootAlgorithms,
 		ErrorKindPreOSDigestVerificationDetected:  PermitPreOSVerificationUsingDigests,
+	}
+
+	unsupportedPcrs = tpm2.HandleList{
+		internal_efi.PlatformConfigPCR,
+		internal_efi.DriversAndAppsConfigPCR,
+		internal_efi.BootManagerConfigPCR,
 	}
 }
 
@@ -293,8 +302,25 @@ func (c *RunChecksContext) disableActionsOnLockoutHierarchyUnavailable() {
 // filterUnavailableActions will filter out any actions in the supplied slice
 // that are unavailable, and return a new slice containing only actions that
 // are available.
-func (c *RunChecksContext) filterUnavailableActions(actions []Action) (out []Action, err error) {
+func (c *RunChecksContext) filterUnavailableActions(info errorInfo, actions []Action) (out []Action, err error) {
 	for _, action := range actions {
+		if info.kind == ErrorKindPCRUnusable {
+			var dropAction bool
+			pcr := tpm2.Handle(info.args.(PCRUnusableArg))
+			for _, unsupported := range unsupportedPcrs {
+				if pcr == unsupported {
+					// Drop actions for a PCR that we don't yet support.
+					// The only assigned action is ActionContactOEM, but that's
+					// not appropriate in this scenario.
+					dropAction = true
+					break
+				}
+			}
+			if dropAction {
+				continue
+			}
+		}
+
 		available, tested := c.availableActions[action]
 		switch {
 		case !tested:
@@ -495,8 +521,8 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 	var pcPcrErr *PlatformConfigPCRError
 	if errors.As(err, &pcPcrErr) {
 		return errorInfo{
-			kind: ErrorKindPCRUnsupported,
-			args: &PCRUnsupportedArgs{PCR: internal_efi.PlatformConfigPCR, URL: "https://github.com/canonical/secboot/issues/322"},
+			kind: ErrorKindPCRUnusable,
+			args: PCRUnusableArg(internal_efi.PlatformConfigPCR),
 		}, nil
 	}
 
@@ -520,8 +546,8 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 	var dacPcrErr *DriversAndAppsConfigPCRError
 	if errors.As(err, &dacPcrErr) {
 		return errorInfo{
-			kind: ErrorKindPCRUnsupported,
-			args: &PCRUnsupportedArgs{PCR: internal_efi.DriversAndAppsConfigPCR, URL: "https://github.com/canonical/secboot/issues/341"},
+			kind: ErrorKindPCRUnusable,
+			args: PCRUnusableArg(internal_efi.DriversAndAppsConfigPCR),
 		}, nil
 	}
 
@@ -547,8 +573,8 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 	var bmccPcrErr *BootManagerConfigPCRError
 	if errors.As(err, &bmccPcrErr) {
 		return errorInfo{
-			kind: ErrorKindPCRUnsupported,
-			args: &PCRUnsupportedArgs{PCR: internal_efi.BootManagerConfigPCR, URL: "https://github.com/canonical/secboot/issues/323"},
+			kind: ErrorKindPCRUnusable,
+			args: PCRUnusableArg(internal_efi.BootManagerConfigPCR),
 		}, nil
 	}
 
@@ -879,7 +905,7 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 			// for each one with associated actions.
 			for _, info := range errInfo {
 				actions := errorKindToActions[info.kind]
-				actions, err = c.filterUnavailableActions(actions)
+				actions, err = c.filterUnavailableActions(info, actions)
 				if err != nil {
 					return nil, NewWithKindAndActionsError(
 						ErrorKindInternal,

@@ -191,17 +191,17 @@ C7E003CB
 	c.Assert(warnings, HasLen, 3)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -274,17 +274,17 @@ C7E003CB
 	c.Assert(warnings, HasLen, 3)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -353,17 +353,17 @@ C7E003CB
 	c.Assert(warnings, HasLen, 3)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -437,17 +437,17 @@ C7E003CB
 	c.Check(errors.As(warning, &epbe), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -517,17 +517,17 @@ C7E003CB
 	c.Assert(warnings, HasLen, 3)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -580,17 +580,17 @@ func (s *runChecksSuite) TestRunChecksGoodVirtualMachine(c *C) {
 	c.Check(warning, Equals, ErrVirtualMachineDetected)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -665,17 +665,17 @@ C7E003CB
 	c.Check(errors.Is(hse, ErrNoPartialDiscreteTPMResetAttackMitigation), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -747,17 +747,17 @@ C7E003CB
 	c.Assert(warnings, HasLen, 3)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -835,17 +835,17 @@ C7E003CB
 	c.Check(errors.Is(hse, ErrNoPartialDiscreteTPMResetAttackMitigation), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -917,17 +917,17 @@ C7E003CB
 	c.Assert(warnings, HasLen, 3)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -1005,17 +1005,17 @@ C7E003CB
 	c.Check(errors.Is(hse, ErrNoPartialDiscreteTPMResetAttackMitigation), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -1093,17 +1093,17 @@ C7E003CB
 	c.Check(errors.As(warning, &pfe), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -1187,17 +1187,17 @@ C7E003CB
 	c.Check(errors.Is(hse, ErrNoPartialDiscreteTPMResetAttackMitigation), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[4]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -1277,17 +1277,17 @@ C7E003CB
 	c.Check(errors.As(warning, &de), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -1367,17 +1367,17 @@ C7E003CB
 	c.Check(errors.As(warning, &bme), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -1457,17 +1457,17 @@ C7E003CB
 	c.Check(errors.As(warning, &sbe), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -1539,7 +1539,7 @@ C7E003CB
 	c.Assert(warnings, HasLen, 4)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
@@ -1575,12 +1575,12 @@ C7E003CB
 	})
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -1661,7 +1661,7 @@ C7E003CB
 	c.Check(errors.As(warning, &de), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
@@ -1697,12 +1697,12 @@ C7E003CB
 	})
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[4]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -1788,12 +1788,12 @@ C7E003CB
 	c.Assert(warnings, HasLen, 4)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
@@ -1834,7 +1834,7 @@ C7E003CB
 	})
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -1929,12 +1929,12 @@ C7E003CB
 	c.Check(errors.As(warning, &bme), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
@@ -1975,7 +1975,7 @@ C7E003CB
 	})
 
 	warning = warnings[4]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -2047,12 +2047,12 @@ C7E003CB
 	c.Assert(warnings, HasLen, 4)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
@@ -2060,7 +2060,7 @@ C7E003CB
 	c.Check(warning, Equals, ErrAbsoluteComputraceActive)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -2141,12 +2141,12 @@ C7E003CB
 	c.Check(errors.As(warning, &bme), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
@@ -2154,7 +2154,7 @@ C7E003CB
 	c.Check(warning, Equals, ErrAbsoluteComputraceActive)
 
 	warning = warnings[4]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -2228,12 +2228,12 @@ C7E003CB
 	c.Assert(warnings, HasLen, 4)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
@@ -2243,7 +2243,7 @@ C7E003CB
 	c.Check(errors.As(warning, &bme), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -2316,7 +2316,7 @@ C7E003CB
 	c.Assert(warnings, HasLen, 5)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
@@ -2352,12 +2352,12 @@ C7E003CB
 	})
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 
@@ -2442,7 +2442,7 @@ C7E003CB
 	c.Check(errors.As(warning, &sbe), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
@@ -2478,12 +2478,12 @@ C7E003CB
 	})
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[4]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 
@@ -2559,7 +2559,7 @@ C7E003CB
 	c.Assert(warnings, HasLen, 6)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
@@ -2595,12 +2595,12 @@ C7E003CB
 	})
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 
@@ -2688,7 +2688,7 @@ C7E003CB
 	c.Check(errors.As(warning, &sbe), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
@@ -2724,12 +2724,12 @@ C7E003CB
 	})
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[4]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 
@@ -2803,17 +2803,17 @@ C7E003CB
 	c.Assert(warnings, HasLen, 4)
 
 	warning := warnings[0]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 
@@ -2898,17 +2898,17 @@ C7E003CB
 	c.Check(errors.Is(tde, ErrTPMLockout), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -2985,17 +2985,17 @@ C7E003CB
 	c.Check(errors.Is(warning, ErrTPMLockoutAvailabilityNotChecked), testutil.IsTrue)
 
 	warning = warnings[1]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
@@ -3571,7 +3571,7 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(err, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 
 	var ce CompoundError
 	c.Assert(err, Implements, &ce)
@@ -3641,7 +3641,7 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(err, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 
 	var ce CompoundError
 	c.Assert(err, Implements, &ce)
@@ -3711,7 +3711,7 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(err, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 
 	var ce CompoundError
 	c.Assert(err, Implements, &ce)
@@ -4921,17 +4921,17 @@ C7E003CB
 	c.Check(errors.Is(warning, ErrNoKernelIOMMU), testutil.IsTrue)
 
 	warning = warnings[2]
-	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322`)
 	var pce *PlatformConfigPCRError
 	c.Check(errors.As(warning, &pce), testutil.IsTrue)
 
 	warning = warnings[3]
-	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341`)
 	var dce *DriversAndAppsConfigPCRError
 	c.Check(errors.As(warning, &dce), testutil.IsTrue)
 
 	warning = warnings[4]
-	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet`)
+	c.Check(warning, ErrorMatches, `error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323`)
 	var bmce *BootManagerConfigPCRError
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
