@@ -208,12 +208,12 @@ const (
 	// certificate that is stored in db).
 	ErrorKindWeakSecureBootAlgorithmsDetected ErrorKind = "weak-secure-boot-algorithms-detected"
 
-	// ErrorKindPreOSDigestVerificationDetected indicates that pre-OS components were authenticated
-	// by matching their Authenticode digest to an entry in db. This means that db has to change with
-	// every firmware update, increasing the fragility of PCR7.
+	// ErrorKindPreOSSecureBootAuthByEnrolledDigests indicates that pre-OS components were
+	// authenticated by matching their Authenticode digest to a digest enrolled in db. This means
+	// that db has to change with every firmware update, increasing the fragility of PCR7.
 	// TODO: it might be worth attempting to match the verification with a corresponding
 	// launch event from PCR2 or PCR4 to grab the device path and include it as an argument.
-	ErrorKindPreOSDigestVerificationDetected ErrorKind = "pre-os-digest-verification-detected"
+	ErrorKindPreOSSecureBootAuthByEnrolledDigests ErrorKind = "pre-os-secure-boot-auth-by-enrolled-digests"
 )
 
 // PCRUnusableArg represents an unusable PCR handle that can be

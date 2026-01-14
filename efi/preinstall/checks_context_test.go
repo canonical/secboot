@@ -2067,9 +2067,9 @@ C7E003CB
 	c.Check(errs, HasLen, 0)
 }
 
-func (s *runChecksContextSuite) TestRunGoodPreOSVerificationUsingDigestsFromInitialFlags(c *C) {
+func (s *runChecksContextSuite) TestRunGoodPreOSSecureBootAuthByEnrolledDigestsFromInitialFlags(c *C) {
 	// Test a good case where there are value-added-retailer drivers being loaded,
-	// authenticated by way of a digest in db, permitted by supplying PermitPreOSVerificationUsingDigests
+	// authenticated by way of a digest in db, permitted by supplying PermitPreOSSecureBootAuthByEnrolledDigests
 	// as one of the initial flags.
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
@@ -2118,7 +2118,7 @@ C7E003CB
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		initialFlags: PermitAddonDrivers | PermitPreOSVerificationUsingDigests,
+		initialFlags: PermitAddonDrivers | PermitPreOSSecureBootAuthByEnrolledDigests,
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -2136,8 +2136,8 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
-			ErrorKindAddonDriversPresent:             nil,
-			ErrorKindPreOSDigestVerificationDetected: nil,
+			ErrorKindAddonDriversPresent:                  nil,
+			ErrorKindPreOSSecureBootAuthByEnrolledDigests: nil,
 		},
 		expectedWarningsMatch: `5 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
@@ -2145,14 +2145,14 @@ C7E003CB
   - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
-- some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
+- some pre-OS components were authenticated from the authorized signature database using an enrolled Authenticode digest
 `,
 	})
 	c.Check(errs, HasLen, 0)
 }
 
-func (s *runChecksContextSuite) TestRunGoodActionProceedPermitPreOSVerificationUsingDigests(c *C) {
-	// Test that ActionProceed enables the PermitPreOSVerificationUsingDigests flag. As
+func (s *runChecksContextSuite) TestRunGoodActionProceedPermitPreOSSecureBootAuthByEnrolledDigests(c *C) {
+	// Test that ActionProceed enables the PermitPreOSSecureBootAuthByEnrolledDigests flag. As
 	// this test generates 2 errors, it also tests the case where ActionProceed can
 	// be used to ignore multiple errors.
 	meiAttrs := map[string][]byte{
@@ -2262,10 +2262,10 @@ C7E003CB
 				))
 
 				c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindPreOSDigestVerificationDetected,
+					ErrorKindPreOSSecureBootAuthByEnrolledDigests,
 					nil,
 					[]Action{ActionProceed},
-					ErrPreOSVerificationUsingDigests,
+					ErrPreOSSecureBootAuthByEnrolledDigests,
 				))
 			}
 		},
@@ -2273,8 +2273,8 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
-			ErrorKindAddonDriversPresent:             nil,
-			ErrorKindPreOSDigestVerificationDetected: nil,
+			ErrorKindAddonDriversPresent:                  nil,
+			ErrorKindPreOSSecureBootAuthByEnrolledDigests: nil,
 		},
 		expectedWarningsMatch: `5 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
@@ -2282,7 +2282,7 @@ C7E003CB
   - \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
-- some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
+- some pre-OS components were authenticated from the authorized signature database using an enrolled Authenticode digest
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -2339,7 +2339,7 @@ C7E003CB
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		initialFlags: PermitAddonDrivers | PermitWeakSecureBootAlgorithms | PermitPreOSVerificationUsingDigests,
+		initialFlags: PermitAddonDrivers | PermitWeakSecureBootAlgorithms | PermitPreOSSecureBootAuthByEnrolledDigests,
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -2357,9 +2357,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
-			ErrorKindAddonDriversPresent:              nil,
-			ErrorKindWeakSecureBootAlgorithmsDetected: nil,
-			ErrorKindPreOSDigestVerificationDetected:  nil,
+			ErrorKindAddonDriversPresent:                  nil,
+			ErrorKindWeakSecureBootAlgorithmsDetected:     nil,
+			ErrorKindPreOSSecureBootAuthByEnrolledDigests: nil,
 		},
 		expectedWarningsMatch: `6 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
@@ -2368,7 +2368,7 @@ C7E003CB
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 - a weak cryptographic algorithm was detected during secure boot verification
-- some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
+- some pre-OS components were authenticated from the authorized signature database using an enrolled Authenticode digest
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -2492,10 +2492,10 @@ C7E003CB
 				))
 
 				c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindPreOSDigestVerificationDetected,
+					ErrorKindPreOSSecureBootAuthByEnrolledDigests,
 					nil,
 					[]Action{ActionProceed},
-					ErrPreOSVerificationUsingDigests,
+					ErrPreOSSecureBootAuthByEnrolledDigests,
 				))
 			}
 		},
@@ -2503,9 +2503,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
-			ErrorKindAddonDriversPresent:              nil,
-			ErrorKindWeakSecureBootAlgorithmsDetected: nil,
-			ErrorKindPreOSDigestVerificationDetected:  nil,
+			ErrorKindAddonDriversPresent:                  nil,
+			ErrorKindWeakSecureBootAlgorithmsDetected:     nil,
+			ErrorKindPreOSSecureBootAuthByEnrolledDigests: nil,
 		},
 		expectedWarningsMatch: `6 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
@@ -2514,7 +2514,7 @@ C7E003CB
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 - a weak cryptographic algorithm was detected during secure boot verification
-- some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
+- some pre-OS components were authenticated from the authorized signature database using an enrolled Authenticode digest
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -2589,7 +2589,7 @@ C7E003CB
 			{action: ActionNone},
 			{action: ActionProceed, args: ActionProceedArgs{ErrorKindAddonDriversPresent}},
 			{action: ActionProceed, args: ActionProceedArgs{ErrorKindWeakSecureBootAlgorithmsDetected}},
-			{action: ActionProceed, args: ActionProceedArgs{ErrorKindPreOSDigestVerificationDetected}},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindPreOSSecureBootAuthByEnrolledDigests}},
 		},
 		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
 			switch i {
@@ -2641,10 +2641,10 @@ C7E003CB
 				))
 
 				c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindPreOSDigestVerificationDetected,
+					ErrorKindPreOSSecureBootAuthByEnrolledDigests,
 					nil,
 					[]Action{ActionProceed},
-					ErrPreOSVerificationUsingDigests,
+					ErrPreOSSecureBootAuthByEnrolledDigests,
 				))
 			case 1:
 				c.Check(errs, HasLen, 2)
@@ -2656,18 +2656,18 @@ C7E003CB
 				))
 
 				c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindPreOSDigestVerificationDetected,
+					ErrorKindPreOSSecureBootAuthByEnrolledDigests,
 					nil,
 					[]Action{ActionProceed},
-					ErrPreOSVerificationUsingDigests,
+					ErrPreOSSecureBootAuthByEnrolledDigests,
 				))
 			case 2:
 				c.Check(errs, HasLen, 1)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindPreOSDigestVerificationDetected,
+					ErrorKindPreOSSecureBootAuthByEnrolledDigests,
 					nil,
 					[]Action{ActionProceed},
-					ErrPreOSVerificationUsingDigests,
+					ErrPreOSSecureBootAuthByEnrolledDigests,
 				))
 			}
 		},
@@ -2675,9 +2675,9 @@ C7E003CB
 		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
 		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
-			ErrorKindAddonDriversPresent:              nil,
-			ErrorKindWeakSecureBootAlgorithmsDetected: nil,
-			ErrorKindPreOSDigestVerificationDetected:  nil,
+			ErrorKindAddonDriversPresent:                  nil,
+			ErrorKindWeakSecureBootAlgorithmsDetected:     nil,
+			ErrorKindPreOSSecureBootAuthByEnrolledDigests: nil,
 		},
 		expectedWarningsMatch: `6 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
@@ -2686,7 +2686,7 @@ C7E003CB
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 - a weak cryptographic algorithm was detected during secure boot verification
-- some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
+- some pre-OS components were authenticated from the authorized signature database using an enrolled Authenticode digest
 `,
 	})
 	c.Check(errs, HasLen, 0)
@@ -6104,12 +6104,12 @@ C7E003CB
 		ErrWeakSecureBootAlgorithmDetected,
 	))
 
-	c.Check(errs[2], ErrorMatches, `some pre-OS components were authenticated from the authorized signature database using an Authenticode digest`)
+	c.Check(errs[2], ErrorMatches, `some pre-OS components were authenticated from the authorized signature database using an enrolled Authenticode digest`)
 	c.Check(errs[2], DeepEquals, NewWithKindAndActionsError(
-		ErrorKindPreOSDigestVerificationDetected,
+		ErrorKindPreOSSecureBootAuthByEnrolledDigests,
 		nil,
 		[]Action{ActionProceed},
-		ErrPreOSVerificationUsingDigests,
+		ErrPreOSSecureBootAuthByEnrolledDigests,
 	))
 }
 
@@ -7025,7 +7025,7 @@ C7E003CB
 		profileOpts: PCRProfileOptionsDefault,
 		actions: []actionAndArgs{
 			{action: ActionNone},
-			{action: ActionProceed, args: ActionProceedArgs{ErrorKindPreOSDigestVerificationDetected}},
+			{action: ActionProceed, args: ActionProceedArgs{ErrorKindPreOSSecureBootAuthByEnrolledDigests}},
 		},
 		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
 			switch i {
@@ -7072,7 +7072,7 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `invalid value for argument "error-kinds" at index 0: "pre-os-digest-verification-detected" is not expected`)
+	c.Check(errs[0], ErrorMatches, `invalid value for argument "error-kinds" at index 0: "pre-os-secure-boot-auth-by-enrolled-digests" is not expected`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInvalidArgument,
 		InvalidActionArgumentDetails{
@@ -7195,18 +7195,18 @@ C7E003CB
 				))
 
 				c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindPreOSDigestVerificationDetected,
+					ErrorKindPreOSSecureBootAuthByEnrolledDigests,
 					nil,
 					[]Action{ActionProceed},
-					ErrPreOSVerificationUsingDigests,
+					ErrPreOSSecureBootAuthByEnrolledDigests,
 				))
 			case 1:
 				c.Check(errs, HasLen, 1)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindPreOSDigestVerificationDetected,
+					ErrorKindPreOSSecureBootAuthByEnrolledDigests,
 					nil,
 					[]Action{ActionProceed},
-					ErrPreOSVerificationUsingDigests,
+					ErrPreOSSecureBootAuthByEnrolledDigests,
 				))
 			}
 		},
@@ -7336,10 +7336,10 @@ C7E003CB
 				))
 
 				c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindPreOSDigestVerificationDetected,
+					ErrorKindPreOSSecureBootAuthByEnrolledDigests,
 					nil,
 					[]Action{ActionProceed},
-					ErrPreOSVerificationUsingDigests,
+					ErrPreOSSecureBootAuthByEnrolledDigests,
 				))
 			}
 		},

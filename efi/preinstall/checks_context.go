@@ -143,20 +143,20 @@ func init() {
 		ErrorKindWeakSecureBootAlgorithmsDetected: []Action{
 			// TODO: Add action to add PermitWeakSecureBootAlgorithms to CheckFlags.
 		},
-		ErrorKindPreOSDigestVerificationDetected: []Action{
-			// TODO: Add action to add PermitPreOSVerificationUsingDigests to CheckFlags.
+		ErrorKindPreOSSecureBootAuthByEnrolledDigests: []Action{
+			// TODO: Add action to add PermitPreOSSecureBootAuthByEnrolledDigests to CheckFlags.
 		},
 	}
 
 	errorKindToProceedFlag = map[ErrorKind]CheckFlags{
-		ErrorKindRunningInVM:                      PermitVirtualMachine,
-		ErrorKindInsufficientDMAProtection:        PermitInsufficientDMAProtection,
-		ErrorKindNoKernelIOMMU:                    PermitInsufficientDMAProtection,
-		ErrorKindAddonDriversPresent:              PermitAddonDrivers,
-		ErrorKindSysPrepApplicationsPresent:       PermitSysPrepApplications,
-		ErrorKindAbsolutePresent:                  PermitAbsoluteComputrace,
-		ErrorKindWeakSecureBootAlgorithmsDetected: PermitWeakSecureBootAlgorithms,
-		ErrorKindPreOSDigestVerificationDetected:  PermitPreOSVerificationUsingDigests,
+		ErrorKindRunningInVM:                          PermitVirtualMachine,
+		ErrorKindInsufficientDMAProtection:            PermitInsufficientDMAProtection,
+		ErrorKindNoKernelIOMMU:                        PermitInsufficientDMAProtection,
+		ErrorKindAddonDriversPresent:                  PermitAddonDrivers,
+		ErrorKindSysPrepApplicationsPresent:           PermitSysPrepApplications,
+		ErrorKindAbsolutePresent:                      PermitAbsoluteComputrace,
+		ErrorKindWeakSecureBootAlgorithmsDetected:     PermitWeakSecureBootAlgorithms,
+		ErrorKindPreOSSecureBootAuthByEnrolledDigests: PermitPreOSSecureBootAuthByEnrolledDigests,
 	}
 
 	unsupportedPcrs = tpm2.HandleList{
@@ -584,8 +584,8 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 	if errors.Is(err, ErrWeakSecureBootAlgorithmDetected) {
 		return errorInfo{kind: ErrorKindWeakSecureBootAlgorithmsDetected}, nil
 	}
-	if errors.Is(err, ErrPreOSVerificationUsingDigests) {
-		return errorInfo{kind: ErrorKindPreOSDigestVerificationDetected}, nil
+	if errors.Is(err, ErrPreOSSecureBootAuthByEnrolledDigests) {
+		return errorInfo{kind: ErrorKindPreOSSecureBootAuthByEnrolledDigests}, nil
 	}
 
 	var sbPcrErr *SecureBootPolicyPCRError

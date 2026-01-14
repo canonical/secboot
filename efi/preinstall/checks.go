@@ -131,12 +131,12 @@ const (
 	// It is generally a bad idea to use this flag.
 	PermitWeakSecureBootAlgorithms
 
-	// PermitPreOSVerificationUsingDigests will prevent RunChecks from returning an error if any pre-OS
+	// PermitPreOSSecureBootAuthByEnrolledDigests will prevent RunChecks from returning an error if any pre-OS
 	// secure boot verifications use a type other than a X.509 certificate. The use of Authenticode digests
 	// in db make profiles that use [secboot_efi.WithSecureBootPolicyProfile] inherently fragile with
 	// regards to firmware updates because db has to be changed accordingly each time, so this is not
 	// advisable.
-	PermitPreOSVerificationUsingDigests
+	PermitPreOSSecureBootAuthByEnrolledDigests
 
 	// PermitInsufficientDMAProtection will prevent RunChecks from returning an error if
 	// the firmware indicates that DMA remapping was disabled in the pre-OS environment,
@@ -430,7 +430,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 			addDeferredErrorOrWarning(ErrWeakSecureBootAlgorithmDetected, PermitWeakSecureBootAlgorithms)
 		}
 		if pcr7Result.Flags&secureBootPreOSVerificationIncludesDigest > 0 {
-			addDeferredErrorOrWarning(ErrPreOSVerificationUsingDigests, PermitPreOSVerificationUsingDigests)
+			addDeferredErrorOrWarning(ErrPreOSSecureBootAuthByEnrolledDigests, PermitPreOSSecureBootAuthByEnrolledDigests)
 		}
 		result.UsedSecureBootCAs = pcr7Result.UsedAuthorities
 	}
