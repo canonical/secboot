@@ -107,9 +107,6 @@ func init() {
 			ActionContactOEM,         // suggest contacting the OEM because of a firmware bug
 			// TODO: Add an action to reconfigure PCR banks via the PPI.
 		},
-		ErrorKindUEFIDebuggingEnabled: []Action{
-			ActionContactOEM, // suggest contacting the OEM because of a firmware bug
-		},
 		ErrorKindInsufficientDMAProtection: []Action{
 			ActionRebootToFWSettings, // suggest rebooting to the firmware settings UI to enable DMA protection.
 			ActionContactOEM,         // suggest contacting the OEM because of a firmware bug.
@@ -471,10 +468,6 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 		// setting the CPU to an unknown type triggers an error there
 		// instead. This will land in a follow-up PR.
 		return errorInfo{kind: ErrorKindUnsupportedPlatform}, nil
-	}
-
-	if errors.Is(err, ErrUEFIDebuggingEnabled) {
-		return errorInfo{kind: ErrorKindUEFIDebuggingEnabled}, nil
 	}
 
 	if errors.Is(err, ErrInsufficientDMAProtection) {

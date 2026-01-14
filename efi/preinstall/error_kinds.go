@@ -153,10 +153,6 @@ const (
 	// there is a correctly configured hardware RTM.
 	ErrorKindUnsupportedPlatform ErrorKind = "unsupported-platform"
 
-	// ErrorKindUEFIDebuggingEnabled indicates that the platform firmware currently
-	// has a debugging endpoint enabled.
-	ErrorKindUEFIDebuggingEnabled ErrorKind = "uefi-debugging-enabled"
-
 	// ErrorKindInsufficientDMAProtection indicates that I/O DMA remapping was
 	// disabled during the current boot cycle.
 	ErrorKindInsufficientDMAProtection ErrorKind = "insufficient-dma-protection"
