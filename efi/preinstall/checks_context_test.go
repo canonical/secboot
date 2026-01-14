@@ -2067,7 +2067,7 @@ C7E003CB
 	c.Check(errs, HasLen, 0)
 }
 
-func (s *runChecksContextSuite) TestRunGoodPreOSVerificationUsingDigestsFromInitialFlags(c *C) {
+func (s *runChecksContextSuite) TestRunGoodPreOSSecureBootAuthByEnrolledDigestsFromInitialFlags(c *C) {
 	// Test a good case where there are value-added-retailer drivers being loaded,
 	// authenticated by way of a digest in db, permitted by supplying PermitPreOSSecureBootAuthByEnrolledDigests
 	// as one of the initial flags.

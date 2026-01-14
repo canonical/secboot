@@ -949,7 +949,7 @@ var (
 	// indicates that pre-OS components were authenticated using Authenticode digests rather than a
 	// X.509 certificate. This makes PCR7 inherently fragile with regards to firmware updates because db
 	// has to be changed accordingly each time.
-	// This can be bypassed by supplying the PermitPreOSVerificationUsingDigests flag to RunChecks, in
+	// This can be bypassed by supplying the PermitPreOSSecureBootAuthByEnrolledDigests flag to RunChecks, in
 	// which case, the error is returned as a warning via CheckResult.
 	//
 	// The check for pre-OS components authenticated using a digest may not execute if a

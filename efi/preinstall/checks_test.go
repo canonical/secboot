@@ -2248,7 +2248,7 @@ C7E003CB
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 }
 
-func (s *runChecksSuite) TestRunChecksGoodPreOSVerificationUsingDigests(c *C) {
+func (s *runChecksSuite) TestRunChecksGoodPreOSSecureBootAuthByEnrolledDigests(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -2365,7 +2365,7 @@ C7E003CB
 	c.Check(warning, Equals, ErrPreOSSecureBootAuthByEnrolledDigests)
 }
 
-func (s *runChecksSuite) TestRunChecksGoodPreOSVerificationUsingDigestsWithInvalidPCR7Value(c *C) {
+func (s *runChecksSuite) TestRunChecksGoodPreOSSecureBootAuthByEnrolledDigestsWithInvalidPCR7Value(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -4089,7 +4089,7 @@ C7E003CB
 	c.Check(errors.Is(errs[1], ErrPreOSSecureBootAuthByEnrolledDigests), testutil.IsTrue)
 }
 
-func (s *runChecksSuite) TestRunChecksBadPreOSVerificationUsingDigests(c *C) {
+func (s *runChecksSuite) TestRunChecksBadPreOSSecureBootAuthByEnrolledDigests(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
