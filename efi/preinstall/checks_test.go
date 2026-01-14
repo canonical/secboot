@@ -2296,7 +2296,7 @@ C7E003CB
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		flags:        PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport | PermitAddonDrivers | PermitPreOSVerificationUsingDigests,
+		flags:        PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport | PermitAddonDrivers | PermitPreOSSecureBootAuthByEnrolledDigests,
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -2362,7 +2362,7 @@ C7E003CB
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 
 	warning = warnings[4]
-	c.Check(warning, Equals, ErrPreOSVerificationUsingDigests)
+	c.Check(warning, Equals, ErrPreOSSecureBootAuthByEnrolledDigests)
 }
 
 func (s *runChecksSuite) TestRunChecksGoodPreOSVerificationUsingDigestsWithInvalidPCR7Value(c *C) {
@@ -2417,7 +2417,7 @@ C7E003CB
 			_, err := s.TPM.PCREvent(s.TPM.PCRHandleContext(7), []byte("foo"), nil)
 			c.Check(err, IsNil)
 		},
-		flags: PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport | PermitNoSecureBootPolicyProfileSupport | PermitAddonDrivers | PermitPreOSVerificationUsingDigests,
+		flags: PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport | PermitNoSecureBootPolicyProfileSupport | PermitAddonDrivers | PermitPreOSSecureBootAuthByEnrolledDigests,
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -2488,7 +2488,7 @@ C7E003CB
 	c.Check(errors.As(warning, &bmce), testutil.IsTrue)
 
 	warning = warnings[5]
-	c.Check(warning, Equals, ErrPreOSVerificationUsingDigests)
+	c.Check(warning, Equals, ErrPreOSSecureBootAuthByEnrolledDigests)
 }
 
 func (s *runChecksSuite) TestRunChecksGoodWeakSecureBootAlgs(c *C) {
@@ -2539,7 +2539,7 @@ C7E003CB
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		flags:        PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport | PermitAddonDrivers | PermitWeakSecureBootAlgorithms | PermitPreOSVerificationUsingDigests,
+		flags:        PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport | PermitAddonDrivers | PermitWeakSecureBootAlgorithms | PermitPreOSSecureBootAuthByEnrolledDigests,
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -2608,7 +2608,7 @@ C7E003CB
 	c.Check(warning, Equals, ErrWeakSecureBootAlgorithmDetected)
 
 	warning = warnings[5]
-	c.Check(warning, Equals, ErrPreOSVerificationUsingDigests)
+	c.Check(warning, Equals, ErrPreOSSecureBootAuthByEnrolledDigests)
 }
 
 func (s *runChecksSuite) TestRunChecksGoodWeakSecureBootAlgsWithInvalidPCR7Value(c *C) {
@@ -2663,7 +2663,7 @@ C7E003CB
 			_, err := s.TPM.PCREvent(s.TPM.PCRHandleContext(7), []byte("foo"), nil)
 			c.Check(err, IsNil)
 		},
-		flags: PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport | PermitNoSecureBootPolicyProfileSupport | PermitAddonDrivers | PermitWeakSecureBootAlgorithms | PermitPreOSVerificationUsingDigests,
+		flags: PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport | PermitNoSecureBootPolicyProfileSupport | PermitAddonDrivers | PermitWeakSecureBootAlgorithms | PermitPreOSSecureBootAuthByEnrolledDigests,
 		loadedImages: []secboot_efi.Image{
 			&mockImage{
 				contents: []byte("mock shim executable"),
@@ -2737,7 +2737,7 @@ C7E003CB
 	c.Check(warning, Equals, ErrWeakSecureBootAlgorithmDetected)
 
 	warning = warnings[6]
-	c.Check(warning, Equals, ErrPreOSVerificationUsingDigests)
+	c.Check(warning, Equals, ErrPreOSSecureBootAuthByEnrolledDigests)
 }
 
 func (s *runChecksSuite) TestRunChecksGoodNoSecureBootPolicyProfileSupport(c *C) {
@@ -4076,7 +4076,7 @@ C7E003CB
 	})
 	c.Check(err, ErrorMatches, `2 errors detected:
 - a weak cryptographic algorithm was detected during secure boot verification
-- some pre-OS components were authenticated from the authorized signature database using an Authenticode digest
+- some pre-OS components were authenticated from the authorized signature database using an enrolled Authenticode digest
 `)
 
 	var ce CompoundError
@@ -4086,7 +4086,7 @@ C7E003CB
 	c.Assert(errs, HasLen, 2)
 
 	c.Check(errors.Is(errs[0], ErrWeakSecureBootAlgorithmDetected), testutil.IsTrue)
-	c.Check(errors.Is(errs[1], ErrPreOSVerificationUsingDigests), testutil.IsTrue)
+	c.Check(errors.Is(errs[1], ErrPreOSSecureBootAuthByEnrolledDigests), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadPreOSVerificationUsingDigests(c *C) {
@@ -4151,7 +4151,7 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `some pre-OS components were authenticated from the authorized signature database using an Authenticode digest`)
+	c.Check(err, ErrorMatches, `some pre-OS components were authenticated from the authorized signature database using an enrolled Authenticode digest`)
 
 	var ce CompoundError
 	c.Assert(err, Implements, &ce)
@@ -4159,7 +4159,7 @@ C7E003CB
 	errs := ce.Unwrap()
 	c.Assert(errs, HasLen, 1)
 
-	c.Check(errors.Is(errs[0], ErrPreOSVerificationUsingDigests), testutil.IsTrue)
+	c.Check(errors.Is(errs[0], ErrPreOSSecureBootAuthByEnrolledDigests), testutil.IsTrue)
 }
 
 func (s *runChecksSuite) TestRunChecksBadEFIVariableAccessErrorBootOptionSupport(c *C) {

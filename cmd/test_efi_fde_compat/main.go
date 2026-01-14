@@ -14,15 +14,15 @@ import (
 
 type options struct {
 	Check struct {
-		PostInstall                         bool `long:"post-install" description:"Run the checks post-install rather than pre-install"`
-		PermitVM                            bool `long:"permit-vm" description:"Permit running inside of a virtual machine"`
-		PermitWeakPCRBanks                  bool `long:"permit-weak-pcr-banks" description:"Permit selecting a weak PCR bank if no others are available"`
-		PermitAddonDrivers                  bool `long:"permit-addon-drivers" description:"Allow addon drivers to be running. This increases fragility of profiles that include PCR2, and potentially PCR7"`
-		PermitSysPrepApplications           bool `long:"permit-sys-prep-apps" description:"Allow system preparation applications to load before the OS. This increases fragility of profiles that include PCR4, and potentially PCR7"`
-		PermitAbsolute                      bool `long:"permit-absolute" description:"Allow the Absolute endpoint management component to be running. This increases fragility of profiles that include PCR4"`
-		PermitWeakSecureBootAlgorithms      bool `long:"permit-weak-secure-boot-algs" description:"Permit secure boot verification using weak algorithms"`
-		PermitPreOSVerificationUsingDigests bool `long:"permit-preos-verification-using-digests" description:"Allow pre-OS components to be verified by including a digest in db. This increases fragility of profiles that include PCR7"`
-		PermitInsufficientDMAProtection     bool `long:"permit-insufficient-dma-protection" description:"Permit environments that don't have sufficient DMA protection"`
+		PostInstall                                bool `long:"post-install" description:"Run the checks post-install rather than pre-install"`
+		PermitVM                                   bool `long:"permit-vm" description:"Permit running inside of a virtual machine"`
+		PermitWeakPCRBanks                         bool `long:"permit-weak-pcr-banks" description:"Permit selecting a weak PCR bank if no others are available"`
+		PermitAddonDrivers                         bool `long:"permit-addon-drivers" description:"Allow addon drivers to be running. This increases fragility of profiles that include PCR2, and potentially PCR7"`
+		PermitSysPrepApplications                  bool `long:"permit-sys-prep-apps" description:"Allow system preparation applications to load before the OS. This increases fragility of profiles that include PCR4, and potentially PCR7"`
+		PermitAbsolute                             bool `long:"permit-absolute" description:"Allow the Absolute endpoint management component to be running. This increases fragility of profiles that include PCR4"`
+		PermitWeakSecureBootAlgorithms             bool `long:"permit-weak-secure-boot-algs" description:"Permit secure boot verification using weak algorithms"`
+		PermitPreOSSecureBootAuthByEnrolledDigests bool `long:"permit-preos-secure-boot-auth-by-enrolled-digests" description:"Allow pre-OS components to be verified by including a digest in db. This increases fragility of profiles that include PCR7"`
+		PermitInsufficientDMAProtection            bool `long:"permit-insufficient-dma-protection" description:"Permit environments that don't have sufficient DMA protection"`
 	} `group:"Initial check options"`
 
 	Profile struct {
@@ -69,8 +69,8 @@ func run() error {
 	if opts.Check.PermitWeakSecureBootAlgorithms {
 		checkFlags |= preinstall.PermitWeakSecureBootAlgorithms
 	}
-	if opts.Check.PermitPreOSVerificationUsingDigests {
-		checkFlags |= preinstall.PermitPreOSVerificationUsingDigests
+	if opts.Check.PermitPreOSSecureBootAuthByEnrolledDigests {
+		checkFlags |= preinstall.PermitPreOSSecureBootAuthByEnrolledDigests
 	}
 	if opts.Check.PermitInsufficientDMAProtection {
 		checkFlags |= preinstall.PermitInsufficientDMAProtection

@@ -945,7 +945,7 @@ var (
 	// returned, either as an error or as a warning.
 	ErrWeakSecureBootAlgorithmDetected = errors.New("a weak cryptographic algorithm was detected during secure boot verification")
 
-	// ErrPreOSVerificationUsingDigests is returned wrapped in a type that implements CompoundError and
+	// ErrPreOSSecureBootAuthByEnrolledDigests is returned wrapped in a type that implements CompoundError and
 	// indicates that pre-OS components were authenticated using Authenticode digests rather than a
 	// X.509 certificate. This makes PCR7 inherently fragile with regards to firmware updates because db
 	// has to be changed accordingly each time.
@@ -954,7 +954,7 @@ var (
 	//
 	// The check for pre-OS components authenticated using a digest may not execute if a
 	// SecureBootPolicyPCRError error is returned, either as an error or as a warning.
-	ErrPreOSVerificationUsingDigests = errors.New("some pre-OS components were authenticated from the authorized signature database using an Authenticode digest")
+	ErrPreOSSecureBootAuthByEnrolledDigests = errors.New("some pre-OS components were authenticated from the authorized signature database using an enrolled Authenticode digest")
 )
 
 // wrapPCRError wraps the supplied error with an error type for the specified PCR.
