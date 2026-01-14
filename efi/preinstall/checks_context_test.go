@@ -4800,7 +4800,7 @@ C7E003CB
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware contains a debugging endpoint enabled`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindUEFIDebuggingEnabled, nil, []Action{ActionContactOEM}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindHostSecurity, nil, []Action{ActionContactOEM}, errs[0].Unwrap()))
 }
 
 func (s *runChecksContextSuite) TestRunBadInsufficientDMAProtection(c *C) {
@@ -4904,10 +4904,10 @@ C7E003CB
 	))
 }
 
-func (s *runChecksContextSuite) TestRunChecksBadUEFIDebuggingEnabledAndNoKernelIOMMU(c *C) {
-	// Test case with more than one host security error. This also tests the case
-	// where ActionProceed is suppressed because one of the returned errors
-	// doesn't permit it.
+func (s *runChecksContextSuite) TestRunChecksBadTPMHierarchiesOwnedAndNoKernelIOMMU(c *C) {
+	// Test case where a TPM hierarchy is owned and there is a host security error.
+	// This tests the case where ActionProceed is suppressed because one of the returned
+	// errors doesn't permit it.
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -4930,11 +4930,19 @@ C7E003CB
 	errs := s.testRun(c, &testRunChecksContextRunParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
-				Algorithms:       []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-				StartupLocality:  3,
-				FirmwareDebugger: true,
+				Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				StartupLocality: 3,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
@@ -4945,12 +4953,23 @@ C7E003CB
 			tpm2.PropertyPSFamilyIndicator: 1,
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
+		prepare: func(_ int) {
+			// Set an authorization value for the storage hierarchy.
+			s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("1234"))
+		},
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 2)
-	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware contains a debugging endpoint enabled`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindUEFIDebuggingEnabled, nil, []Action{ActionContactOEM}, errs[0].Unwrap()))
+	c.Check(errs[0], ErrorMatches, `error with TPM2 device: one or more of the TPM hierarchies is already owned:
+- TPM_RH_OWNER has an authorization value
+`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindTPMHierarchiesOwned,
+		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleOwner}},
+		[]Action{ActionClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
+		errs[0].Unwrap(),
+	))
 
 	c.Check(errs[1], ErrorMatches, `error with system security: no kernel IOMMU support was detected`)
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
@@ -6563,9 +6582,7 @@ C7E003CB
 				&mockPPI{
 					sta: ppi.StateTransitionRebootRequired,
 					ops: map[ppi.OperationId]ppi.OperationStatus{
-						ppi.OperationEnableTPM:         ppi.OperationPPRequired,
-						ppi.OperationClearTPM:          ppi.OperationPPRequired,
-						ppi.OperationEnableAndClearTPM: ppi.OperationPPRequired,
+						ppi.OperationClearTPM: ppi.OperationPPRequired,
 					},
 				},
 				nil,
@@ -6605,7 +6622,7 @@ C7E003CB
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
 		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}},
-		[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
+		[]Action{ActionClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
 
@@ -6646,10 +6663,19 @@ C7E003CB
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
+			efitest.WithTPMDevice(newTpmDevice(
+				tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1),
+				&mockPPI{
+					sta: ppi.StateTransitionRebootRequired,
+					ops: map[ppi.OperationId]ppi.OperationStatus{
+						ppi.OperationClearTPM: ppi.OperationPPRequired,
+					},
+				},
+				nil,
+			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
-				Algorithms:       []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-				DMAProtection:    efitest.DMAProtectionDisabled,
-				FirmwareDebugger: true,
+				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				DMAProtection: efitest.DMAProtectionDisabled,
 			})),
 			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
@@ -6660,14 +6686,25 @@ C7E003CB
 			tpm2.PropertyPSFamilyIndicator: 1,
 			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
 		},
-		enabledBanks:   []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		prepare: func(_ int) {
+			// Set an authorization value for the storage hierarchy.
+			s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("1234"))
+		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 		actions:        []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 2)
 
-	c.Check(errs[0], ErrorMatches, `error with system security: the platform firmware contains a debugging endpoint enabled`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindUEFIDebuggingEnabled, nil, []Action{ActionContactOEM}, errs[0].Unwrap()))
+	c.Check(errs[0], ErrorMatches, `error with TPM2 device: one or more of the TPM hierarchies is already owned:
+- TPM_RH_OWNER has an authorization value
+`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindTPMHierarchiesOwned,
+		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleOwner}},
+		[]Action{ActionClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
+		errs[0].Unwrap(),
+	))
 
 	c.Check(errs[1], ErrorMatches, `error with system security: the platform firmware indicates that DMA protections are insufficient`)
 	c.Check(errs[1], DeepEquals, NewWithKindAndActionsError(
