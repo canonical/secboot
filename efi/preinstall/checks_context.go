@@ -302,8 +302,25 @@ func (c *RunChecksContext) disableActionsOnLockoutHierarchyUnavailable() {
 // filterUnavailableActions will filter out any actions in the supplied slice
 // that are unavailable, and return a new slice containing only actions that
 // are available.
-func (c *RunChecksContext) filterUnavailableActions(actions []Action) (out []Action, err error) {
+func (c *RunChecksContext) filterUnavailableActions(info errorInfo, actions []Action) (out []Action, err error) {
 	for _, action := range actions {
+		if info.kind == ErrorKindPCRUnusable {
+			var dropAction bool
+			pcr := tpm2.Handle(info.args.(PCRUnusableArg))
+			for _, unsupported := range unsupportedPcrs {
+				if pcr == unsupported {
+					// Drop actions for a PCR that we don't yet support.
+					// The only assigned action is ActionContactOEM, but that's
+					// not appropriate in this scenario.
+					dropAction = true
+					break
+				}
+			}
+			if dropAction {
+				continue
+			}
+		}
+
 		available, tested := c.availableActions[action]
 		switch {
 		case !tested:
@@ -888,7 +905,7 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 			// for each one with associated actions.
 			for _, info := range errInfo {
 				actions := errorKindToActions[info.kind]
-				actions, err = c.filterUnavailableActions(actions)
+				actions, err = c.filterUnavailableActions(info, actions)
 				if err != nil {
 					return nil, NewWithKindAndActionsError(
 						ErrorKindInternal,
@@ -897,18 +914,6 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 					)
 				}
 
-				if info.kind == ErrorKindPCRUnusable {
-					pcr := tpm2.Handle(info.args.(PCRUnusableArg))
-					for _, unsupported := range unsupportedPcrs {
-						if pcr == unsupported {
-							// Drop actions for a PCR that we don't yet support.
-							// The only assigned action is ActionContactOEM, but that's
-							// not appropriate in this scenario.
-							actions = nil
-							break
-						}
-					}
-				}
 				if _, canProceed := errorKindToProceedFlag[info.kind]; !canProceed {
 					// This error kind doesn't support ActionProceed. Don't
 					// permit it at all for now, waiting until all of the errors
