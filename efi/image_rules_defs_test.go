@@ -199,6 +199,48 @@ func (s *imageRulesDefsSuite) TestMSNewImageLoadHandlerUbuntuUKISbat(c *C) {
 	c.Assert(handler, testutil.ConvertibleTo, &UbuntuCoreUKILoadHandler{})
 }
 
+func (s *imageRulesDefsSuite) TestMSNewImageLoadHandlerUbuntuUKISbatInTesting(c *C) {
+	// Verify that we get a ubuntuCoreUKIHandler for an Ubuntu Core kernel image
+	// which is signed by the snakeoil key.
+	restore := MockSnapdenvTesting(true)
+	defer restore()
+
+	image := newMockUbuntuKernelImage3(c).unsign().sign(c, testutil.ParsePKCS1PrivateKey(c, snakeoilKey), testutil.ParseCertificate(c, snakeoilCert))
+
+	rules := MakeMicrosoftUEFICASecureBootNamespaceRules()
+	rules.AddAuthorities(testutil.ParseCertificate(c, canonicalCACert))
+	handler, err := rules.NewImageLoadHandler(image.newPeImageHandle())
+	c.Assert(err, IsNil)
+	c.Assert(handler, testutil.ConvertibleTo, &UbuntuCoreUKILoadHandler{})
+}
+
+func (s *imageRulesDefsSuite) TestMSNewImageLoadHandlerUbuntuUKISbat2(c *C) {
+	// Verify that we get a ubuntuCoreUKIHandler for a newer Ubuntu Core kernel image
+	// with updated SBAT component names.
+	image := newMockUbuntuKernelImage5(c)
+
+	rules := MakeMicrosoftUEFICASecureBootNamespaceRules()
+	rules.AddAuthorities(testutil.ParseCertificate(c, canonicalCACert))
+	handler, err := rules.NewImageLoadHandler(image.newPeImageHandle())
+	c.Assert(err, IsNil)
+	c.Assert(handler, testutil.ConvertibleTo, &UbuntuCoreUKILoadHandler{})
+}
+
+func (s *imageRulesDefsSuite) TestMSNewImageLoadHandlerUbuntuUKISbat2InTesting(c *C) {
+	// Verify that we get a ubuntuCoreUKIHandler for a newer Ubuntu Core kernel image
+	// with updated SBAT component names and which is signed by the snakeoil key.
+	restore := MockSnapdenvTesting(true)
+	defer restore()
+
+	image := newMockUbuntuKernelImage5(c).unsign().sign(c, testutil.ParsePKCS1PrivateKey(c, snakeoilKey), testutil.ParseCertificate(c, snakeoilCert))
+
+	rules := MakeMicrosoftUEFICASecureBootNamespaceRules()
+	rules.AddAuthorities(testutil.ParseCertificate(c, canonicalCACert))
+	handler, err := rules.NewImageLoadHandler(image.newPeImageHandle())
+	c.Assert(err, IsNil)
+	c.Assert(handler, testutil.ConvertibleTo, &UbuntuCoreUKILoadHandler{})
+}
+
 func (s *imageRulesDefsSuite) TestMSNewImageLoadHandlerUbuntuUKINoSbat(c *C) {
 	// Verify that we get a ubuntuCoreUKIHandler for an Ubuntu Core kernel image (pre-SBAT)
 	image := newMockUbuntuKernelImage1(c)

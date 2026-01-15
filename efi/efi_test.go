@@ -431,6 +431,19 @@ func newMockUbuntuKernelImage4(c *C) *mockImage {
 		})
 }
 
+func newMockUbuntuKernelImage5(c *C) *mockImage {
+	return newMockImage().
+		appendSignatures(efitest.ReadWinCertificateAuthenticodeDetached(c, kernelUbuntuSig5)).
+		addSection(".linux", nil).
+		addSection(".initrd", nil).
+		addSection(".sdmagic", nil).
+		withSbat([]SbatComponent{
+			{Name: "systemd-stub"},
+			{Name: "systemd-stub.ubuntu"},
+			{Name: "uki"},
+		})
+}
+
 func (i *mockImage) String() string           { return fmt.Sprintf("%p", i) }
 func (*mockImage) Open() (ImageReader, error) { return nil, errors.New("not implemented") }
 
