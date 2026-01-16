@@ -136,6 +136,14 @@ func run() error {
 	return nil
 }
 
+func unwrapCompoundError(err error) []error {
+	errs, ok := err.(preinstall.CompoundError)
+	if !ok {
+		return []error{err}
+	}
+	return errs.Unwrap()
+}
+
 func main() {
 	if err := run(); err != nil {
 		switch e := err.(type) {
@@ -146,7 +154,34 @@ func main() {
 			}
 		default:
 			fmt.Fprintln(os.Stderr)
-			fmt.Fprintln(os.Stderr, "This platform is not suitable for FDE:", err)
+			errs := unwrapCompoundError(err)
+			fixable := true
+			for _, err := range errs {
+				e, ok := err.(*preinstall.WithKindAndActionsError)
+				if !ok {
+					fixable = false
+					break
+				}
+				if len(e.Actions) == 0 {
+					fixable = false
+					break
+				}
+				for _, action := range e.Actions {
+					switch action {
+					case preinstall.ActionContactOEM, preinstall.ActionContactOSVendor:
+						fixable = false
+					}
+					if !fixable {
+						break
+					}
+				}
+			}
+			if fixable {
+				fmt.Fprintln(os.Stderr, "This platform may be suitable for FDE if the following problem is fixed:")
+			} else {
+				fmt.Fprintln(os.Stderr, "This platform is not suitable for FDE because of the following problem:")
+			}
+			fmt.Fprintln(os.Stderr, err)
 		}
 	}
 }
