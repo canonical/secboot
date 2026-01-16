@@ -101,6 +101,9 @@ var (
 
 	//go:embed testdata/src/sigs/pc-kernel_1299.snap.amd64.pk7
 	kernelUbuntuSig4PEM []byte
+
+	//go:embed testdata/src/sigs/pc-kernel_2881.snap.amd64.pk7
+	kernelUbuntuSig5PEM []byte
 )
 
 var (
@@ -125,6 +128,7 @@ var (
 	kernelUbuntuSig2 []byte
 	kernelUbuntuSig3 []byte
 	kernelUbuntuSig4 []byte
+	kernelUbuntuSig5 []byte
 )
 
 func init() {
@@ -141,4 +145,5 @@ func init() {
 	kernelUbuntuSig2 = testutil.MustDecodePEMType("PKCS7", kernelUbuntuSig2PEM)
 	kernelUbuntuSig3 = testutil.MustDecodePEMType("PKCS7", kernelUbuntuSig3PEM)
 	kernelUbuntuSig4 = testutil.MustDecodePEMType("PKCS7", kernelUbuntuSig4PEM)
+	kernelUbuntuSig5 = testutil.MustDecodePEMType("PKCS7", kernelUbuntuSig5PEM)
 }

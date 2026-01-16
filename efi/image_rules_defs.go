@@ -173,7 +173,10 @@ func makeMicrosoftUEFICASecureBootNamespaceRules() *secureBootNamespaceRules {
 			imageMatchesAny(
 				imageMatchesAll(
 					sbatSectionExists,
-					sbatComponentExists("systemd.ubuntu"),
+					imageMatchesAny(
+						sbatComponentExists("systemd.ubuntu"),
+						sbatComponentExists("systemd-stub.ubuntu"),
+					),
 				),
 				imageMatchesAll(
 					// TODO: Add another primitive here to check the contents of the
