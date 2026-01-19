@@ -156,6 +156,7 @@ func main() {
 			fmt.Fprintln(os.Stderr)
 			errs := unwrapCompoundError(err)
 			fixable := true
+		ErrLoop:
 			for _, err := range errs {
 				e, ok := err.(*preinstall.WithKindAndActionsError)
 				if !ok {
@@ -166,12 +167,11 @@ func main() {
 					fixable = false
 					break
 				}
-			ActionLoop:
 				for _, action := range e.Actions {
 					switch action {
 					case preinstall.ActionContactOEM, preinstall.ActionContactOSVendor:
 						fixable = false
-						break ActionLoop
+						break ErrLoop
 					}
 				}
 			}
