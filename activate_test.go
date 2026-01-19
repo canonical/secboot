@@ -84,6 +84,9 @@ func (s *activateSuite) SetUpTest(c *C) {
 	s.keyringTestMixin.SetUpTest(c)
 
 	s.handler.userAuthSupport = true
+	s.handler.limitAuthFailures = false
+	s.handler.maxAuthFailures = 0
+	s.handler.numAuthFailures = 0
 	internal_bootscope.UnsafeClearModelForTesting()
 }
 
@@ -4734,6 +4737,112 @@ Error with keyslot "default": invalid primary key
 	c.Check(err, Equals, ErrCannotActivate)
 }
 
+func (s *activateSuite) TestActivateContainerAuthModePassphraseUserAuthUnavailable(c *C) {
+	// Test a simple case with 2 keyslots with passphrase auth. Neither
+	// of these can be used because the platform indicates that user auth
+	// is not available.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	s.handler.limitAuthFailures = true
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{"secret"},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedStderr: `Error with keyslot "default": cannot recover keys from keyslot: user authorization is currently unavailable: too many auth failures
+Error with keyslot "default-fallback": cannot recover keys from keyslot: user authorization is currently unavailable: too many auth failures
+`,
+		expectedAuthRequestName:  "data",
+		expectedAuthRequestPath:  "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{UserAuthTypePassphrase},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorUserAuthUnavailable,
+				"default-fallback": KeyslotErrorUserAuthUnavailable,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePassphraseUserAuthBecomesUnavailable(c *C) {
+	// Test a simple case with 2 keyslots with passphrase auth. The passphrase
+	// is incorrect for the first keyslot which then makes user auth unavailable.
+	// The user-auth-unavailable error shouldn't override the incorrect-user-auth
+	// error.
+	s.handler.limitAuthFailures = true
+	s.handler.maxAuthFailures = 1
+
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{"foo", "secret"},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedStderr: `Error with keyslot "default-fallback": cannot recover keys from keyslot: user authorization is currently unavailable: too many auth failures
+Error with keyslot "default": cannot recover keys from keyslot: user authorization is currently unavailable: too many auth failures
+`,
+		expectedAuthRequestName:  "data",
+		expectedAuthRequestPath:  "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{UserAuthTypePassphrase, UserAuthTypePassphrase},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncorrectUserAuth,
+				"default-fallback": KeyslotErrorUserAuthUnavailable,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
 func (s *activateSuite) TestActivateContainerAuthModePIN(c *C) {
 	// Test a simple case with 2 keyslots with PIN auth.
 	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
@@ -5314,6 +5423,114 @@ Error with keyslot "default": invalid primary key
 				"default-fallback": KeyslotErrorInvalidPrimaryKey,
 			},
 			KeyslotErrorsOrder: []string{"default-fallback", "default"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePINUserAuthUnavailable(c *C) {
+	// Test a simple case with 2 keyslots with PIN auth. Neither
+	// of these can be used because the platform indicates that user auth
+	// is not available.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	s.handler.limitAuthFailures = true
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{"1234"},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedStderr: `Error with keyslot "default": cannot recover keys from keyslot: user authorization is currently unavailable: too many auth failures
+Error with keyslot "default-fallback": cannot recover keys from keyslot: user authorization is currently unavailable: too many auth failures
+`,
+		expectedAuthRequestName:  "data",
+		expectedAuthRequestPath:  "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{UserAuthTypePIN},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorUserAuthUnavailable,
+				"default-fallback": KeyslotErrorUserAuthUnavailable,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
+		},
+	})
+	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePINUserAuthBecomesUnavailable(c *C) {
+	// Test a simple case with 2 keyslots with PIN auth. The PIN
+	// is incorrect for the first keyslot which then makes user auth unavailable.
+	// The user-auth-unavailable error shouldn't override the incorrect-user-auth
+	// error.
+	s.handler.limitAuthFailures = true
+	s.handler.maxAuthFailures = 1
+
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	s.handler.limitAuthFailures = true
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{"5678", "1234"},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedStderr: `Error with keyslot "default-fallback": cannot recover keys from keyslot: user authorization is currently unavailable: too many auth failures
+Error with keyslot "default": cannot recover keys from keyslot: user authorization is currently unavailable: too many auth failures
+`,
+		expectedAuthRequestName:  "data",
+		expectedAuthRequestPath:  "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{UserAuthTypePIN, UserAuthTypePIN},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedState: &ContainerActivateState{
+			Status: ActivationFailed,
+			KeyslotErrors: map[string]KeyslotErrorType{
+				"default":          KeyslotErrorIncorrectUserAuth,
+				"default-fallback": KeyslotErrorUserAuthUnavailable,
+			},
+			KeyslotErrorsOrder: []string{"default", "default-fallback"},
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)

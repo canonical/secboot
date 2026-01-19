@@ -48,7 +48,13 @@ const (
 	// PlatformHandlerErrorInvalidAuthKey indicates that an action could not
 	// be performed by PlatformKeyDataHandler because the supplied
 	// authorization key was incorrect.
+	// TODO: Rename this to PlatformHandlerErrorInvalidUserAuthKey
 	PlatformHandlerErrorInvalidAuthKey
+
+	// PlatformHandlerErrorUserAuthUnavailable indicates that an action could
+	// not be performed by PlatformKeyDataHandler because user authorization
+	// is currently unavailable.
+	PlatformHandlerErrorUserAuthUnavailable
 
 	// PlatformHandlerErrorIncompatibleRole indicates that an action could
 	// not be performed by PlatformKeyDataHandler because they key data's

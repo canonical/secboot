@@ -52,6 +52,7 @@ const (
 	KeyslotErrorInvalidKeyData         KeyslotErrorType = "invalid-key-data"         // The keyslot metadata is invalid.
 	KeyslotErrorInvalidPrimaryKey      KeyslotErrorType = "invalid-primary-key"      // The keyslot's primary key failed the primary key crosscheck.
 	KeyslotErrorIncorrectUserAuth      KeyslotErrorType = "incorrect-user-auth"      // An incorrect user authorization was provided.
+	KeyslotErrorUserAuthUnavailable    KeyslotErrorType = "user-auth-unavailable"    // User authorization was not attempted because it is unavailable.
 	KeyslotErrorPlatformFailure        KeyslotErrorType = "platform-failure"         // There was an error with the platform device.
 	KeyslotErrorUnknown                KeyslotErrorType = "unknown"
 )
@@ -77,6 +78,11 @@ func errorToKeyslotError(err error) KeyslotErrorType {
 
 	if errors.Is(err, ErrInvalidPassphrase) || errors.Is(err, ErrInvalidPIN) || errors.Is(err, errInvalidRecoveryKey) {
 		return KeyslotErrorIncorrectUserAuth
+	}
+
+	var uauErr *UserAuthUnavailableError
+	if errors.As(err, &uauErr) {
+		return KeyslotErrorUserAuthUnavailable
 	}
 
 	var (
