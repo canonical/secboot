@@ -127,10 +127,10 @@ func (s *sealSuite) testProtectKeyWithTPM(c *C, params *ProtectKeyParams) {
 
 	}
 
-	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(tpm2.HashAlgorithmSHA256, policyAuthPublicKey, params.Role, pcrPolicyCounterPub, false)
+	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(params.NameAlg, policyAuthPublicKey, params.Role, pcrPolicyCounterPub, false)
 	c.Assert(err, IsNil)
 
-	c.Check(skd.Data().Public().NameAlg, Equals, tpm2.HashAlgorithmSHA256)
+	c.Check(skd.Data().Public().NameAlg, Equals, params.NameAlg)
 	c.Check(skd.Data().Public().Attrs, Equals, tpm2.AttrFixedTPM|tpm2.AttrFixedParent|tpm2.AttrNoDA)
 	c.Check(skd.Data().Public().AuthPolicy, DeepEquals, expectedPolicyDigest)
 	c.Check(skd.Data().Policy().(*KeyDataPolicy_v3).StaticData, tpm2_testutil.TPMValueDeepEquals, expectedPolicyData.(*KeyDataPolicy_v3).StaticData)
@@ -166,6 +166,7 @@ func (s *sealSuite) TestProtectKeyWithTPM(c *C) {
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
 		Role:                   "foo",
+		NameAlg:                tpm2.HashAlgorithmSHA256,
 	})
 }
 
@@ -174,6 +175,7 @@ func (s *sealSuite) TestProtectKeyWithTPMDifferentPCRPolicyCounterHandle(c *C) {
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
 		Role:                   "foo",
+		NameAlg:                tpm2.HashAlgorithmSHA256,
 	})
 }
 
@@ -186,6 +188,7 @@ func (s *sealSuite) TestProtectKeyWithTPMWithNewConnection(c *C) {
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
 		Role:                   "foo",
+		NameAlg:                tpm2.HashAlgorithmSHA256,
 	})
 
 	s.validateSRK(c)
@@ -203,6 +206,7 @@ func (s *sealSuite) TestProtectKeyWithTPMMissingSRK(c *C) {
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
 		Role:                   "foo",
+		NameAlg:                tpm2.HashAlgorithmSHA256,
 	})
 
 	s.validateSRK(c)
@@ -245,6 +249,7 @@ func (s *sealSuite) TestProtectKeyWithTPMMissingCustomSRK(c *C) {
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
 		Role:                   "foo",
+		NameAlg:                tpm2.HashAlgorithmSHA256,
 	})
 
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, template)
@@ -290,6 +295,7 @@ func (s *sealSuite) TestProtectKeyWithTPMMissingSRKWithInvalidCustomTemplate(c *
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
 		Role:                   "foo",
+		NameAlg:                tpm2.HashAlgorithmSHA256,
 	})
 
 	s.validateSRK(c)
@@ -300,6 +306,7 @@ func (s *sealSuite) TestProtectKeyWithTPMNoPCRPolicyCounterHandle(c *C) {
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: tpm2.HandleNull,
 		Role:                   "foo",
+		NameAlg:                tpm2.HashAlgorithmSHA256,
 	})
 }
 
@@ -311,20 +318,30 @@ func (s *sealSuite) TestProtectKeyWithTPMWithProvidedPrimaryKey(c *C) {
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
 		Role:                   "foo",
-		PrimaryKey:             primaryKey})
+		PrimaryKey:             primaryKey,
+		NameAlg:                tpm2.HashAlgorithmSHA256})
 }
 
 func (s *sealSuite) TestProtectKeyWithTPMWithDifferentRole(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
-		Role:                   "bar"})
+		Role:                   "bar",
+		NameAlg:                tpm2.HashAlgorithmSHA256})
 }
 
 func (s *sealSuite) TestProtectKeyWithTPMWithNoRole(c *C) {
 	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
-		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000)})
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		NameAlg:                tpm2.HashAlgorithmSHA256})
+}
+
+func (s *sealSuite) TestProtectKeyWithTPMNameAlgSHA384(c *C) {
+	s.testProtectKeyWithTPM(c, &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA384, []int{7, 23}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+		NameAlg:                tpm2.HashAlgorithmSHA384})
 }
 
 func (s *sealSuite) testProtectKeyWithTPMErrorHandling(c *C, params *ProtectKeyParams) error {
@@ -376,7 +393,8 @@ func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingOwnerAuthFail(c *C) {
 	s.ReinitTPMConnectionFromExisting(c)
 
 	err := s.testProtectKeyWithTPMErrorHandling(c, &ProtectKeyParams{
-		PCRPolicyCounterHandle: tpm2.HandleNull})
+		PCRPolicyCounterHandle: tpm2.HandleNull,
+		NameAlg:                tpm2.HashAlgorithmSHA256})
 	c.Assert(err, testutil.ConvertibleTo, AuthFailError{})
 	c.Check(err.(AuthFailError).Handle, Equals, tpm2.HandleOwner)
 }
@@ -388,6 +406,7 @@ func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingInvalidPCRProfile(c *C) {
 				NewPCRProtectionProfile(),
 				NewPCRProtectionProfile().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 8)),
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181ffff), // verify that this gets undefined on error
+		NameAlg:                tpm2.HashAlgorithmSHA256,
 	})
 	c.Check(err, ErrorMatches, "cannot set initial PCR policy: cannot compute PCR digests from protection profile: "+
 		"not all branches contain values for the same sets of PCRs")
@@ -396,7 +415,8 @@ func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingInvalidPCRProfile(c *C) {
 func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingInvalidPCRProfileSelection(c *C) {
 	err := s.testProtectKeyWithTPMErrorHandling(c, &ProtectKeyParams{
 		PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 50, make([]byte, tpm2.HashAlgorithmSHA256.Size())),
-		PCRPolicyCounterHandle: tpm2.HandleNull})
+		PCRPolicyCounterHandle: tpm2.HandleNull,
+		NameAlg:                tpm2.HashAlgorithmSHA256})
 	c.Check(err, ErrorMatches, "cannot set initial PCR policy: PCR protection profile contains digests for unsupported PCRs")
 }
 
@@ -404,8 +424,18 @@ func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingInvalidRole(c *C) {
 	err := s.testProtectKeyWithTPMErrorHandling(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: tpm2.HandleNull,
-		Role:                   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"})
+		Role:                   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+		NameAlg:                tpm2.HashAlgorithmSHA256})
 	c.Check(err, ErrorMatches, `cannot create initial policy data: invalid role: too large`)
+}
+
+func (s *sealSuite) TestProtectKeyWithTPMErrorHandlingInvalidNameAlg(c *C) {
+	err := s.testProtectKeyWithTPMErrorHandling(c, &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
+		PCRPolicyCounterHandle: tpm2.HandleNull,
+		Role:                   "foobar",
+		NameAlg:                0})
+	c.Check(err, ErrorMatches, `chosen name algorithm 0x0000 is not available`)
 }
 
 func (s *sealSuite) testPassphraseProtectKeyWithTPM(c *C, params *PassphraseProtectKeyParams, passphrase string) {
@@ -414,7 +444,7 @@ func (s *sealSuite) testPassphraseProtectKeyWithTPM(c *C, params *PassphraseProt
 		c.Check(keyParams.PlatformName, Equals, "tpm2")
 		c.Check(keyParams.KDFAlg, Equals, crypto.SHA256)
 		c.Check(keyParams.KDFOptions, DeepEquals, params.KDFOptions)
-		c.Check(keyParams.AuthKeySize, Equals, 32)
+		c.Check(keyParams.AuthKeySize, Equals, params.NameAlg.GetHash().Size())
 		c.Check(keyPassphrase, Equals, passphrase)
 
 		// TODO: Check EncryptedPayload and Handle fields
@@ -447,10 +477,10 @@ func (s *sealSuite) testPassphraseProtectKeyWithTPM(c *C, params *PassphraseProt
 
 	}
 
-	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(tpm2.HashAlgorithmSHA256, policyAuthPublicKey, params.Role, pcrPolicyCounterPub, true)
+	expectedPolicyData, expectedPolicyDigest, err := NewKeyDataPolicy(params.NameAlg, policyAuthPublicKey, params.Role, pcrPolicyCounterPub, true)
 	c.Assert(err, IsNil)
 
-	c.Check(skd.Data().Public().NameAlg, Equals, tpm2.HashAlgorithmSHA256)
+	c.Check(skd.Data().Public().NameAlg, Equals, params.NameAlg)
 	c.Check(skd.Data().Public().Attrs, Equals, tpm2.AttrFixedTPM|tpm2.AttrFixedParent)
 	c.Check(skd.Data().Public().AuthPolicy, DeepEquals, expectedPolicyDigest)
 	c.Check(skd.Data().Policy().(*KeyDataPolicy_v3).StaticData, tpm2_testutil.TPMValueDeepEquals, expectedPolicyData.(*KeyDataPolicy_v3).StaticData)
@@ -487,6 +517,18 @@ func (s *sealSuite) TestPassphraseProtectKeyWithTPM(c *C) {
 			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
 			Role:                   "foo",
+			NameAlg:                tpm2.HashAlgorithmSHA256,
+		},
+	}, "Jg4zg4GF9WGL")
+}
+
+func (s *sealSuite) TestPassphraseProtectKeyWithTPMNameAlgSHA384(c *C) {
+	s.testPassphraseProtectKeyWithTPM(c, &PassphraseProtectKeyParams{
+		ProtectKeyParams: ProtectKeyParams{
+			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA384, []int{7, 23}),
+			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
+			Role:                   "foo",
+			NameAlg:                tpm2.HashAlgorithmSHA384,
 		},
 	}, "Jg4zg4GF9WGL")
 }
@@ -497,6 +539,7 @@ func (s *sealSuite) TestPassphraseProtectKeyWithTPMSuppliedKDFOptions(c *C) {
 			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
 			Role:                   "foo",
+			NameAlg:                tpm2.HashAlgorithmSHA256,
 		},
 		KDFOptions: &secboot.Argon2Options{
 			Mode:            secboot.Argon2id,
@@ -513,6 +556,7 @@ func (s *sealSuite) TestPassphraseProtectKeyWithTPMDifferentSuppliedKDFOptions(c
 			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
 			Role:                   "foo",
+			NameAlg:                tpm2.HashAlgorithmSHA256,
 		},
 		KDFOptions: &secboot.PBKDF2Options{
 			ForceIterations: 100000,
@@ -527,6 +571,7 @@ func (s *sealSuite) TestPassphraseProtectKeyWithTPMDifferentPassphrase(c *C) {
 			PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7, 23}),
 			PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x01810000),
 			Role:                   "foo",
+			NameAlg:                tpm2.HashAlgorithmSHA256,
 		},
 	}, "uWjzz3MURKUS")
 }
@@ -714,12 +759,14 @@ func (s *sealSuite) TestProtectKeyWithExternalStorageKey(c *C) {
 	s.testProtectKeyWithExternalStorageKey(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewResolvedPCRProfileFromCurrentValues(c, s.TPM().TPMContext, tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: tpm2.HandleNull,
+		NameAlg:                tpm2.HashAlgorithmSHA256,
 	})
 }
 
 func (s *sealSuite) TestProtectKeyWithExternalStorageKeyNilPCRProfileAndNoAuthorizedSnapModels(c *C) {
 	s.testProtectKeyWithExternalStorageKey(c, &ProtectKeyParams{
-		PCRPolicyCounterHandle: tpm2.HandleNull})
+		PCRPolicyCounterHandle: tpm2.HandleNull,
+		NameAlg:                tpm2.HashAlgorithmSHA256})
 }
 
 func (s *sealSuite) TestProtectKeyWithExternalStorageKeyWithProvidedPrimaryKey(c *C) {
@@ -729,7 +776,8 @@ func (s *sealSuite) TestProtectKeyWithExternalStorageKeyWithProvidedPrimaryKey(c
 	s.testProtectKeyWithExternalStorageKey(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewResolvedPCRProfileFromCurrentValues(c, s.TPM().TPMContext, tpm2.HashAlgorithmSHA256, []int{7, 23}),
 		PCRPolicyCounterHandle: tpm2.HandleNull,
-		PrimaryKey:             primaryKey})
+		PrimaryKey:             primaryKey,
+		NameAlg:                tpm2.HashAlgorithmSHA256})
 }
 
 func (s *sealSuite) testProtectKeyWithExternalStorageKeyErrorHandling(c *C, params *ProtectKeyParams) error {
@@ -753,7 +801,8 @@ func (s *sealSuite) TestProtectKeyWithExternalStorageKeyErrorHandlingNilParams(c
 func (s *sealSuite) TestProtectKeyWithExternalStorageKeyErrorHandlingInvalidPCRProfile(c *C) {
 	err := s.testProtectKeyWithExternalStorageKeyErrorHandling(c, &ProtectKeyParams{
 		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
-		PCRPolicyCounterHandle: tpm2.HandleNull})
+		PCRPolicyCounterHandle: tpm2.HandleNull,
+		NameAlg:                tpm2.HashAlgorithmSHA256})
 	c.Check(err, ErrorMatches, "cannot set initial PCR policy: cannot compute PCR digests from protection profile: "+
 		"cannot read current PCR values from TPM: no context")
 }
@@ -761,7 +810,8 @@ func (s *sealSuite) TestProtectKeyWithExternalStorageKeyErrorHandlingInvalidPCRP
 func (s *sealSuite) TestProtectKeyWithExternalStorageKeyErrorHandlingInvalidPCRProfileSelection(c *C) {
 	err := s.testProtectKeyWithExternalStorageKeyErrorHandling(c, &ProtectKeyParams{
 		PCRProfile:             NewPCRProtectionProfile().AddPCRValue(tpm2.HashAlgorithmSHA256, 50, make([]byte, tpm2.HashAlgorithmSHA256.Size())),
-		PCRPolicyCounterHandle: tpm2.HandleNull})
+		PCRPolicyCounterHandle: tpm2.HandleNull,
+		NameAlg:                tpm2.HashAlgorithmSHA256})
 	c.Check(err, ErrorMatches, "cannot set initial PCR policy: PCR protection profile contains digests for unsupported PCRs")
 }
 
@@ -825,6 +875,7 @@ type testMakeSealedKeyDataData struct {
 	Role                   string
 	PCRPolicyCounterHandle tpm2.Handle
 	PrimaryKey             secboot.PrimaryKey
+	NameAlg                tpm2.HashAlgorithmId
 }
 
 func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyDataData) {
@@ -909,6 +960,7 @@ func (s *sealSuiteNoTPM) testMakeSealedKeyData(c *C, data *testMakeSealedKeyData
 		Role:                   data.Role,
 		PcrPolicyCounterHandle: data.PCRPolicyCounterHandle,
 		PrimaryKey:             primaryKey,
+		NameAlg:                data.NameAlg,
 	}
 
 	constructor := MakeKeyDataNoAuth
@@ -967,6 +1019,7 @@ func (s *sealSuiteNoTPM) TestMakeSealedKeyData(c *C) {
 		PCRProfile:             NewPCRProtectionProfile(),
 		PCRPolicyCounterHandle: 0x01800000,
 		Role:                   "",
+		NameAlg:                tpm2.HashAlgorithmSHA256,
 	})
 }
 
@@ -975,5 +1028,6 @@ func (s *sealSuiteNoTPM) TestMakeSealedKeyData2(c *C) {
 		PCRProfile:             NewPCRProtectionProfile(),
 		PCRPolicyCounterHandle: 0x01800000,
 		Role:                   "test",
+		NameAlg:                tpm2.HashAlgorithmSHA256,
 	})
 }
