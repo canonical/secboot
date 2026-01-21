@@ -93,7 +93,7 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 				Err:  err}
 		case err == ErrTPMLockout:
 			return nil, &secboot.PlatformHandlerError{
-				Type: secboot.PlatformHandlerErrorUnavailable,
+				Type: secboot.PlatformHandlerErrorUserAuthUnavailable,
 				Err:  err}
 		case tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandUnseal, 1):
 			return nil, &secboot.PlatformHandlerError{
@@ -220,12 +220,17 @@ func (h *platformKeyDataHandler) ChangeAuthKey(data *secboot.PlatformKeyData, ol
 	// TPM protected key.
 	priv, err := tpm.ObjectChangeAuth(keyObject, srk, new, tpm.HmacSession().IncludeAttrs(tpm2.AttrCommandEncrypt))
 	if err != nil {
-		if tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandObjectChangeAuth, 1) {
+		switch {
+		case tpm2.IsTPMSessionError(err, tpm2.ErrorAuthFail, tpm2.CommandObjectChangeAuth, 1):
 			return nil, &secboot.PlatformHandlerError{
 				Type: secboot.PlatformHandlerErrorInvalidAuthKey,
 				Err:  err}
+		case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandObjectChangeAuth):
+			return nil, &secboot.PlatformHandlerError{
+				Type: secboot.PlatformHandlerErrorUserAuthUnavailable,
+				Err:  ErrTPMLockout}
 		}
-		return nil, err
+		return nil, fmt.Errorf("cannot change auth: %w", err)
 	}
 
 	k.data.SetPrivate(priv)
