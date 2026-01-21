@@ -49,6 +49,7 @@ type KeyslotErrorType string
 const (
 	KeyslotErrorNone                   KeyslotErrorType = ""
 	KeyslotErrorIncompatibleRoleParams KeyslotErrorType = "incompatible-role-params" // The role parameters for the keyslot are not compatible with the current boot configuration.
+	KeyslotErrorInvalidRoleParams      KeyslotErrorType = "invalid-role-params"      // The role parameters for the keyslot are invalid.
 	KeyslotErrorInvalidKeyData         KeyslotErrorType = "invalid-key-data"         // The keyslot metadata is invalid.
 	KeyslotErrorInvalidPrimaryKey      KeyslotErrorType = "invalid-primary-key"      // The keyslot's primary key failed the primary key crosscheck.
 	KeyslotErrorIncorrectUserAuth      KeyslotErrorType = "incorrect-user-auth"      // An incorrect user authorization was provided.
@@ -66,31 +67,46 @@ func errorToKeyslotError(err error) KeyslotErrorType {
 		return KeyslotErrorInvalidPrimaryKey
 	}
 
-	var ikdErr *InvalidKeyDataError
-	if errors.As(err, &ikdErr) {
-		return KeyslotErrorInvalidKeyData
+	{
+		var e *InvalidKeyDataError
+		if errors.As(err, &e) {
+			return KeyslotErrorInvalidKeyData
+		}
 	}
 
-	var ikdrErr *IncompatibleKeyDataRoleParamsError
-	if errors.As(err, &ikdrErr) {
-		return KeyslotErrorIncompatibleRoleParams
+	{
+		var e *IncompatibleKeyDataRoleParamsError
+		if errors.As(err, &e) {
+			return KeyslotErrorIncompatibleRoleParams
+		}
+	}
+
+	{
+		var e *InvalidKeyDataRoleParamsError
+		if errors.As(err, &e) {
+			return KeyslotErrorInvalidRoleParams
+		}
 	}
 
 	if errors.Is(err, ErrInvalidPassphrase) || errors.Is(err, ErrInvalidPIN) || errors.Is(err, errInvalidRecoveryKey) {
 		return KeyslotErrorIncorrectUserAuth
 	}
 
-	var uauErr *UserAuthUnavailableError
-	if errors.As(err, &uauErr) {
-		return KeyslotErrorUserAuthUnavailable
+	{
+		var e *UserAuthUnavailableError
+		if errors.As(err, &e) {
+			return KeyslotErrorUserAuthUnavailable
+		}
 	}
 
-	var (
-		puErr  *PlatformUninitializedError
-		pduErr *PlatformDeviceUnavailableError
-	)
-	if errors.As(err, &puErr) || errors.As(err, &pduErr) {
-		return KeyslotErrorPlatformFailure
+	{
+		var (
+			pue  *PlatformUninitializedError
+			pdue *PlatformDeviceUnavailableError
+		)
+		if errors.As(err, &pue) || errors.As(err, &pdue) {
+			return KeyslotErrorPlatformFailure
+		}
 	}
 
 	return KeyslotErrorUnknown

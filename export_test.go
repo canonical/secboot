@@ -347,6 +347,10 @@ func NewIncompatibleKeyDataRoleParamsError(err error) *IncompatibleKeyDataRolePa
 	return &IncompatibleKeyDataRoleParamsError{err: err}
 }
 
+func NewInvalidKeyDataRoleParamsError(err error) *InvalidKeyDataRoleParamsError {
+	return &InvalidKeyDataRoleParamsError{err: err}
+}
+
 func NewUserAuthUnavailableError(err error) *UserAuthUnavailableError {
 	return &UserAuthUnavailableError{err: err}
 }

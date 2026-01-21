@@ -132,6 +132,10 @@ func (h *mockPlatformKeyDataHandler) checkKey(handle *mockPlatformKeyDataHandle,
 }
 
 func (h *mockPlatformKeyDataHandler) recoverKeys(handle *mockPlatformKeyDataHandle, payload []byte) ([]byte, error) {
+	if handle.ExpectedRole == "invalid" {
+		return nil, &PlatformHandlerError{Type: PlatformHandlerErrorInvalidRoleParams, Err: errors.New("some error")}
+	}
+
 	var permittedRole bool
 	if len(h.permittedRoles) == 0 {
 		// Only perform this check if the test defined any permitted roles.
@@ -1242,7 +1246,7 @@ func (s *keyDataSuite) TestRecoverKeysUnrecognizedPlatform(c *C) {
 	keyData, err := NewKeyData(protected)
 	c.Assert(err, IsNil)
 	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeys()
-	c.Check(err, ErrorMatches, "no appropriate platform handler is registered")
+	c.Check(err, Equals, ErrNoPlatformHandlerRegistered)
 	c.Check(recoveredKey, IsNil)
 	c.Check(recoveredAuxKey, IsNil)
 }
@@ -1257,8 +1261,39 @@ func (s *keyDataSuite) TestRecoverKeysInvalidData(c *C) {
 	c.Assert(err, IsNil)
 	recoveredKey, recoveredAuxKey, err := keyData.RecoverKeys()
 	c.Check(err, ErrorMatches, "invalid key data: JSON decode error: json: cannot unmarshal string into Go value of type secboot_test.mockPlatformKeyDataHandle")
+	c.Check(err, testutil.ConvertibleTo, &InvalidKeyDataError{})
 	c.Check(recoveredKey, IsNil)
 	c.Check(recoveredAuxKey, IsNil)
+}
+
+func (s *keyDataSuite) TestRecoverKeysIncompatibleKeyDataRoleParams(c *C) {
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, _ := s.mockProtectKeysRand(c, primaryKey, "foo", crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	s.handler.permittedRoles = []string{"bar"}
+
+	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeys()
+	c.Check(err, ErrorMatches, `incompatible key data role params: permission denied`)
+	c.Check(err, testutil.ConvertibleTo, &IncompatibleKeyDataRoleParamsError{})
+	c.Check(recoveredUnlockKey, IsNil)
+	c.Check(recoveredPrimaryKey, IsNil)
+}
+
+func (s *keyDataSuite) TestRecoverKeysInvalidKeyDataRoleParams(c *C) {
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, _ := s.mockProtectKeysRand(c, primaryKey, "invalid", crypto.SHA256)
+
+	keyData, err := NewKeyData(protected)
+	c.Assert(err, IsNil)
+
+	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeys()
+	c.Check(err, ErrorMatches, `invalid key data role params: some error`)
+	c.Check(err, testutil.ConvertibleTo, &InvalidKeyDataRoleParamsError{})
+	c.Check(recoveredUnlockKey, IsNil)
+	c.Check(recoveredPrimaryKey, IsNil)
 }
 
 type testRecoverKeysWithPassphraseParams struct {
