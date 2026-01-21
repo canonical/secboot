@@ -132,6 +132,26 @@ func (e *PlatformDeviceUnavailableError) Unwrap() error {
 	return e.err
 }
 
+// UserAuthUnavailableError is returned from KeyData methods that
+// require knowledge of a PIN or passphrase but the platform indicates
+// that user authorization is currently unavailable.
+type UserAuthUnavailableError struct {
+	err error
+}
+
+func (e *UserAuthUnavailableError) Error() string {
+	return fmt.Sprintf("user authorization is currently unavailable: %v", e.err)
+}
+
+func (e *UserAuthUnavailableError) Unwrap() error {
+	return e.err
+}
+
+func isUserAuthUnavailableError(err error) bool {
+	var uauErr *UserAuthUnavailableError
+	return errors.As(err, &uauErr)
+}
+
 // DiskUnlockKey is the key used to unlock a LUKS volume.
 type DiskUnlockKey []byte
 
@@ -466,6 +486,8 @@ func processPlatformHandlerError(err error, authMode AuthMode) error {
 			case AuthModePIN:
 				return ErrInvalidPIN
 			}
+		case PlatformHandlerErrorUserAuthUnavailable:
+			return &UserAuthUnavailableError{pe.Err}
 		case PlatformHandlerErrorIncompatibleRole:
 			return &IncompatibleKeyDataRoleParamsError{pe.Err}
 		}

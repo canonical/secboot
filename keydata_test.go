@@ -68,9 +68,12 @@ const (
 )
 
 type mockPlatformKeyDataHandler struct {
-	state           int
-	userAuthSupport bool
-	permittedRoles  []string
+	state             int
+	userAuthSupport   bool
+	limitAuthFailures bool
+	maxAuthFailures   int
+	numAuthFailures   int
+	permittedRoles    []string
 }
 
 func (h *mockPlatformKeyDataHandler) checkState() error {
@@ -112,9 +115,16 @@ func (h *mockPlatformKeyDataHandler) unmarshalHandle(data *PlatformKeyData) (*mo
 }
 
 func (h *mockPlatformKeyDataHandler) checkKey(handle *mockPlatformKeyDataHandle, key []byte) error {
+	if h.limitAuthFailures && h.numAuthFailures >= h.maxAuthFailures {
+		return &PlatformHandlerError{Type: PlatformHandlerErrorUserAuthUnavailable, Err: errors.New("too many auth failures")}
+	}
+
 	m := hmac.New(crypto.SHA256.New, handle.Key)
 	m.Write(key)
 	if !bytes.Equal(handle.AuthKeyHMAC, m.Sum(nil)) {
+		if h.limitAuthFailures {
+			h.numAuthFailures += 1
+		}
 		return &PlatformHandlerError{Type: PlatformHandlerErrorInvalidAuthKey, Err: errors.New("the supplied key is incorrect")}
 	}
 
@@ -323,6 +333,7 @@ func (s *keyDataTestBase) SetUpSuite(c *C) {
 func (s *keyDataTestBase) SetUpTest(c *C) {
 	s.handler.state = mockPlatformDeviceStateOK
 	s.handler.userAuthSupport = false
+	s.handler.limitAuthFailures = false
 	s.handler.permittedRoles = nil
 	s.origArgon2KDF = SetArgon2KDF(&testutil.MockArgon2KDF{})
 	s.restorePBKDF2Benchmark = MockPBKDF2Benchmark(func(duration time.Duration, hashAlg crypto.Hash) (uint, error) {
@@ -1536,6 +1547,24 @@ func (s *keyDataSuite) TestRecoverKeysWithPassphraseAuthModePIN(c *C) {
 	c.Check(recoveredAuxKey, IsNil)
 }
 
+func (s *keyDataSuite) TestRecoverKeysWithPassphraseNotAvailable(c *C) {
+	s.handler.userAuthSupport = true
+
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, _ := s.mockProtectKeysWithPassphraseRand(c, primaryKey, "foo", nil, 32, crypto.SHA256)
+
+	keyData, err := NewKeyDataWithPassphrase(protected, "passphrase")
+	c.Assert(err, IsNil)
+
+	s.handler.limitAuthFailures = true
+
+	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeysWithPassphrase("passphrase")
+	c.Check(err, ErrorMatches, `user authorization is currently unavailable: too many auth failures`)
+	c.Check(err, testutil.ConvertibleTo, &UserAuthUnavailableError{})
+	c.Check(recoveredUnlockKey, IsNil)
+	c.Check(recoveredPrimaryKey, IsNil)
+}
+
 type testRecoverKeysWithPINKDFErrorHandlingParams struct {
 	authKeySize int
 	time        int
@@ -1677,6 +1706,24 @@ func (s *keyDataSuite) TestRecoverKeysWithPINUnsupported(c *C) {
 
 	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeysWithPIN(makePIN(c, "1234"))
 	c.Check(err, ErrorMatches, `cannot perform action because of an unexpected error: not supported`)
+	c.Check(recoveredUnlockKey, IsNil)
+	c.Check(recoveredPrimaryKey, IsNil)
+}
+
+func (s *keyDataSuite) TestRecoverKeysWithPINNotAvailable(c *C) {
+	s.handler.userAuthSupport = true
+
+	primaryKey := s.newPrimaryKey(c, 32)
+	protected, _ := s.mockProtectKeysWithPINRand(c, primaryKey, "foo", nil, 32, crypto.SHA256)
+
+	keyData, err := NewKeyDataWithPIN(protected, makePIN(c, "1234"))
+	c.Assert(err, IsNil)
+
+	s.handler.limitAuthFailures = true
+
+	recoveredUnlockKey, recoveredPrimaryKey, err := keyData.RecoverKeysWithPIN(makePIN(c, "1234"))
+	c.Check(err, ErrorMatches, `user authorization is currently unavailable: too many auth failures`)
+	c.Check(err, testutil.ConvertibleTo, &UserAuthUnavailableError{})
 	c.Check(recoveredUnlockKey, IsNil)
 	c.Check(recoveredPrimaryKey, IsNil)
 }

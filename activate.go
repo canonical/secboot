@@ -72,12 +72,13 @@ func (i *errorKeyslot) Data() KeyDataReader {
 
 // keyslotAttemptRecord binds together information about a keyslot.
 type keyslotAttemptRecord struct {
-	slot              Keyslot                     // The backend supplied Keyslot.
-	data              *KeyData                    // A cache of the decoded KeyData for platform keys.
-	flags             PlatformKeyDataHandlerFlags // The flags that the handling platform is registered with.
-	externalUnlockKey *externalUnlockKey          // An externally recovered unlock key.
-	err               error                       // The first error that occurred with this keyslot.
-	errNumber         int                         // The number of the error, used for ordering.
+	slot                Keyslot                     // The backend supplied Keyslot.
+	data                *KeyData                    // A cache of the decoded KeyData for platform keys.
+	flags               PlatformKeyDataHandlerFlags // The flags that the handling platform is registered with.
+	externalUnlockKey   *externalUnlockKey          // An externally recovered unlock key.
+	userAuthUnavailable bool                        // The platform indicated that user auth is unavailable.
+	err                 error                       // The first error that occurred with this keyslot.
+	errNumber           int                         // The number of the error, used for ordering.
 }
 
 func (r *keyslotAttemptRecord) usable(flags activateOneContainerStateMachineFlags) bool {
@@ -103,8 +104,10 @@ func (r *keyslotAttemptRecord) usable(flags activateOneContainerStateMachineFlag
 			return false
 		}
 
-		if !errors.Is(r.err, expectedUserAuthErr) {
-			// Anything other than a user auth error makes a keyslot unusable.
+		if !errors.Is(r.err, expectedUserAuthErr) || r.userAuthUnavailable {
+			// Anything other than a user auth error makes a keyslot unusable. It
+			// is also unusable if the platform indicated on a previous attempt
+			// that user auth is not available.
 			return false
 		}
 	}
@@ -264,9 +267,26 @@ func newActivateOneContainerStateMachine(container StorageContainer, cfg Activat
 }
 
 func (m *activateOneContainerStateMachine) setKeyslotError(rec *keyslotAttemptRecord, err error) {
-	rec.err = err
-	rec.errNumber = m.keyslotErrCount
-	m.keyslotErrCount += 1
+	userAuthUnavailable := isUserAuthUnavailableError(err)
+
+	if userAuthUnavailable {
+		// Record that user auth is unavailable separately, because
+		// UserAuthUnavailableError doesn't override an existing
+		// ErrInvalid{PIN,Passphrase} error.
+		rec.userAuthUnavailable = true
+	}
+
+	// UserAuthUnavailableError shouldn't overwrite an existing
+	// ErrInvalid{PIN,Passphrase} error, as we only want to surface
+	// this error if no authentication was attempted. We know that if
+	// rec.err is not nil then it is either ErrInvalidPassphrase or
+	// ErrInvalidPIN because those are the only errors that don't
+	// invalidate the keyslot.
+	if !userAuthUnavailable || rec.err == nil {
+		rec.err = err
+		rec.errNumber = m.keyslotErrCount
+		m.keyslotErrCount += 1
+	}
 
 	if errors.Is(err, errInvalidRecoveryKey) || errors.Is(err, ErrInvalidPassphrase) || errors.Is(err, ErrInvalidPIN) {
 		return

@@ -55,6 +55,10 @@ func (*activateStateSuite) TestErrorToKeyslotErrorInvalidRecoveryKey(c *C) {
 	c.Check(ErrorToKeyslotError(fmt.Errorf("%w", ErrInvalidRecoveryKey)), Equals, KeyslotErrorIncorrectUserAuth)
 }
 
+func (*activateStateSuite) TestErrorToKeyslotErrorUserAuthUnavailable(c *C) {
+	c.Check(ErrorToKeyslotError(fmt.Errorf("%w", NewUserAuthUnavailableError(errors.New("some error")))), Equals, KeyslotErrorUserAuthUnavailable)
+}
+
 func (*activateStateSuite) TestErrorToKeyslotErrorPlatformUninitialized(c *C) {
 	c.Check(ErrorToKeyslotError(fmt.Errorf("%w", NewPlatformUninitializedError(errors.New("some error")))), Equals, KeyslotErrorPlatformFailure)
 }
