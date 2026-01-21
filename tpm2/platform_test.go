@@ -178,8 +178,8 @@ func (s *platformSuite) TestRecoverKeysWithPassphraseTPMLockoutIntegrated(c *C) 
 	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 
 	_, _, err = k.RecoverKeysWithPassphrase("passphrase")
-	c.Check(err, ErrorMatches, `the platform's secure device is unavailable: the TPM is in DA lockout mode`)
-	c.Check(err, testutil.ConvertibleTo, &secboot.PlatformDeviceUnavailableError{})
+	c.Check(err, ErrorMatches, `user authorization is currently unavailable: the TPM is in DA lockout mode`)
+	c.Check(err, testutil.ConvertibleTo, &secboot.UserAuthUnavailableError{})
 }
 
 func (s *platformSuite) TestChangePassphraseIntegrated(c *C) {
@@ -223,6 +223,37 @@ func (s *platformSuite) TestChangePassphraseWithBadPassphraseIntegrated(c *C) {
 	s.AddCleanup(s.CloseMockConnection(c))
 
 	c.Check(k.ChangePassphrase("1234", "1234"), Equals, secboot.ErrInvalidPassphrase)
+
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase")
+	c.Check(err, IsNil)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
+}
+
+func (s *platformSuite) TestChangePassphraseTPMLockoutIntegrated(c *C) {
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "foo",
+	}
+
+	passphraseParams := &PassphraseProtectKeyParams{
+		ProtectKeyParams: *params,
+	}
+
+	k, primaryKey, unlockKey, err := NewTPMPassphraseProtectedKey(s.TPM(), passphraseParams, "passphrase")
+	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
+
+	// Put the TPM in DA lockout mode. Keys without user auth should still be recoverable.
+	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+
+	err = k.ChangePassphrase("passphrase", "1234")
+	c.Check(err, ErrorMatches, `user authorization is currently unavailable: the TPM is in DA lockout mode`)
+	c.Check(err, testutil.ConvertibleTo, &secboot.UserAuthUnavailableError{})
+
+	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 32, 7200, 86400, nil), IsNil)
 
 	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPassphrase("passphrase")
 	c.Check(err, IsNil)
@@ -292,8 +323,8 @@ func (s *platformSuite) TestRecoverKeysWithPINTPMLockoutIntegrated(c *C) {
 	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
 
 	_, _, err = k.RecoverKeysWithPIN(makePIN(c, "1234"))
-	c.Check(err, ErrorMatches, `the platform's secure device is unavailable: the TPM is in DA lockout mode`)
-	c.Check(err, testutil.ConvertibleTo, &secboot.PlatformDeviceUnavailableError{})
+	c.Check(err, ErrorMatches, `user authorization is currently unavailable: the TPM is in DA lockout mode`)
+	c.Check(err, testutil.ConvertibleTo, &secboot.UserAuthUnavailableError{})
 }
 
 func (s *platformSuite) TestChangePINIntegrated(c *C) {
@@ -337,6 +368,37 @@ func (s *platformSuite) TestChangePINWithBadPINIntegrated(c *C) {
 	s.AddCleanup(s.CloseMockConnection(c))
 
 	c.Check(k.ChangePIN(makePIN(c, "0000"), makePIN(c, "23456789")), Equals, secboot.ErrInvalidPIN)
+
+	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPIN(makePIN(c, "1234"))
+	c.Check(err, IsNil)
+	c.Check(unlockKeyUnsealed, DeepEquals, unlockKey)
+	c.Check(primaryKeyUnsealed, DeepEquals, primaryKey)
+}
+
+func (s *platformSuite) TestChangePINWithTPMLockoutIntegrated(c *C) {
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "foo",
+	}
+
+	pinParams := &PINProtectKeyParams{
+		ProtectKeyParams: *params,
+	}
+
+	k, primaryKey, unlockKey, err := NewTPMPINProtectedKey(s.TPM(), pinParams, makePIN(c, "1234"))
+	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
+
+	// Put the TPM in DA lockout mode. Keys without user auth should still be recoverable.
+	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+
+	err = k.ChangePIN(makePIN(c, "1234"), makePIN(c, "23456789"))
+	c.Check(err, ErrorMatches, `user authorization is currently unavailable: the TPM is in DA lockout mode`)
+	c.Check(err, testutil.ConvertibleTo, &secboot.UserAuthUnavailableError{})
+
+	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 32, 7200, 86400, nil), IsNil)
 
 	unlockKeyUnsealed, primaryKeyUnsealed, err := k.RecoverKeysWithPIN(makePIN(c, "1234"))
 	c.Check(err, IsNil)
@@ -927,6 +989,90 @@ func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
 		"TPM_RC_AUTH_FAIL \\(the authorization HMAC check failed and DA counter incremented\\)")
 }
 
+func (s *platformSuite) TestChangeAuthKeyWithTPMLockout(c *C) {
+	// Need to mock newKeyDataPolicy to force require an auth value when using NewTPMProtectedKey so that we don't
+	// have to use the passphrase APIs.
+	makeSealedKeyDataOrig := MakeSealedKeyData
+	restore := MockMakeSealedKeyData(func(tpm *tpm2.TPMContext, params *MakeSealedKeyDataParams, sealer KeySealer, constructor KeyDataConstructor, session tpm2.SessionContext) (*secboot.KeyData, secboot.PrimaryKey, secboot.DiskUnlockKey, error) {
+		sealer = &daKeySealer{sealer}
+		return makeSealedKeyDataOrig(tpm, params, sealer, constructor, session)
+	})
+	defer restore()
+
+	restore = MockNewKeyDataPolicy(func(alg tpm2.HashAlgorithmId, key *tpm2.Public, role string, pcrPolicyCounterPub *tpm2.NVPublic, requireAuthValue bool) (KeyDataPolicy, tpm2.Digest, error) {
+		index := tpm2.HandleNull
+		var indexName tpm2.Name
+		if pcrPolicyCounterPub != nil {
+			index = pcrPolicyCounterPub.Index
+			indexName = pcrPolicyCounterPub.Name()
+		}
+
+		pcrPolicyRef := ComputeV3PcrPolicyRef(key.NameAlg, []byte(role), indexName)
+
+		builder := policyutil.NewPolicyBuilder(alg)
+		builder.RootBranch().PolicyAuthorize(pcrPolicyRef, key)
+		builder.RootBranch().PolicyAuthValue()
+
+		mockPolicyData := &KeyDataPolicy_v3{
+			StaticData: &StaticPolicyData_v3{
+				AuthPublicKey:          key,
+				PCRPolicyRef:           pcrPolicyRef,
+				PCRPolicyCounterHandle: index,
+				RequireAuthValue:       true},
+			PCRData: NewPcrPolicyData_v3(
+				&PcrPolicyData_v2{
+					AuthorizedPolicySignature: &tpm2.Signature{SigAlg: tpm2.SigSchemeAlgNull},
+				}),
+		}
+
+		mockPolicyDigest, err := builder.Digest()
+		c.Assert(err, IsNil)
+
+		return mockPolicyData, mockPolicyDigest, nil
+	})
+	defer restore()
+
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "",
+	}
+
+	k, _, _, err := NewTPMProtectedKey(s.TPM(), params)
+	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
+
+	var platformHandle json.RawMessage
+	c.Check(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
+
+	platformKeyData := &secboot.PlatformKeyData{
+		Generation:    k.Generation(),
+		EncodedHandle: platformHandle,
+		KDFAlg:        crypto.Hash(crypto.SHA256),
+		AuthMode:      k.AuthMode(),
+	}
+
+	var handler PlatformKeyDataHandler
+	newHandle, err := handler.ChangeAuthKey(platformKeyData, nil, []byte{1, 2, 3, 4}, nil)
+	c.Check(err, IsNil)
+
+	// Put the TPM in DA lockout mode
+	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
+
+	newPlatformKeyData := &secboot.PlatformKeyData{
+		Generation:    k.Generation(),
+		EncodedHandle: newHandle,
+		KDFAlg:        crypto.Hash(crypto.SHA256),
+		AuthMode:      k.AuthMode(),
+	}
+
+	_, err = handler.ChangeAuthKey(newPlatformKeyData, []byte{1, 2, 3, 4}, nil, nil)
+	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
+	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorUserAuthUnavailable)
+	c.Check(err, testutil.ErrorIs, ErrTPMLockout)
+}
+
 func (s *platformSuite) TestRecoverKeysWithAuthKeyTPMLockout(c *C) {
 	// Put the TPM in DA lockout mode
 	c.Check(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 0, 7200, 86400, nil), IsNil)
@@ -997,7 +1143,7 @@ func (s *platformSuite) TestRecoverKeysWithAuthKeyTPMLockout(c *C) {
 	var handler PlatformKeyDataHandler
 	_, err = handler.RecoverKeysWithAuthKey(platformKeyData, s.lastEncryptedPayload, []byte{})
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
-	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorUnavailable)
+	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorUserAuthUnavailable)
 	c.Check(err, testutil.ErrorIs, ErrTPMLockout)
 	c.Check(err, ErrorMatches, `the TPM is in DA lockout mode`)
 }
