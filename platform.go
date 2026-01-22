@@ -57,9 +57,14 @@ const (
 	PlatformHandlerErrorUserAuthUnavailable
 
 	// PlatformHandlerErrorIncompatibleRole indicates that an action could
-	// not be performed by PlatformKeyDataHandler because they key data's
+	// not be performed by PlatformKeyDataHandler because the key data's
 	// role is incompatible with the current boot configuration.
 	PlatformHandlerErrorIncompatibleRole
+
+	// PlatformHandlerInvalidRoleParams indicates that an action could
+	// not be performed by PlatformKeyDataHandler because the key data's
+	// role parameters are invalid.
+	PlatformHandlerErrorInvalidRoleParams
 )
 
 // PlatformHandlerError is returned from a PlatformKeyDataHandler implementation when

@@ -47,6 +47,10 @@ func (*activateStateSuite) TestErrorToKeyslotErrorIncompatibleKeyDataRoleParams(
 	c.Check(ErrorToKeyslotError(fmt.Errorf("%w", NewIncompatibleKeyDataRoleParamsError(errors.New("some error")))), Equals, KeyslotErrorIncompatibleRoleParams)
 }
 
+func (*activateStateSuite) TestErrorToKeyslotErrorInvalidKeyDataRoleParams(c *C) {
+	c.Check(ErrorToKeyslotError(fmt.Errorf("%w", NewInvalidKeyDataRoleParamsError(errors.New("some error")))), Equals, KeyslotErrorInvalidRoleParams)
+}
+
 func (*activateStateSuite) TestErrorToKeyslotErrorInvalidPassphrase(c *C) {
 	c.Check(ErrorToKeyslotError(fmt.Errorf("%w", ErrInvalidPassphrase)), Equals, KeyslotErrorIncorrectUserAuth)
 }

@@ -91,7 +91,7 @@ func (e *InvalidKeyDataError) Unwrap() error {
 
 // IncompatibleKeyDataRoleParamsError is returned from KeyData methods when
 // trying to recover keys if the data that associates the metadata with
-// a role is invalid or incompatible with the current boot settings.
+// a role is incompatible with the current boot settings.
 type IncompatibleKeyDataRoleParamsError struct {
 	err error
 }
@@ -101,6 +101,21 @@ func (e *IncompatibleKeyDataRoleParamsError) Error() string {
 }
 
 func (e *IncompatibleKeyDataRoleParamsError) Unwrap() error {
+	return e.err
+}
+
+// InvalidKeyDataRoleParamsError is returned from KeyData methods when
+// trying to recover keys if the data that associates the metadata with
+// a role is invalid.
+type InvalidKeyDataRoleParamsError struct {
+	err error
+}
+
+func (e *InvalidKeyDataRoleParamsError) Error() string {
+	return fmt.Sprintf("invalid key data role params: %v", e.err)
+}
+
+func (e *InvalidKeyDataRoleParamsError) Unwrap() error {
 	return e.err
 }
 
@@ -490,6 +505,8 @@ func processPlatformHandlerError(err error, authMode AuthMode) error {
 			return &UserAuthUnavailableError{pe.Err}
 		case PlatformHandlerErrorIncompatibleRole:
 			return &IncompatibleKeyDataRoleParamsError{pe.Err}
+		case PlatformHandlerErrorInvalidRoleParams:
+			return &InvalidKeyDataRoleParamsError{pe.Err}
 		}
 	}
 
