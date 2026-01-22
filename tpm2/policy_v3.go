@@ -215,7 +215,7 @@ func (d *pcrPolicyData_v3) executeRevocationCheck(tpm *tpm2.TPMContext, counter 
 		switch {
 		case tpm2.IsTPMError(err, tpm2.ErrorPolicy, tpm2.CommandPolicyNV):
 			// The PCR policy has been revoked.
-			return policyDataError{errors.New("the PCR policy has been revoked")}
+			return pcrPolicyDataError{errors.New("the PCR policy has been revoked")}
 		case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, tpm2.CommandPolicyNV, 1):
 			// Either StaticData.PCRPolicyCounterAuthPolicies is invalid or the NV index isn't what's expected, so the key file is invalid.
 			return policyDataError{errors.New("invalid PCR policy counter or associated authorization policy metadata")}
@@ -295,7 +295,13 @@ func (p *keyDataPolicy_v3) SetPCRPolicyFrom(src keyDataPolicy) {
 }
 
 func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession, _ tpm2.SessionContext) error {
-	if err := p.PCRData.executePcrAssertions(tpm, policySession); err != nil {
+	incorrectPcrPolicy := false
+	switch err := p.PCRData.executePcrAssertions(tpm, policySession); {
+	case errors.Is(err, errSessionDigestNotFound):
+		// Don't fail early here - let TPM2_Authorize fail later on instead.
+		// This makes it possible for us to detect any other repairable problems.
+		incorrectPcrPolicy = true
+	case err != nil:
 		return xerrors.Errorf("cannot execute PCR assertions: %w", err)
 	}
 
@@ -353,8 +359,13 @@ func (p *keyDataPolicy_v3) ExecutePCRPolicy(tpm *tpm2.TPMContext, policySession,
 
 	if err := tpm.PolicyAuthorize(policySession, p.PCRData.AuthorizedPolicy, pcrPolicyRef, authorizeKey.Name(), authorizeTicket); err != nil {
 		if tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandPolicyAuthorize, 1) {
-			// d.PCRData.AuthorizedPolicy is invalid.
-			return pcrPolicyDataError{errors.New("the PCR policy is invalid")}
+			// d.PCRData.AuthorizedPolicy is not authorized for the current configuration.
+			if !incorrectPcrPolicy {
+				// We can get here if the PCR policy metadata is inconsistent
+				// with d.PCRData.AuthorizedPolicy.
+				return pcrPolicyDataError{errors.New("the PCR policy is invalid")}
+			}
+			return pcrPolicyDataError{errPcrPolicyNotAuthorized}
 		}
 		return err
 	}

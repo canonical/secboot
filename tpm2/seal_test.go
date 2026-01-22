@@ -152,8 +152,8 @@ func (s *sealSuite) testProtectKeyWithTPM(c *C, params *ProtectKeyParams) {
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 		_, _, err = k.RecoverKeys()
-		c.Check(err, ErrorMatches, "incompatible key data role params: invalid PCR policy data: cannot complete authorization "+
-			"policy assertions: cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
+		c.Check(err, ErrorMatches, "incompatible key data role params: invalid PCR policy data: cannot complete authorization policy assertions: "+
+			"the PCR policy is not authorized for the current configuration")
 	}
 
 	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
@@ -472,8 +472,8 @@ func (s *sealSuite) testPassphraseProtectKeyWithTPM(c *C, params *PassphraseProt
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 		_, _, err = k.RecoverKeysWithPassphrase(passphrase)
-		c.Check(err, ErrorMatches, "incompatible key data role params: invalid PCR policy data: cannot complete authorization "+
-			"policy assertions: cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
+		c.Check(err, ErrorMatches, "incompatible key data role params: invalid PCR policy data: cannot complete authorization policy assertions: "+
+			"the PCR policy is not authorized for the current configuration")
 	}
 
 	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
@@ -602,7 +602,7 @@ func (s *sealSuite) testPINProtectKeyWithTPM(c *C, params *PINProtectKeyParams, 
 		c.Check(err, IsNil)
 		_, _, err = k.RecoverKeysWithPIN(pin)
 		c.Check(err, ErrorMatches, "incompatible key data role params: invalid PCR policy data: cannot complete authorization policy assertions: "+
-			"cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
+			"the PCR policy is not authorized for the current configuration")
 	}
 
 	if params.PCRPolicyCounterHandle != tpm2.HandleNull {
@@ -705,8 +705,8 @@ func (s *sealSuite) testProtectKeyWithExternalStorageKey(c *C, params *ProtectKe
 		_, err := s.TPM().PCREvent(s.TPM().PCRHandleContext(23), []byte("foo"), nil)
 		c.Check(err, IsNil)
 		_, _, err = k.RecoverKeys()
-		c.Check(err, ErrorMatches, "incompatible key data role params: invalid PCR policy data: cannot complete authorization "+
-			"policy assertions: cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
+		c.Check(err, ErrorMatches, "incompatible key data role params: invalid PCR policy data: cannot complete authorization policy assertions: "+
+			"the PCR policy is not authorized for the current configuration")
 	}
 }
 
