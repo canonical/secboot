@@ -661,22 +661,24 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 			break
 		}
 
-		cred, err := authRequestor.RequestUserCredential(ctx, name, m.container.Path(), authType)
+		cred, credAuthType, err := authRequestor.RequestUserCredential(ctx, name, m.container.Path(), authType)
 		if err != nil {
 			return fmt.Errorf("cannot request user credential: %w", err)
 		}
 
+		credAuthType &= authType
+
 		// We have a user credential.
-		// 1) Try it against every keyslot with a passphrase.
-		// 2) See if it decodes as a PIN and try it against every keyslot with a passphrase.
-		// 3) See if it decodes as a recovery key, and try it against every recovery keyslot.
+		// 1) If it's a passphrase, try it against every keyslot with a passphrase.
+		// 2) If it's a PIN, try it against every keyslot with a passphrase.
+		// 3) If it's a recovery key, try it against every recovery keyslot.
 
 		var (
 			unlockKey  DiskUnlockKey
 			primaryKey PrimaryKey
 		)
 
-		if passphraseTries > 0 {
+		if credAuthType&UserAuthTypePassphrase > 0 {
 			passphraseTries -= 1
 			if uk, pk, success := m.tryPassphraseKeyslotsHelper(ctx, passphraseSlotRecords, cred); success {
 				unlockKey = uk
@@ -684,7 +686,7 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 			}
 		}
 
-		if m.status == activationIncomplete && pinTries > 0 {
+		if m.status == activationIncomplete && credAuthType&UserAuthTypePIN > 0 {
 			pin, err := ParsePIN(cred)
 			switch {
 			case err != nil && authType == UserAuthTypePIN:
@@ -707,7 +709,7 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 			}
 		}
 
-		if m.status == activationIncomplete && recoveryKeyTries > 0 {
+		if m.status == activationIncomplete && credAuthType&UserAuthTypeRecoveryKey > 0 {
 			recoveryKey, err := ParseRecoveryKey(cred)
 			switch {
 			case err != nil && authType == UserAuthTypeRecoveryKey:

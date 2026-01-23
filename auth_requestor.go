@@ -46,5 +46,7 @@ type AuthRequestor interface {
 	// and can be supplied via the ActivateContext API using the
 	// WithAuthRequestorUserVisibleName option. The authTypes argument is used
 	// to indicate what types of credential are being requested.
-	RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, error)
+	// The implementation returns the requested credential and its type, which
+	// may be a subset of the requested credential types.
+	RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, UserAuthType, error)
 }

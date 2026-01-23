@@ -64,8 +64,13 @@ func (ctb *cryptTestBase) newRecoveryKey() RecoveryKey {
 	return key
 }
 
+type mockAuthRequestorResponse struct {
+	response  any
+	authTypes UserAuthType
+}
+
 type mockAuthRequestor struct {
-	responses []interface{}
+	responses []any
 	requests  []struct {
 		name      string
 		path      string
@@ -73,7 +78,7 @@ type mockAuthRequestor struct {
 	}
 }
 
-func (r *mockAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, error) {
+func (r *mockAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, UserAuthType, error) {
 	r.requests = append(r.requests, struct {
 		name      string
 		path      string
@@ -85,18 +90,24 @@ func (r *mockAuthRequestor) RequestUserCredential(ctx context.Context, name, pat
 	})
 
 	if len(r.responses) == 0 {
-		return "", errors.New("no response")
+		return "", 0, errors.New("no response")
 	}
 	response := r.responses[0]
 	r.responses = r.responses[1:]
 
 	switch rsp := response.(type) {
+	case mockAuthRequestorResponse:
+		response = rsp.response
+		authTypes = rsp.authTypes
+	}
+
+	switch rsp := response.(type) {
 	case string:
-		return rsp, nil
+		return rsp, authTypes, nil
 	case RecoveryKey:
-		return rsp.String(), nil
+		return rsp.String(), authTypes, nil
 	case error:
-		return "", rsp
+		return "", 0, rsp
 	default:
 		panic("invalid type")
 	}
