@@ -83,7 +83,7 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 		var e InvalidKeyDataError
 		var p *PCRPolicyDataError
 		switch {
-		case xerrors.As(err, &e):
+		case errors.As(err, &e):
 			return nil, &secboot.PlatformHandlerError{
 				Type: secboot.PlatformHandlerErrorInvalidData,
 				Err:  errors.New(e.msg)}
@@ -99,9 +99,13 @@ func (h *platformKeyDataHandler) recoverKeysCommon(data *secboot.PlatformKeyData
 			return nil, &secboot.PlatformHandlerError{
 				Type: secboot.PlatformHandlerErrorInvalidAuthKey,
 				Err:  err}
-		case errors.As(err, &p):
+		case errors.Is(err, errPcrPolicyNotAuthorized):
 			return nil, &secboot.PlatformHandlerError{
 				Type: secboot.PlatformHandlerErrorIncompatibleRole,
+				Err:  err}
+		case errors.As(err, &p):
+			return nil, &secboot.PlatformHandlerError{
+				Type: secboot.PlatformHandlerErrorInvalidRoleParams,
 				Err:  err}
 		}
 		return nil, xerrors.Errorf("cannot unseal key: %w", err)

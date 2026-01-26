@@ -23,6 +23,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"errors"
 	"math/rand"
 	"strconv"
 
@@ -834,7 +835,8 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidSelection1(c *C)
 		},
 	})
 	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
-	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
+	c.Check(errors.Is(err, ErrPcrPolicyNotAuthorized), testutil.IsTrue)
+	c.Check(err, ErrorMatches, "the PCR policy is not authorized for the current configuration")
 }
 
 func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidSelection2(c *C) {
@@ -1139,7 +1141,8 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingPCRMismatch(c *C) {
 		fn: func(data *KeyDataPolicy_v3, _ secboot.PrimaryKey) {},
 	})
 	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
-	c.Check(err, ErrorMatches, "cannot execute PCR assertions: cannot execute PolicyOR assertions: current session digest not found in policy data")
+	c.Check(errors.Is(err, ErrPcrPolicyNotAuthorized), testutil.IsTrue)
+	c.Check(err, ErrorMatches, "the PCR policy is not authorized for the current configuration")
 }
 
 func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidPCRPolicyCounterHandle1(c *C) {

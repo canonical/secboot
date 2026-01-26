@@ -517,7 +517,10 @@ func isPCRPolicyDataError(err error) bool {
 	return errors.As(err, &e)
 }
 
-var errSessionDigestNotFound = errors.New("current session digest not found in policy data")
+var (
+	errPcrPolicyNotAuthorized = errors.New("the PCR policy is not authorized for the current configuration")
+	errSessionDigestNotFound  = errors.New("current session digest not found in policy data")
+)
 
 // executeAssertions executes one or more PolicyOR assertions in order to support
 // compound policies with more than 8 conditions. It starts by searching for the

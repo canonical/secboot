@@ -41,6 +41,7 @@ var (
 	ComputeV3PcrPolicyCounterAuthPolicies   = computeV3PcrPolicyCounterAuthPolicies
 	ComputeV3PcrPolicyRef                   = computeV3PcrPolicyRef
 	DeriveV3PolicyAuthKey                   = deriveV3PolicyAuthKey
+	ErrPcrPolicyNotAuthorized               = errPcrPolicyNotAuthorized
 	ErrSessionDigestNotFound                = errSessionDigestNotFound
 	IsPCRPolicyDataError                    = isPCRPolicyDataError
 	IsPolicyDataError                       = isPolicyDataError
