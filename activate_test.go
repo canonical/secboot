@@ -412,16 +412,17 @@ type testActivateContextActivateContainerParams struct {
 
 	legacyV1KeyUnlock bool
 
-	expectedStderr           string
-	expectedTryKeys          [][]byte
-	expectedAuthRequestName  string
-	expectedAuthRequestPath  string
-	expectedAuthRequestTypes []UserAuthType
-	expectedActivateConfig   map[any]any
-	expectedKeyringKeyPrefix string
-	expectedPrimaryKey       PrimaryKey
-	expectedUnlockKey        DiskUnlockKey
-	expectedState            *ContainerActivateState
+	expectedStderr             string
+	expectedTryKeys            [][]byte
+	expectedAuthRequestName    string
+	expectedAuthRequestPath    string
+	expectedAuthRequestTypes   []UserAuthType
+	expectedAuthRequestResults []mockAuthRequestorResult
+	expectedActivateConfig     map[any]any
+	expectedKeyringKeyPrefix   string
+	expectedPrimaryKey         PrimaryKey
+	expectedUnlockKey          DiskUnlockKey
+	expectedState              *ContainerActivateState
 }
 
 func (s *activateSuite) testActivateContextActivateContainer(c *C, params *testActivateContextActivateContainerParams) error {
@@ -491,6 +492,39 @@ func (s *activateSuite) testActivateContextActivateContainer(c *C, params *testA
 			c.Check(req.path, Equals, params.expectedAuthRequestPath)
 			c.Check(req.authTypes, Equals, params.expectedAuthRequestTypes[i])
 		}
+		expectedResults := params.expectedAuthRequestResults
+		if expectedResults == nil {
+			var authType UserAuthType
+			state := expectedState.Activations[params.container.CredentialName()]
+			switch state.Status {
+			case ActivationSucceededWithRecoveryKey:
+				authType = UserAuthTypeRecoveryKey
+			case ActivationSucceededWithPlatformKey:
+				data := params.container.slots[state.Keyslot].data
+				kd, err := ReadKeyData(newMockKeyDataReader("", data))
+				c.Assert(err, IsNil)
+				switch kd.AuthMode() {
+				case AuthModePassphrase:
+					authType = UserAuthTypePassphrase
+				case AuthModePIN:
+					authType = UserAuthTypePIN
+				}
+			}
+			if authType != UserAuthType(0) {
+				for i := 0; i < len(params.authRequestor.requests)-1; i++ {
+					expectedResults = append(expectedResults, mockAuthRequestorResult{
+						result:    UserAuthResultFailed,
+						authTypes: params.expectedAuthRequestTypes[i],
+					})
+				}
+
+				expectedResults = append(expectedResults, mockAuthRequestorResult{
+					result:    UserAuthResultSuccess,
+					authTypes: authType,
+				})
+			}
+		}
+		c.Check(params.authRequestor.results, DeepEquals, expectedResults)
 	}
 
 	expectedCfg := params.expectedActivateConfig
@@ -1418,13 +1452,15 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyRetryAfterInvalidRecover
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("data"),
 		},
-		expectedStderr: `Cannot parse recovery key: incorrectly formatted: insufficient characters
-`,
 		expectedAuthRequestName: "data",
 		expectedAuthRequestPath: "/dev/sda1",
 		expectedAuthRequestTypes: []UserAuthType{
 			UserAuthTypeRecoveryKey,
 			UserAuthTypeRecoveryKey,
+		},
+		expectedAuthRequestResults: []mockAuthRequestorResult{
+			{result: UserAuthResultInvalidFormat, authTypes: UserAuthTypeRecoveryKey},
+			{result: UserAuthResultSuccess, authTypes: UserAuthTypeRecoveryKey},
 		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
@@ -1515,8 +1551,6 @@ func (s *activateSuite) TestActivateContainerRecoveryKeyWithRecoveryKeyTries(c *
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("data"),
 		},
-		expectedStderr: `Cannot parse recovery key: incorrectly formatted: insufficient characters
-`,
 		expectedTryKeys:         [][]byte{incorrectRecoveryKey, incorrectRecoveryKey, incorrectRecoveryKey},
 		expectedAuthRequestName: "data",
 		expectedAuthRequestPath: "/dev/sda1",
@@ -4443,6 +4477,10 @@ func (s *activateSuite) TestActivateContainerAuthModePassphraseWithRecoveryKeyFa
 			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
 			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
 		},
+		expectedAuthRequestResults: []mockAuthRequestorResult{
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePassphrase},
+			{result: UserAuthResultSuccess, authTypes: UserAuthTypeRecoveryKey},
+		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
 			PassphraseTriesKey:              uint(3),
@@ -4517,6 +4555,11 @@ Error with keyslot "default-fallback": cannot recover keys from keyslot: incompa
 			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
 			UserAuthTypeRecoveryKey,
 		},
+		expectedAuthRequestResults: []mockAuthRequestorResult{
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePassphrase},
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePassphrase, exhaustedAuthTypes: UserAuthTypePassphrase},
+			{result: UserAuthResultSuccess, authTypes: UserAuthTypeRecoveryKey},
+		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
 			PassphraseTriesKey:              uint(3),
@@ -4580,6 +4623,12 @@ func (s *activateSuite) TestActivateContainerAuthModePassphraseWithRecoveryKeyFa
 			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
 			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
 			UserAuthTypeRecoveryKey,
+		},
+		expectedAuthRequestResults: []mockAuthRequestorResult{
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePassphrase},
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePassphrase},
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePassphrase, exhaustedAuthTypes: UserAuthTypePassphrase},
+			{result: UserAuthResultSuccess, authTypes: UserAuthTypeRecoveryKey},
 		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
@@ -4651,6 +4700,12 @@ func (s *activateSuite) TestActivateContainerAuthModePassphraseAfterRecoveryKeyF
 			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
 			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
 			UserAuthTypePassphrase,
+		},
+		expectedAuthRequestResults: []mockAuthRequestorResult{
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePassphrase | UserAuthTypeRecoveryKey},
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePassphrase | UserAuthTypeRecoveryKey},
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePassphrase | UserAuthTypeRecoveryKey, exhaustedAuthTypes: UserAuthTypeRecoveryKey},
+			{result: UserAuthResultSuccess, authTypes: UserAuthTypePassphrase},
 		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
@@ -4884,6 +4939,10 @@ func (s *activateSuite) TestActivateContainerAuthModePassphraseAuthRequestorOnly
 			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
 			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
 		},
+		expectedAuthRequestResults: []mockAuthRequestorResult{
+			{result: UserAuthResultInvalidFormat, authTypes: UserAuthTypeRecoveryKey},
+			{result: UserAuthResultSuccess, authTypes: UserAuthTypeRecoveryKey},
+		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
 			PassphraseTriesKey:              uint(3),
@@ -5074,14 +5133,18 @@ func (s *activateSuite) TestActivateContainerAuthModePINWithPINTries(c *C) {
 		opts: []ActivateOption{
 			WithAuthRequestorUserVisibleName("data"),
 		},
-		expectedStderr: `Cannot parse PIN: invalid PIN: unexpected character
-`,
 		expectedAuthRequestName: "data",
 		expectedAuthRequestPath: "/dev/sda1",
 		expectedAuthRequestTypes: []UserAuthType{
 			UserAuthTypePIN,
 			UserAuthTypePIN,
 			UserAuthTypePIN,
+		},
+		expectedAuthRequestResults: []mockAuthRequestorResult{
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePIN},
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePIN},
+			{result: UserAuthResultInvalidFormat, authTypes: UserAuthTypePIN},
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePIN, exhaustedAuthTypes: UserAuthTypePIN},
 		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
@@ -5191,6 +5254,10 @@ func (s *activateSuite) TestActivateContainerAuthModePINWithRecoveryKeyFallback(
 			UserAuthTypePIN | UserAuthTypeRecoveryKey,
 			UserAuthTypePIN | UserAuthTypeRecoveryKey,
 		},
+		expectedAuthRequestResults: []mockAuthRequestorResult{
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePIN},
+			{result: UserAuthResultSuccess, authTypes: UserAuthTypeRecoveryKey},
+		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
 			PinTriesKey:                     uint(3),
@@ -5264,6 +5331,11 @@ Error with keyslot "default-fallback": cannot recover keys from keyslot: incompa
 			UserAuthTypePIN | UserAuthTypeRecoveryKey,
 			UserAuthTypeRecoveryKey,
 		},
+		expectedAuthRequestResults: []mockAuthRequestorResult{
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePIN},
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePIN, exhaustedAuthTypes: UserAuthTypePIN},
+			{result: UserAuthResultSuccess, authTypes: UserAuthTypeRecoveryKey},
+		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
 			PinTriesKey:                     uint(3),
@@ -5327,6 +5399,12 @@ func (s *activateSuite) TestActivateContainerAuthModePINWithRecoveryKeyFallbackA
 			UserAuthTypePIN | UserAuthTypeRecoveryKey,
 			UserAuthTypePIN | UserAuthTypeRecoveryKey,
 			UserAuthTypeRecoveryKey,
+		},
+		expectedAuthRequestResults: []mockAuthRequestorResult{
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePIN},
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePIN},
+			{result: UserAuthResultFailed, authTypes: UserAuthTypePIN, exhaustedAuthTypes: UserAuthTypePIN},
+			{result: UserAuthResultSuccess, authTypes: UserAuthTypeRecoveryKey},
 		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
@@ -5398,6 +5476,12 @@ func (s *activateSuite) TestActivateContainerAuthModePINAfterRecoveryKeyFallback
 			UserAuthTypePIN | UserAuthTypeRecoveryKey,
 			UserAuthTypePIN | UserAuthTypeRecoveryKey,
 			UserAuthTypePIN,
+		},
+		expectedAuthRequestResults: []mockAuthRequestorResult{
+			{result: UserAuthResultFailed, authTypes: UserAuthTypeRecoveryKey},
+			{result: UserAuthResultFailed, authTypes: UserAuthTypeRecoveryKey},
+			{result: UserAuthResultFailed, authTypes: UserAuthTypeRecoveryKey, exhaustedAuthTypes: UserAuthTypeRecoveryKey},
+			{result: UserAuthResultSuccess, authTypes: UserAuthTypePIN},
 		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,
@@ -5632,6 +5716,10 @@ func (s *activateSuite) TestActivateContainerAuthModePINAuthRequestorOnlyReturns
 		expectedAuthRequestTypes: []UserAuthType{
 			UserAuthTypePIN | UserAuthTypeRecoveryKey,
 			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+		},
+		expectedAuthRequestResults: []mockAuthRequestorResult{
+			{result: UserAuthResultInvalidFormat, authTypes: UserAuthTypeRecoveryKey},
+			{result: UserAuthResultSuccess, authTypes: UserAuthTypeRecoveryKey},
 		},
 		expectedActivateConfig: map[any]any{
 			AuthRequestorKey:                authRequestor,

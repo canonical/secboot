@@ -633,17 +633,7 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		authType |= UserAuthTypeRecoveryKey
 	}
 
-	// XXX: When PIN support lands, this will loop on available PIN tries as well.
-	for passphraseTries > 0 || pinTries > 0 || recoveryKeyTries > 0 {
-		// Don't try a method where there are no more usable keyslots.
-		if !passphraseSlotRecords.hasUsable(m.flags) {
-			passphraseTries = 0
-		}
-		if !pinSlotRecords.hasUsable(m.flags) {
-			pinTries = 0
-		}
-
-		// Update authType flags
+	updateAvailableAuthType := func() {
 		if passphraseTries == 0 {
 			// No more passphrase key tries are left.
 			authType &^= UserAuthTypePassphrase
@@ -656,11 +646,16 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 			// No more recovery key tries are left.
 			authType &^= UserAuthTypeRecoveryKey
 		}
+	}
+	updateAvailableAuthType()
 
-		if authType == UserAuthType(0) {
-			break
-		}
+	var (
+		triedAuthType      UserAuthType // The types of credentials that were tried.
+		invalidAuthType    UserAuthType // The types of credentials that weren't tried because the format is invalid.
+		successfulAuthType UserAuthType // The type of credential that was used successfully.
+	)
 
+	for authType != UserAuthType(0) {
 		cred, credAuthType, err := authRequestor.RequestUserCredential(ctx, name, m.container.Path(), authType)
 		if err != nil {
 			return fmt.Errorf("cannot request user credential: %w", err)
@@ -679,8 +674,10 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		)
 
 		if credAuthType&UserAuthTypePassphrase > 0 {
+			triedAuthType |= UserAuthTypePassphrase
 			passphraseTries -= 1
 			if uk, pk, success := m.tryPassphraseKeyslotsHelper(ctx, passphraseSlotRecords, cred); success {
+				successfulAuthType = UserAuthTypePassphrase
 				unlockKey = uk
 				primaryKey = pk
 			}
@@ -689,20 +686,15 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		if m.status == activationIncomplete && credAuthType&UserAuthTypePIN > 0 {
 			pin, err := ParsePIN(cred)
 			switch {
-			case err != nil && authType == UserAuthTypePIN:
-				// We are only expecting a PIN and the user supplied a badly formatted
-				// one. We can log this to stderr and allow them another attempt.
-				// XXX: Maybe display a notice in Plymouth for this case in the
-				// future.
-				fmt.Fprintf(m.stderr, "Cannot parse PIN: %v\n", err)
 			case err != nil:
-				// The user supplied credential isn't a valid PIN, but it could be
-				// a valid passphrase or recovery key, so ignore the error in this
-				// case.
+				// The user supplied credential isn't a valid PIN.
+				invalidAuthType |= UserAuthTypePIN
 			default:
 				// This is a valid PIN
+				triedAuthType |= UserAuthTypePIN
 				pinTries -= 1
 				if uk, pk, success := m.tryPINKeyslotsHelper(ctx, pinSlotRecords, pin); success {
+					successfulAuthType = UserAuthTypePIN
 					unlockKey = uk
 					primaryKey = pk
 				}
@@ -712,21 +704,15 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 		if m.status == activationIncomplete && credAuthType&UserAuthTypeRecoveryKey > 0 {
 			recoveryKey, err := ParseRecoveryKey(cred)
 			switch {
-			case err != nil && authType == UserAuthTypeRecoveryKey:
-				// We are only expecting a recovery key and the user supplied a badly
-				// formatted one. We can log this to stderr and allow them another
-				// attempt.
-				// XXX: Maybe display a notice in Plymouth for this case in the
-				// future.
-				fmt.Fprintf(m.stderr, "Cannot parse recovery key: %v\n", err)
 			case err != nil:
-				// The user supplied credential isn't a valid recovery key, but it
-				// could be a valid PIN or passphrase, so ignore the error in this
-				// case.
+				// The user supplied credential isn't a valid recovery key.
+				invalidAuthType |= UserAuthTypeRecoveryKey
 			default:
 				// This is a valid recovery key
+				triedAuthType |= UserAuthTypeRecoveryKey
 				recoveryKeyTries -= 1
 				if m.tryRecoveryKeyslotsHelper(ctx, recoverySlotRecords, recoveryKey) {
+					successfulAuthType = UserAuthTypeRecoveryKey
 					unlockKey = DiskUnlockKey(recoveryKey[:])
 				}
 			}
@@ -734,10 +720,37 @@ func (m *activateOneContainerStateMachine) tryWithUserAuthKeyslots(ctx context.C
 
 		if m.status == activationIncomplete {
 			// We haven't unlocked yet, so try again.
+			// Firstly, don't retry a method where there are no more usable keyslots.
+			if !passphraseSlotRecords.hasUsable(m.flags) {
+				passphraseTries = 0
+			}
+			if !pinSlotRecords.hasUsable(m.flags) {
+				pinTries = 0
+			}
+
+			// Update authType flags
+			prevAuthType := authType
+			updateAvailableAuthType()
+			exhaustedAuthType := prevAuthType &^ authType
+
+			// Notify the UI
+			result := UserAuthResultFailed
+			failedAuthType := triedAuthType
+			if triedAuthType == UserAuthType(0) && invalidAuthType != UserAuthType(0) {
+				result = UserAuthResultInvalidFormat
+				failedAuthType = invalidAuthType
+			}
+			if err := authRequestor.NotifyUserAuthResult(ctx, result, failedAuthType, exhaustedAuthType); err != nil {
+				fmt.Fprintf(m.stderr, "Cannot notify user of auth failure: %v\n", err)
+			}
+
 			continue
 		}
 
 		// We have unlocked successfully.
+		if err := authRequestor.NotifyUserAuthResult(ctx, UserAuthResultSuccess, successfulAuthType, 0); err != nil {
+			fmt.Fprintf(m.stderr, "Cannot notify user of auth success: %v\n", err)
+		}
 		m.next = activateOneContainerStateMachineTask{
 			name: "add-keyring-keys",
 			fn: func(ctx context.Context) error {

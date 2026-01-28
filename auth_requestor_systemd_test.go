@@ -20,6 +20,7 @@
 package secboot_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -71,7 +72,7 @@ type testSystemdRequestUserCredentialsParams struct {
 func (s *authRequestorSystemdSuite) testRequestUserCredential(c *C, params *testSystemdRequestUserCredentialsParams) {
 	s.setPassphrase(c, params.passphrase)
 
-	requestor, err := NewSystemdAuthRequestor(func(name, path string, authType UserAuthType) (string, error) {
+	requestor, err := NewSystemdAuthRequestor(nil, func(name, path string, authType UserAuthType) (string, error) {
 		var fmtString string
 		switch authType {
 		case UserAuthTypePassphrase:
@@ -103,6 +104,9 @@ func (s *authRequestorSystemdSuite) testRequestUserCredential(c *C, params *test
 	c.Check(s.mockSdAskPassword.Calls(), HasLen, 1)
 	c.Check(s.mockSdAskPassword.Calls()[0], DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk",
 		"--id", filepath.Base(os.Args[0]) + ":" + params.path, params.expectedMsg})
+
+	c.Assert(requestor, testutil.ConvertibleTo, &SystemdAuthRequestor{})
+	c.Check(requestor.(*SystemdAuthRequestor).LastRequestUserCredentialPath(), Equals, params.path)
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphrase(c *C) {
@@ -216,46 +220,52 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseOrPINOrRe
 }
 
 func (s *authRequestorSystemdSuite) TestNewRequestorNoFormatStringCallback(c *C) {
-	_, err := NewSystemdAuthRequestor(nil)
+	_, err := NewSystemdAuthRequestor(nil, nil)
 	c.Check(err, ErrorMatches, `must supply a SystemdAuthRequestorStringFn`)
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialObtainMessageError(c *C) {
-	requestor, err := NewSystemdAuthRequestor(func(string, string, UserAuthType) (string, error) {
+	requestor, err := NewSystemdAuthRequestor(nil, func(string, string, UserAuthType) (string, error) {
 		return "", errors.New("some error")
 	})
 	c.Assert(err, IsNil)
 
 	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, `cannot request message string: some error`)
+	c.Assert(requestor, testutil.ConvertibleTo, &SystemdAuthRequestor{})
+	c.Check(requestor.(*SystemdAuthRequestor).LastRequestUserCredentialPath(), Equals, "")
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialInvalidResponse(c *C) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte("foo"), 0600), IsNil)
 
-	requestor, err := NewSystemdAuthRequestor(func(string, string, UserAuthType) (string, error) {
+	requestor, err := NewSystemdAuthRequestor(nil, func(string, string, UserAuthType) (string, error) {
 		return "", nil
 	})
 	c.Assert(err, IsNil)
 
 	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "systemd-ask-password output is missing terminating newline")
+	c.Assert(requestor, testutil.ConvertibleTo, &SystemdAuthRequestor{})
+	c.Check(requestor.(*SystemdAuthRequestor).LastRequestUserCredentialPath(), Equals, "")
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialFailure(c *C) {
-	requestor, err := NewSystemdAuthRequestor(func(string, string, UserAuthType) (string, error) {
+	requestor, err := NewSystemdAuthRequestor(nil, func(string, string, UserAuthType) (string, error) {
 		return "", nil
 	})
 	c.Assert(err, IsNil)
 
 	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: exit status 1")
+	c.Assert(requestor, testutil.ConvertibleTo, &SystemdAuthRequestor{})
+	c.Check(requestor.(*SystemdAuthRequestor).LastRequestUserCredentialPath(), Equals, "")
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialCanceledContext(c *C) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte("foo"), 0600), IsNil)
 
-	requestor, err := NewSystemdAuthRequestor(func(string, string, UserAuthType) (string, error) {
+	requestor, err := NewSystemdAuthRequestor(nil, func(string, string, UserAuthType) (string, error) {
 		return "", nil
 	})
 	c.Assert(err, IsNil)
@@ -266,4 +276,111 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialCanceledContext(c *
 	_, _, err = requestor.RequestUserCredential(ctx, "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: context canceled")
 	c.Check(errors.Is(err, context.Canceled), testutil.IsTrue)
+	c.Assert(requestor, testutil.ConvertibleTo, &SystemdAuthRequestor{})
+	c.Check(requestor.(*SystemdAuthRequestor).LastRequestUserCredentialPath(), Equals, "")
+}
+
+type testSystemdNotifyUserAuthResultParams struct {
+	path                 string
+	result               UserAuthResult
+	authTypes            UserAuthType
+	unavailableAuthTypes UserAuthType
+
+	expectedMsg string
+}
+
+func (s *authRequestorSystemdSuite) testNotifyUserAuthResult(c *C, params *testSystemdNotifyUserAuthResultParams) {
+	stderr := new(bytes.Buffer)
+	requestor := NewSystemdAuthRequestorForTesting(stderr, nil, params.path)
+
+	c.Check(requestor.NotifyUserAuthResult(nil, params.result, params.authTypes, params.unavailableAuthTypes), IsNil)
+	c.Check(stderr.String(), Equals, params.expectedMsg)
+}
+
+func (s *authRequestorSystemdSuite) TestNotifyUserAuthResultSuccess(c *C) {
+	s.testNotifyUserAuthResult(c, &testSystemdNotifyUserAuthResultParams{
+		result: UserAuthResultSuccess,
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestNotifyUserAuthResultFailurePassphrase(c *C) {
+	s.testNotifyUserAuthResult(c, &testSystemdNotifyUserAuthResultParams{
+		path:      "/dev/sda1",
+		result:    UserAuthResultFailed,
+		authTypes: UserAuthTypePassphrase,
+		expectedMsg: `Incorrect passphrase for /dev/sda1
+`,
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestNotifyUserAuthResultFailurePIN(c *C) {
+	s.testNotifyUserAuthResult(c, &testSystemdNotifyUserAuthResultParams{
+		path:      "/dev/sda1",
+		result:    UserAuthResultFailed,
+		authTypes: UserAuthTypePIN,
+		expectedMsg: `Incorrect PIN for /dev/sda1
+`,
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestNotifyUserAuthResultFailurePassphraseOrRecoveryKey(c *C) {
+	s.testNotifyUserAuthResult(c, &testSystemdNotifyUserAuthResultParams{
+		path:      "/dev/sda1",
+		result:    UserAuthResultFailed,
+		authTypes: UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+		expectedMsg: `Incorrect passphrase or recovery key for /dev/sda1
+`,
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestNotifyUserAuthResultFailureDifferentPath(c *C) {
+	s.testNotifyUserAuthResult(c, &testSystemdNotifyUserAuthResultParams{
+		path:      "/dev/nvme0n1p3",
+		result:    UserAuthResultFailed,
+		authTypes: UserAuthTypePassphrase,
+		expectedMsg: `Incorrect passphrase for /dev/nvme0n1p3
+`,
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestNotifyUserAuthResultFailurePassphraseNoMoreTriesLeft(c *C) {
+	s.testNotifyUserAuthResult(c, &testSystemdNotifyUserAuthResultParams{
+		path:                 "/dev/sda1",
+		result:               UserAuthResultFailed,
+		authTypes:            UserAuthTypePassphrase,
+		unavailableAuthTypes: UserAuthTypePassphrase,
+		expectedMsg: `Incorrect passphrase for /dev/sda1
+No more passphrase tries remaining
+`,
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestNotifyUserAuthResultFailureRecoveryKeyNoMoreTriesLeft(c *C) {
+	s.testNotifyUserAuthResult(c, &testSystemdNotifyUserAuthResultParams{
+		path:                 "/dev/sda1",
+		result:               UserAuthResultFailed,
+		authTypes:            UserAuthTypeRecoveryKey,
+		unavailableAuthTypes: UserAuthTypeRecoveryKey,
+		expectedMsg: `Incorrect recovery key for /dev/sda1
+No more recovery key tries remaining
+`,
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestNotifyUserAuthResultInvalidPIN(c *C) {
+	s.testNotifyUserAuthResult(c, &testSystemdNotifyUserAuthResultParams{
+		result:    UserAuthResultInvalidFormat,
+		authTypes: UserAuthTypePIN,
+		expectedMsg: `Incorrectly formatted PIN
+`,
+	})
+}
+
+func (s *authRequestorSystemdSuite) TestNotifyUserAuthResultInvalidPINOrRecoveryKey(c *C) {
+	s.testNotifyUserAuthResult(c, &testSystemdNotifyUserAuthResultParams{
+		result:    UserAuthResultInvalidFormat,
+		authTypes: UserAuthTypePIN | UserAuthTypeRecoveryKey,
+		expectedMsg: `Incorrectly formatted PIN or recovery key
+`,
+	})
 }

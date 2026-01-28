@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 )
 
@@ -36,10 +35,20 @@ type PlymouthAuthRequestorStringer interface {
 	// name is a string supplied via the WithAuthRequestorUserVisibleName option, and the
 	// path is the storage container path.
 	RequestUserCredentialString(name, path string, authTypes UserAuthType) (string, error)
+
+	// NotifyUserAuthResultString returns messages used by NotifyUserAuthResult.
+	NotifyUserAuthResultString(name, path string, result UserAuthResult, authTypes, exhaustedAuthTypes UserAuthType) (string, error)
+}
+
+type plymouthRequestUserCredentialContext struct {
+	Name string
+	Path string
 }
 
 type plymouthAuthRequestor struct {
 	stringer PlymouthAuthRequestorStringer
+
+	lastRequestUserCredentialCtx plymouthRequestUserCredentialContext
 }
 
 func (r *plymouthAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, UserAuthType, error) {
@@ -53,7 +62,6 @@ func (r *plymouthAuthRequestor) RequestUserCredential(ctx context.Context, name,
 		"--prompt", msg)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
-	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
 		return "", 0, fmt.Errorf("cannot execute plymouth ask-for-password: %w", err)
 	}
@@ -63,7 +71,30 @@ func (r *plymouthAuthRequestor) RequestUserCredential(ctx context.Context, name,
 		// which io.ReadAll filters out.
 		return "", 0, fmt.Errorf("unexpected error: %w", err)
 	}
+
+	r.lastRequestUserCredentialCtx = plymouthRequestUserCredentialContext{
+		Name: name,
+		Path: path,
+	}
+
 	return string(result), authTypes, nil
+}
+
+func (r *plymouthAuthRequestor) NotifyUserAuthResult(ctx context.Context, result UserAuthResult, authTypes, exhaustedAuthTypes UserAuthType) error {
+	msg, err := r.stringer.NotifyUserAuthResultString(r.lastRequestUserCredentialCtx.Name, r.lastRequestUserCredentialCtx.Path, result, authTypes, exhaustedAuthTypes)
+	if err != nil {
+		return fmt.Errorf("cannot request message string: %w", err)
+	}
+
+	cmd := exec.CommandContext(
+		ctx, "plymouth", "display-message",
+		"--text", msg)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("cannot execute plymouth display-message: %w", err)
+	}
+
+	r.lastRequestUserCredentialCtx = plymouthRequestUserCredentialContext{}
+	return nil
 }
 
 // NewPlymouthAuthRequestor creates an implementation of AuthRequestor that
