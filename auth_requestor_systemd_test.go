@@ -57,7 +57,7 @@ func (s *authRequestorSystemdSuite) setPassphrase(c *C, passphrase string) {
 
 var _ = Suite(&authRequestorSystemdSuite{})
 
-type testRequestUserCredentialParams struct {
+type testSystemdRequestUserCredentialsParams struct {
 	passphrase string
 
 	ctx       context.Context
@@ -68,7 +68,7 @@ type testRequestUserCredentialParams struct {
 	expectedMsg string
 }
 
-func (s *authRequestorSystemdSuite) testRequestUserCredential(c *C, params *testRequestUserCredentialParams) {
+func (s *authRequestorSystemdSuite) testRequestUserCredential(c *C, params *testSystemdRequestUserCredentialsParams) {
 	s.setPassphrase(c, params.passphrase)
 
 	requestor, err := NewSystemdAuthRequestor(func(authType UserAuthType) (string, error) {
@@ -103,7 +103,7 @@ func (s *authRequestorSystemdSuite) testRequestUserCredential(c *C, params *test
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphrase(c *C) {
-	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+	s.testRequestUserCredential(c, &testSystemdRequestUserCredentialsParams{
 		passphrase:  "password",
 		ctx:         context.Background(),
 		name:        "data",
@@ -114,7 +114,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphrase(c *C) {
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseDifferentPassphrase(c *C) {
-	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+	s.testRequestUserCredential(c, &testSystemdRequestUserCredentialsParams{
 		passphrase:  "1234",
 		ctx:         context.Background(),
 		name:        "data",
@@ -125,7 +125,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseDifferent
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialDifferentPath(c *C) {
-	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+	s.testRequestUserCredential(c, &testSystemdRequestUserCredentialsParams{
 		passphrase:  "password",
 		ctx:         context.Background(),
 		name:        "data",
@@ -136,7 +136,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialDifferentPath(c *C)
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseDifferentName(c *C) {
-	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+	s.testRequestUserCredential(c, &testSystemdRequestUserCredentialsParams{
 		passphrase:  "password",
 		ctx:         context.Background(),
 		name:        "foo",
@@ -147,7 +147,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseDifferent
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialPIN(c *C) {
-	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+	s.testRequestUserCredential(c, &testSystemdRequestUserCredentialsParams{
 		passphrase:  "1234",
 		ctx:         context.Background(),
 		name:        "data",
@@ -158,7 +158,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialPIN(c *C) {
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialRecoveryKey(c *C) {
-	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+	s.testRequestUserCredential(c, &testSystemdRequestUserCredentialsParams{
 		passphrase:  "00000-11111-22222-33333-44444-55555-00000-11111",
 		ctx:         context.Background(),
 		name:        "data",
@@ -169,7 +169,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialRecoveryKey(c *C) {
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseOrPIN(c *C) {
-	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+	s.testRequestUserCredential(c, &testSystemdRequestUserCredentialsParams{
 		passphrase:  "1234",
 		ctx:         context.Background(),
 		name:        "data",
@@ -180,7 +180,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseOrPIN(c *
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseOrRecoveryKey(c *C) {
-	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+	s.testRequestUserCredential(c, &testSystemdRequestUserCredentialsParams{
 		passphrase:  "password",
 		ctx:         context.Background(),
 		name:        "data",
@@ -191,7 +191,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseOrRecover
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialPINOrRecoveryKey(c *C) {
-	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+	s.testRequestUserCredential(c, &testSystemdRequestUserCredentialsParams{
 		passphrase:  "00000-11111-22222-33333-44444-55555-00000-11111",
 		ctx:         context.Background(),
 		name:        "data",
@@ -202,7 +202,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialPINOrRecoveryKey(c 
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseOrPINOrRecoveryKey(c *C) {
-	s.testRequestUserCredential(c, &testRequestUserCredentialParams{
+	s.testRequestUserCredential(c, &testSystemdRequestUserCredentialsParams{
 		passphrase:  "password",
 		ctx:         context.Background(),
 		name:        "data",

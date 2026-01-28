@@ -61,9 +61,9 @@ func (r *systemdAuthRequestor) RequestUserCredential(ctx context.Context, name, 
 }
 
 // NewSystemdAuthRequestor creates an implementation of AuthRequestor that
-// delegates to the systemd-ask-password binary. The caller supplies a map
-// of user auth type combinations to format strings that are used to construct
-// messages. The format strings are interpreted with the following parameters:
+// delegates to the systemd-ask-password binary. The caller supplies a callback
+// to map user auth type combinations to format strings that are used to
+// messages.The format strings are interpreted with the following parameters:
 // - %[1]s: A human readable name for the storage container.
 // - %[2]s: The path of the encrypted storage container.
 func NewSystemdAuthRequestor(formatStringFn func(UserAuthType) (string, error)) (AuthRequestor, error) {
