@@ -60,29 +60,31 @@ type mockPlymouthAuthRequestorStringer struct {
 	rucErr error
 }
 
-func (s *mockPlymouthAuthRequestorStringer) RequestUserCredentialFormatString(authType UserAuthType) (string, error) {
+func (s *mockPlymouthAuthRequestorStringer) RequestUserCredentialString(name, path string, authType UserAuthType) (string, error) {
 	if s.rucErr != nil {
 		return "", s.rucErr
 	}
 
+	var fmtString string
 	switch authType {
 	case UserAuthTypePassphrase:
-		return "Enter passphrase for %[1]s (%[2]s):", nil
+		fmtString = "Enter passphrase for %s (%s):"
 	case UserAuthTypePIN:
-		return "Enter PIN for %[1]s (%[2]s):", nil
+		fmtString = "Enter PIN for %s (%s):"
 	case UserAuthTypeRecoveryKey:
-		return "Enter recovery key for %[1]s (%[2]s):", nil
+		fmtString = "Enter recovery key for %s (%s):"
 	case UserAuthTypePassphrase | UserAuthTypePIN:
-		return "Enter passphrase or PIN for %[1]s (%[2]s):", nil
+		fmtString = "Enter passphrase or PIN for %s (%s):"
 	case UserAuthTypePassphrase | UserAuthTypeRecoveryKey:
-		return "Enter passphrase or recovery key for %[1]s (%[2]s):", nil
+		fmtString = "Enter passphrase or recovery key for %s (%s):"
 	case UserAuthTypePIN | UserAuthTypeRecoveryKey:
-		return "Enter PIN or recovery key for %[1]s (%[2]s):", nil
+		fmtString = "Enter PIN or recovery key for %s (%s):"
 	case UserAuthTypePassphrase | UserAuthTypePIN | UserAuthTypeRecoveryKey:
-		return "Enter passphrase, PIN or recovery key for %[1]s (%[2]s):", nil
+		fmtString = "Enter passphrase, PIN or recovery key for %s (%s):"
 	default:
 		return "", errors.New("unexpected UserAuthType")
 	}
+	return fmt.Sprintf(fmtString, name, path), nil
 }
 
 type testPlymouthRequestUserCredentialsParams struct {
@@ -226,14 +228,14 @@ func (s *authRequestorPlymouthSuite) TestNewRequestorNoStringer(c *C) {
 	c.Check(err, ErrorMatches, `must supply an implementation of PlymouthAuthRequestorStringer`)
 }
 
-func (s *authRequestorPlymouthSuite) TestRequestUserCredentialObtainFormatStringError(c *C) {
+func (s *authRequestorPlymouthSuite) TestRequestUserCredentialObtainMessageError(c *C) {
 	requestor, err := NewPlymouthAuthRequestor(&mockPlymouthAuthRequestorStringer{
 		rucErr: errors.New("some error"),
 	})
 	c.Assert(err, IsNil)
 
 	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
-	c.Check(err, ErrorMatches, `cannot request format string for requested auth types: some error`)
+	c.Check(err, ErrorMatches, `cannot request message string: some error`)
 }
 
 func (s *authRequestorPlymouthSuite) TestRequestUserCredentialFailure(c *C) {

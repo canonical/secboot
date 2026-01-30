@@ -32,13 +32,8 @@ import (
 // PlymouthAuthRequestorStringer is used by the Plymouth implementation
 // of [AuthRequestor] to obtain translated strings.
 type PlymouthAuthRequestorStringer interface {
-	// RequestUserCredentialFormatString returns a format string used by
-	// RequestUserCredential to construct a message that is used to request
-	// credentials with the supplied auth types. The returned format string
-	// is interpreted with the following parameters:
-	// - %[1]s: A human readable name for the storage container.
-	// - %[2]s: The path of the encrypted storage container.
-	RequestUserCredentialFormatString(authTypes UserAuthType) (string, error)
+	// RequestUserCredentialString returns messages used by RequestUserCredential.
+	RequestUserCredentialString(name, path string, authTypes UserAuthType) (string, error)
 }
 
 type plymouthAuthRequestor struct {
@@ -46,11 +41,10 @@ type plymouthAuthRequestor struct {
 }
 
 func (r *plymouthAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, UserAuthType, error) {
-	fmtString, err := r.stringer.RequestUserCredentialFormatString(authTypes)
+	msg, err := r.stringer.RequestUserCredentialString(name, path, authTypes)
 	if err != nil {
-		return "", 0, fmt.Errorf("cannot request format string for requested auth types: %w", err)
+		return "", 0, fmt.Errorf("cannot request message string: %w", err)
 	}
-	msg := fmt.Sprintf(fmtString, name, path)
 
 	cmd := exec.CommandContext(
 		ctx, "plymouth", "ask-for-password",
