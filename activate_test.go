@@ -4843,6 +4843,62 @@ Error with keyslot "default": cannot recover keys from keyslot: user authorizati
 	c.Check(err, Equals, ErrCannotActivate)
 }
 
+func (s *activateSuite) TestActivateContainerAuthModePassphraseAuthRequestorOnlyReturnsRecoveryKey(c *C) {
+	// Test a simple case with 2 keyslots with passphrase auth and
+	// a recovery keyslot. Unlocking happens with a recovery keyslot
+	// after initially entering what looks like a correct passphrase
+	// but the AuthRequestor indicated it was only a recovery key.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", "secret")
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPassphrase(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", "foo")
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			mockAuthRequestorResponse{response: "secret", authTypes: UserAuthTypeRecoveryKey},
+			mockAuthRequestorResponse{response: makeRecoveryKey(c, recoveryKey), authTypes: UserAuthTypeRecoveryKey},
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPassphraseTries(3),
+			WithRecoveryKeyTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+			UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PassphraseTriesKey:              uint(3),
+			RecoveryKeyTriesKey:             uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedUnlockKey: recoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+		},
+	})
+	c.Check(err, IsNil)
+}
+
 func (s *activateSuite) TestActivateContainerAuthModePIN(c *C) {
 	// Test a simple case with 2 keyslots with PIN auth.
 	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
@@ -5534,6 +5590,62 @@ Error with keyslot "default": cannot recover keys from keyslot: user authorizati
 		},
 	})
 	c.Check(err, Equals, ErrCannotActivate)
+}
+
+func (s *activateSuite) TestActivateContainerAuthModePINAuthRequestorOnlyReturnsRecoveryKey(c *C) {
+	// Test a simple case with 2 keyslots with PIN auth and
+	// a recovery keyslot. Unlocking happens with a recovery keyslot
+	// after initially entering what looks like a correct PIN
+	// but the AuthRequestor indicated it was only a recovery key.
+	primaryKey := testutil.DecodeHexString(c, "ed988fada3dbf68e13862cfc52b6d6205c862dd0941e643a81dcab106a79ce6a")
+	kd1, unlockKey1 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "4d8b57f05f0e70a73768c1d9f1078b8e9b0e9c399f555342e1ac4e675fea122e"), "run+recover", makePIN(c, "1234"))
+	kd2, unlockKey2 := s.makeKeyDataBlobWithPIN(c, primaryKey, testutil.DecodeHexString(c, "d72501b0b558c3119e036d5585629a026e82c05b6a4f19511daa3f12cc37902f"), "recover", makePIN(c, "5678"))
+
+	recoveryKey := testutil.DecodeHexString(c, "9124e9a56e40c65424c5f652127f8d18")
+
+	authRequestor := &mockAuthRequestor{
+		responses: []any{
+			mockAuthRequestorResponse{response: "1234", authTypes: UserAuthTypeRecoveryKey},
+			mockAuthRequestorResponse{response: makeRecoveryKey(c, recoveryKey), authTypes: UserAuthTypeRecoveryKey},
+		},
+	}
+
+	err := s.testActivateContextActivateContainer(c, &testActivateContextActivateContainerParams{
+		contextOpts: []ActivateContextOption{
+			WithAuthRequestor(authRequestor),
+			WithPINTries(3),
+			WithRecoveryKeyTries(3),
+		},
+		authRequestor: authRequestor,
+		container: newMockStorageContainer(
+			withStorageContainerPath("/dev/sda1"),
+			withStorageContainerCredentialName("sda1"),
+			withStorageContainerKeyslot("default", unlockKey1, KeyslotTypePlatform, 0, kd1),
+			withStorageContainerKeyslot("default-fallback", unlockKey2, KeyslotTypePlatform, 0, kd2),
+			withStorageContainerKeyslot("default-recovery", recoveryKey, KeyslotTypeRecovery, 0, nil),
+		),
+		opts: []ActivateOption{
+			WithAuthRequestorUserVisibleName("data"),
+		},
+		expectedAuthRequestName: "data",
+		expectedAuthRequestPath: "/dev/sda1",
+		expectedAuthRequestTypes: []UserAuthType{
+			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+			UserAuthTypePIN | UserAuthTypeRecoveryKey,
+		},
+		expectedActivateConfig: map[any]any{
+			AuthRequestorKey:                authRequestor,
+			PinTriesKey:                     uint(3),
+			RecoveryKeyTriesKey:             uint(3),
+			AuthRequestorUserVisibleNameKey: "data",
+		},
+		expectedUnlockKey: recoveryKey,
+		expectedState: &ContainerActivateState{
+			Status:  ActivationSucceededWithRecoveryKey,
+			Keyslot: "default-recovery",
+		},
+	})
+	c.Check(err, IsNil)
 }
 
 func (s *activateSuite) TestDeactivateContainer(c *C) {

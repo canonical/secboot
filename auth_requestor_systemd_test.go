@@ -93,9 +93,10 @@ func (s *authRequestorSystemdSuite) testRequestUserCredential(c *C, params *test
 	})
 	c.Assert(err, IsNil)
 
-	passphrase, err := requestor.RequestUserCredential(params.ctx, params.name, params.path, params.authTypes)
+	passphrase, passphraseType, err := requestor.RequestUserCredential(params.ctx, params.name, params.path, params.authTypes)
 	c.Check(err, IsNil)
 	c.Check(passphrase, Equals, params.passphrase)
+	c.Check(passphraseType, Equals, params.authTypes)
 
 	c.Check(s.mockSdAskPassword.Calls(), HasLen, 1)
 	c.Check(s.mockSdAskPassword.Calls()[0], DeepEquals, []string{"systemd-ask-password", "--icon", "drive-harddisk",
@@ -223,7 +224,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialObtainFormatStringE
 	})
 	c.Assert(err, IsNil)
 
-	_, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
+	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, `cannot request format string for requested auth types: some error`)
 }
 
@@ -235,7 +236,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialInvalidResponse(c *
 	})
 	c.Assert(err, IsNil)
 
-	_, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
+	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "systemd-ask-password output is missing terminating newline")
 }
 
@@ -245,7 +246,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialFailure(c *C) {
 	})
 	c.Assert(err, IsNil)
 
-	_, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
+	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: exit status 1")
 }
 
@@ -260,7 +261,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialCanceledContext(c *
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err = requestor.RequestUserCredential(ctx, "data", "/dev/sda1", UserAuthTypePassphrase)
+	_, _, err = requestor.RequestUserCredential(ctx, "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "cannot execute systemd-ask-password: context canceled")
 	c.Check(errors.Is(err, context.Canceled), testutil.IsTrue)
 }

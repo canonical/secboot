@@ -45,10 +45,10 @@ type plymouthAuthRequestor struct {
 	stringer PlymouthAuthRequestorStringer
 }
 
-func (r *plymouthAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, error) {
+func (r *plymouthAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, UserAuthType, error) {
 	fmtString, err := r.stringer.RequestUserCredentialFormatString(authTypes)
 	if err != nil {
-		return "", fmt.Errorf("cannot request format string for requested auth types: %w", err)
+		return "", 0, fmt.Errorf("cannot request format string for requested auth types: %w", err)
 	}
 	msg := fmt.Sprintf(fmtString, name, path)
 
@@ -59,15 +59,15 @@ func (r *plymouthAuthRequestor) RequestUserCredential(ctx context.Context, name,
 	cmd.Stdout = out
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("cannot execute plymouth ask-for-password: %w", err)
+		return "", 0, fmt.Errorf("cannot execute plymouth ask-for-password: %w", err)
 	}
 	result, err := io.ReadAll(out)
 	if err != nil {
 		// The only error returned from bytes.Buffer.Read should be io.EOF,
 		// which io.ReadAll filters out.
-		return "", fmt.Errorf("unexpected error: %w", err)
+		return "", 0, fmt.Errorf("unexpected error: %w", err)
 	}
-	return string(result), nil
+	return string(result), authTypes, nil
 }
 
 // NewPlymouthAuthRequestor creates an implementation of AuthRequestor that

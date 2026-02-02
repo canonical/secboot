@@ -34,10 +34,10 @@ type systemdAuthRequestor struct {
 	formatStringFn func(UserAuthType) (string, error)
 }
 
-func (r *systemdAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, error) {
+func (r *systemdAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, UserAuthType, error) {
 	fmtString, err := r.formatStringFn(authTypes)
 	if err != nil {
-		return "", fmt.Errorf("cannot request format string for requested auth types: %w", err)
+		return "", 0, fmt.Errorf("cannot request format string for requested auth types: %w", err)
 	}
 	msg := fmt.Sprintf(fmtString, name, path)
 
@@ -50,14 +50,14 @@ func (r *systemdAuthRequestor) RequestUserCredential(ctx context.Context, name, 
 	cmd.Stdout = out
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("cannot execute systemd-ask-password: %w", err)
+		return "", 0, fmt.Errorf("cannot execute systemd-ask-password: %w", err)
 	}
 	result, err := out.ReadString('\n')
 	if err != nil {
 		// The only error returned from bytes.Buffer.ReadString is io.EOF.
-		return "", errors.New("systemd-ask-password output is missing terminating newline")
+		return "", 0, errors.New("systemd-ask-password output is missing terminating newline")
 	}
-	return strings.TrimRight(result, "\n"), nil
+	return strings.TrimRight(result, "\n"), authTypes, nil
 }
 
 // NewSystemdAuthRequestor creates an implementation of AuthRequestor that

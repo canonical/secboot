@@ -276,7 +276,7 @@ func (s *activateWithKeyDataState) run() (success bool, err error) {
 		// a maximum of 2 keys with passphrases enabled (Ubuntu Core based desktop on
 		// a UEFI+TPM platform with run+recovery and recovery-only protectors for
 		// ubuntu-data).
-		passphrase, err := s.authRequestor.RequestUserCredential(context.Background(), s.volumeName, s.sourceDevicePath, UserAuthTypePassphrase)
+		passphrase, _, err := s.authRequestor.RequestUserCredential(context.Background(), s.volumeName, s.sourceDevicePath, UserAuthTypePassphrase)
 		if err != nil {
 			passphraseErr = xerrors.Errorf("cannot obtain passphrase: %w", err)
 			continue
@@ -329,7 +329,7 @@ func activateWithRecoveryKey(volumeName, sourceDevicePath string, authRequestor 
 	for ; tries > 0; tries-- {
 		lastErr = nil
 
-		keyString, err := authRequestor.RequestUserCredential(context.Background(), volumeName, sourceDevicePath, UserAuthTypeRecoveryKey)
+		keyString, _, err := authRequestor.RequestUserCredential(context.Background(), volumeName, sourceDevicePath, UserAuthTypeRecoveryKey)
 		if err != nil {
 			lastErr = xerrors.Errorf("cannot obtain recovery key: %w", err)
 			continue

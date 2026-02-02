@@ -102,9 +102,10 @@ func (s *authRequestorPlymouthSuite) testRequestUserCredential(c *C, params *tes
 	requestor, err := NewPlymouthAuthRequestor(new(mockPlymouthAuthRequestorStringer))
 	c.Assert(err, IsNil)
 
-	passphrase, err := requestor.RequestUserCredential(params.ctx, params.name, params.path, params.authTypes)
+	passphrase, passphraseType, err := requestor.RequestUserCredential(params.ctx, params.name, params.path, params.authTypes)
 	c.Check(err, IsNil)
 	c.Check(passphrase, Equals, params.passphrase)
+	c.Check(passphraseType, Equals, params.authTypes)
 
 	c.Check(s.mockPlymouth.Calls(), HasLen, 1)
 	c.Check(s.mockPlymouth.Calls()[0], DeepEquals, []string{"plymouth", "ask-for-password", "--prompt", params.expectedMsg})
@@ -231,7 +232,7 @@ func (s *authRequestorPlymouthSuite) TestRequestUserCredentialObtainFormatString
 	})
 	c.Assert(err, IsNil)
 
-	_, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
+	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, `cannot request format string for requested auth types: some error`)
 }
 
@@ -239,7 +240,7 @@ func (s *authRequestorPlymouthSuite) TestRequestUserCredentialFailure(c *C) {
 	requestor, err := NewPlymouthAuthRequestor(new(mockPlymouthAuthRequestorStringer))
 	c.Assert(err, IsNil)
 
-	_, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
+	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "cannot execute plymouth ask-for-password: exit status 1")
 }
 
@@ -252,7 +253,7 @@ func (s *authRequestorPlymouthSuite) TestRequestUserCredentialCanceledContext(c 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err = requestor.RequestUserCredential(ctx, "data", "/dev/sda1", UserAuthTypePassphrase)
+	_, _, err = requestor.RequestUserCredential(ctx, "data", "/dev/sda1", UserAuthTypePassphrase)
 	c.Check(err, ErrorMatches, "cannot execute plymouth ask-for-password: context canceled")
 	c.Check(errors.Is(err, context.Canceled), testutil.IsTrue)
 }
