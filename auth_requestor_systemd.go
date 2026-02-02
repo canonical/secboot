@@ -31,7 +31,9 @@ import (
 )
 
 // SystemdAuthRequestorStringFn is a callback used to supply translated messages
-// to the systemd implementation of AuthRequestor.RequestUserCredential.
+// to the systemd implementation of AuthRequestor.RequestUserCredential. The name
+// is a string supplied via the [WithAuthRequestorUserVisibleName] option, and the
+// path is the storage container path.
 type SystemdAuthRequestorStringFn func(name, path string, authTypes UserAuthType) (string, error)
 
 type systemdAuthRequestor struct {

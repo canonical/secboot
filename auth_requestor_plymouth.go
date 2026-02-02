@@ -32,7 +32,9 @@ import (
 // PlymouthAuthRequestorStringer is used by the Plymouth implementation
 // of [AuthRequestor] to obtain translated strings.
 type PlymouthAuthRequestorStringer interface {
-	// RequestUserCredentialString returns messages used by RequestUserCredential.
+	// RequestUserCredentialString returns messages used by RequestUserCredential. The
+	// name is a string supplied via the WithAuthRequestorUserVisibleName option, and the
+	// path is the storage container path.
 	RequestUserCredentialString(name, path string, authTypes UserAuthType) (string, error)
 }
 
