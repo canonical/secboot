@@ -30,16 +30,21 @@ import (
 	"strings"
 )
 
+// SystemdAuthRequestorStringFn is a callback used to supply translated messages
+// to the systemd implementation of AuthRequestor.RequestUserCredential. The name
+// is a string supplied via the [WithAuthRequestorUserVisibleName] option, and the
+// path is the storage container path.
+type SystemdAuthRequestorStringFn func(name, path string, authTypes UserAuthType) (string, error)
+
 type systemdAuthRequestor struct {
-	formatStringFn func(UserAuthType) (string, error)
+	stringFn SystemdAuthRequestorStringFn
 }
 
 func (r *systemdAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, UserAuthType, error) {
-	fmtString, err := r.formatStringFn(authTypes)
+	msg, err := r.stringFn(name, path, authTypes)
 	if err != nil {
-		return "", 0, fmt.Errorf("cannot request format string for requested auth types: %w", err)
+		return "", 0, fmt.Errorf("cannot request message string: %w", err)
 	}
-	msg := fmt.Sprintf(fmtString, name, path)
 
 	cmd := exec.CommandContext(
 		ctx, "systemd-ask-password",
@@ -62,15 +67,12 @@ func (r *systemdAuthRequestor) RequestUserCredential(ctx context.Context, name, 
 
 // NewSystemdAuthRequestor creates an implementation of AuthRequestor that
 // delegates to the systemd-ask-password binary. The caller supplies a callback
-// to map user auth type combinations to format strings that are used to
-// messages.The format strings are interpreted with the following parameters:
-// - %[1]s: A human readable name for the storage container.
-// - %[2]s: The path of the encrypted storage container.
-func NewSystemdAuthRequestor(formatStringFn func(UserAuthType) (string, error)) (AuthRequestor, error) {
-	if formatStringFn == nil {
-		return nil, errors.New("must supply a callback to obtain format strings for requesting user credentials")
+// to supply messages for user auth requests.
+func NewSystemdAuthRequestor(stringFn SystemdAuthRequestorStringFn) (AuthRequestor, error) {
+	if stringFn == nil {
+		return nil, errors.New("must supply a SystemdAuthRequestorStringFn")
 	}
 	return &systemdAuthRequestor{
-		formatStringFn: formatStringFn,
+		stringFn: stringFn,
 	}, nil
 }

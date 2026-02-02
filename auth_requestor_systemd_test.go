@@ -71,25 +71,27 @@ type testSystemdRequestUserCredentialsParams struct {
 func (s *authRequestorSystemdSuite) testRequestUserCredential(c *C, params *testSystemdRequestUserCredentialsParams) {
 	s.setPassphrase(c, params.passphrase)
 
-	requestor, err := NewSystemdAuthRequestor(func(authType UserAuthType) (string, error) {
+	requestor, err := NewSystemdAuthRequestor(func(name, path string, authType UserAuthType) (string, error) {
+		var fmtString string
 		switch authType {
 		case UserAuthTypePassphrase:
-			return "Enter passphrase for %[1]s (%[2]s):", nil
+			fmtString = "Enter passphrase for %s (%s):"
 		case UserAuthTypePIN:
-			return "Enter PIN for %[1]s (%[2]s):", nil
+			fmtString = "Enter PIN for %s (%s):"
 		case UserAuthTypeRecoveryKey:
-			return "Enter recovery key for %[1]s (%[2]s):", nil
+			fmtString = "Enter recovery key for %s (%s):"
 		case UserAuthTypePassphrase | UserAuthTypePIN:
-			return "Enter passphrase or PIN for %[1]s (%[2]s):", nil
+			fmtString = "Enter passphrase or PIN for %s (%s):"
 		case UserAuthTypePassphrase | UserAuthTypeRecoveryKey:
-			return "Enter passphrase or recovery key for %[1]s (%[2]s):", nil
+			fmtString = "Enter passphrase or recovery key for %s (%s):"
 		case UserAuthTypePIN | UserAuthTypeRecoveryKey:
-			return "Enter PIN or recovery key for %[1]s (%[2]s):", nil
+			fmtString = "Enter PIN or recovery key for %s (%s):"
 		case UserAuthTypePassphrase | UserAuthTypePIN | UserAuthTypeRecoveryKey:
-			return "Enter passphrase, PIN or recovery key for %[1]s (%[2]s):", nil
+			fmtString = "Enter passphrase, PIN or recovery key for %s (%s):"
 		default:
 			return "", errors.New("unexpected UserAuthType")
 		}
+		return fmt.Sprintf(fmtString, name, path), nil
 	})
 	c.Assert(err, IsNil)
 
@@ -215,23 +217,23 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseOrPINOrRe
 
 func (s *authRequestorSystemdSuite) TestNewRequestorNoFormatStringCallback(c *C) {
 	_, err := NewSystemdAuthRequestor(nil)
-	c.Check(err, ErrorMatches, `must supply a callback to obtain format strings for requesting user credentials`)
+	c.Check(err, ErrorMatches, `must supply a SystemdAuthRequestorStringFn`)
 }
 
-func (s *authRequestorSystemdSuite) TestRequestUserCredentialObtainFormatStringError(c *C) {
-	requestor, err := NewSystemdAuthRequestor(func(UserAuthType) (string, error) {
+func (s *authRequestorSystemdSuite) TestRequestUserCredentialObtainMessageError(c *C) {
+	requestor, err := NewSystemdAuthRequestor(func(string, string, UserAuthType) (string, error) {
 		return "", errors.New("some error")
 	})
 	c.Assert(err, IsNil)
 
 	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
-	c.Check(err, ErrorMatches, `cannot request format string for requested auth types: some error`)
+	c.Check(err, ErrorMatches, `cannot request message string: some error`)
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialInvalidResponse(c *C) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte("foo"), 0600), IsNil)
 
-	requestor, err := NewSystemdAuthRequestor(func(UserAuthType) (string, error) {
+	requestor, err := NewSystemdAuthRequestor(func(string, string, UserAuthType) (string, error) {
 		return "", nil
 	})
 	c.Assert(err, IsNil)
@@ -241,7 +243,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialInvalidResponse(c *
 }
 
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialFailure(c *C) {
-	requestor, err := NewSystemdAuthRequestor(func(UserAuthType) (string, error) {
+	requestor, err := NewSystemdAuthRequestor(func(string, string, UserAuthType) (string, error) {
 		return "", nil
 	})
 	c.Assert(err, IsNil)
@@ -253,7 +255,7 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialFailure(c *C) {
 func (s *authRequestorSystemdSuite) TestRequestUserCredentialCanceledContext(c *C) {
 	c.Assert(ioutil.WriteFile(s.passwordFile, []byte("foo"), 0600), IsNil)
 
-	requestor, err := NewSystemdAuthRequestor(func(UserAuthType) (string, error) {
+	requestor, err := NewSystemdAuthRequestor(func(string, string, UserAuthType) (string, error) {
 		return "", nil
 	})
 	c.Assert(err, IsNil)
