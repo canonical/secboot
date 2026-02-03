@@ -504,3 +504,24 @@ func (s *authRequestorPlymouthSuite) TestNotifyUserAuthResultInvalidPINOrRecover
 		expectedMsg: "Invalid PIN or recovery key",
 	})
 }
+
+func (s *authRequestorPlymouthSuite) TestNotifyUserAuthResultObtainMessageError(c *C) {
+	requestor, err := NewPlymouthAuthRequestor(&mockPlymouthAuthRequestorStringer{
+		err: errors.New("some error"),
+	})
+	c.Assert(err, IsNil)
+
+	err = requestor.NotifyUserAuthResult(context.Background(), UserAuthResultSuccess, UserAuthTypePassphrase, 0)
+	c.Check(err, ErrorMatches, `cannot request message string: some error`)
+}
+
+func (s *authRequestorPlymouthSuite) TestNotifyUserAuthResultCanceledContext(c *C) {
+	requestor := NewPlymouthAuthRequestorForTesting(new(mockPlymouthAuthRequestorStringer), &PlymouthRequestUserCredentialContext{Name: "data", Path: "/dev/sda1"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := requestor.NotifyUserAuthResult(ctx, UserAuthResultSuccess, UserAuthTypePassphrase, 0)
+	c.Check(err, ErrorMatches, "cannot execute plymouth display-message: context canceled")
+	c.Check(errors.Is(err, context.Canceled), testutil.IsTrue)
+}
