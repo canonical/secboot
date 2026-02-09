@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -36,26 +37,53 @@ import (
 	. "github.com/snapcore/secboot"
 )
 
+type authRequestorPlymouthTestMixin struct {
+	passwordFile           string
+	stopPlymouthdFile      string
+	displayMessageFailFile string
+	mockPlymouth           *snapd_testutil.MockCmd
+}
+
+func (m *authRequestorPlymouthTestMixin) setUpTest(c *C) (restore func()) {
+	dir := c.MkDir()
+	m.passwordFile = filepath.Join(dir, "password") // password to be returned by the mock plymouth
+	m.stopPlymouthdFile = filepath.Join(dir, "plymouthd-stopped")
+	m.displayMessageFailFile = filepath.Join(dir, "display-message-fail")
+
+	plymouthBottom := `if [ "$1" == "--ping" ] && [ -e %[1]s ]; then
+	exit 1
+elif [ "$1" == "ask-for-password" ]; then
+	cat %[2]s
+elif [ "$1" == "display-message" ] && [ -e %[3]s ]; then
+	exit 1
+fi`
+	m.mockPlymouth = snapd_testutil.MockCommand(c, "plymouth", fmt.Sprintf(plymouthBottom, m.stopPlymouthdFile, m.passwordFile, m.displayMessageFailFile))
+	return m.mockPlymouth.Restore
+}
+
+func (m *authRequestorPlymouthTestMixin) setPassphrase(c *C, passphrase string) {
+	c.Assert(ioutil.WriteFile(m.passwordFile, []byte(passphrase), 0600), IsNil)
+}
+
+func (m *authRequestorPlymouthTestMixin) stopPlymouthd(c *C) {
+	f, err := os.Create(m.stopPlymouthdFile)
+	c.Assert(err, IsNil)
+	f.Close()
+}
+
+func (m *authRequestorPlymouthTestMixin) makePlymouthDisplayMessageFail(c *C) {
+	f, err := os.Create(m.displayMessageFailFile)
+	c.Assert(err, IsNil)
+	f.Close()
+}
+
 type authRequestorPlymouthSuite struct {
 	snapd_testutil.BaseTest
-
-	passwordFile string
-	mockPlymouth *snapd_testutil.MockCmd
+	authRequestorPlymouthTestMixin
 }
 
 func (s *authRequestorPlymouthSuite) SetUpTest(c *C) {
-	dir := c.MkDir()
-	s.passwordFile = filepath.Join(dir, "password") // password to be returned by the mock plymouth
-
-	plymouthBottom := `if [ "$1" = "ask-for-password" ]; then
-cat %[1]s
-fi`
-	s.mockPlymouth = snapd_testutil.MockCommand(c, "plymouth", fmt.Sprintf(plymouthBottom, s.passwordFile))
-	s.AddCleanup(s.mockPlymouth.Restore)
-}
-
-func (s *authRequestorPlymouthSuite) setPassphrase(c *C, passphrase string) {
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(passphrase), 0600), IsNil)
+	s.AddCleanup(s.authRequestorPlymouthTestMixin.setUpTest(c))
 }
 
 var _ = Suite(&authRequestorPlymouthSuite{})
@@ -191,8 +219,10 @@ func (s *authRequestorPlymouthSuite) testRequestUserCredential(c *C, params *tes
 	c.Check(passphrase, Equals, params.passphrase)
 	c.Check(passphraseType, Equals, params.authTypes)
 
-	c.Check(s.mockPlymouth.Calls(), HasLen, 1)
-	c.Check(s.mockPlymouth.Calls()[0], DeepEquals, []string{"plymouth", "ask-for-password", "--prompt", params.expectedMsg})
+	c.Check(s.mockPlymouth.Calls(), DeepEquals, [][]string{
+		{"plymouth", "--ping"},
+		{"plymouth", "ask-for-password", "--prompt", params.expectedMsg},
+	})
 
 	c.Assert(requestor, testutil.ConvertibleTo, &PlymouthAuthRequestor{})
 	c.Check(requestor.(*PlymouthAuthRequestor).LastRequestUserCredentialCtx(), DeepEquals, PlymouthRequestUserCredentialContext{
@@ -311,6 +341,17 @@ func (s *authRequestorPlymouthSuite) TestRequestUserCredentialPassphraseOrPINOrR
 	})
 }
 
+func (s *authRequestorPlymouthSuite) TestNewRequestorNotAvailable(c *C) {
+	old := os.Getenv("PATH")
+	dir := c.MkDir()
+	os.Setenv("PATH", dir)
+	defer func() { os.Setenv("PATH", old) }()
+
+	_, err := NewPlymouthAuthRequestor(nil)
+	c.Check(err, ErrorMatches, `the auth requestor is not available`)
+	c.Check(errors.Is(err, ErrAuthRequestorNotAvailable), testutil.IsTrue)
+}
+
 func (s *authRequestorPlymouthSuite) TestNewRequestorNoStringer(c *C) {
 	_, err := NewPlymouthAuthRequestor(nil)
 	c.Check(err, ErrorMatches, `must supply an implementation of PlymouthAuthRequestorStringer`)
@@ -348,8 +389,21 @@ func (s *authRequestorPlymouthSuite) TestRequestUserCredentialCanceledContext(c 
 	cancel()
 
 	_, _, err = requestor.RequestUserCredential(ctx, "data", "/dev/sda1", UserAuthTypePassphrase)
-	c.Check(err, ErrorMatches, "cannot execute plymouth ask-for-password: context canceled")
+	c.Check(err, ErrorMatches, "cannot execute plymouth --ping: context canceled")
 	c.Check(errors.Is(err, context.Canceled), testutil.IsTrue)
+	c.Assert(requestor, testutil.ConvertibleTo, &PlymouthAuthRequestor{})
+	c.Check(requestor.(*PlymouthAuthRequestor).LastRequestUserCredentialCtx(), DeepEquals, PlymouthRequestUserCredentialContext{})
+}
+
+func (s *authRequestorPlymouthSuite) TestRequestUserCredentialNotAvailable(c *C) {
+	requestor, err := NewPlymouthAuthRequestor(new(mockPlymouthAuthRequestorStringer))
+	c.Assert(err, IsNil)
+
+	s.stopPlymouthd(c)
+
+	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
+	c.Check(err, ErrorMatches, "the auth requestor is not available")
+	c.Check(errors.Is(err, ErrAuthRequestorNotAvailable), testutil.IsTrue)
 	c.Assert(requestor, testutil.ConvertibleTo, &PlymouthAuthRequestor{})
 	c.Check(requestor.(*PlymouthAuthRequestor).LastRequestUserCredentialCtx(), DeepEquals, PlymouthRequestUserCredentialContext{})
 }
@@ -369,8 +423,10 @@ func (s *authRequestorPlymouthSuite) testNotifyUserAuthResult(c *C, params *test
 
 	c.Check(requestor.NotifyUserAuthResult(context.Background(), params.result, params.authTypes, params.unavailableAuthTypes), IsNil)
 
-	c.Check(s.mockPlymouth.Calls(), HasLen, 1)
-	c.Check(s.mockPlymouth.Calls()[0], DeepEquals, []string{"plymouth", "display-message", "--text", params.expectedMsg})
+	c.Check(s.mockPlymouth.Calls(), DeepEquals, [][]string{
+		{"plymouth", "--ping"},
+		{"plymouth", "display-message", "--text", params.expectedMsg},
+	})
 }
 
 func (s *authRequestorPlymouthSuite) TestNotifyUserAuthResultSuccessPassphrase(c *C) {
@@ -505,6 +561,17 @@ func (s *authRequestorPlymouthSuite) TestNotifyUserAuthResultInvalidPINOrRecover
 	})
 }
 
+func (s *authRequestorPlymouthSuite) TestNotifyUserAuthResultNotAvailable(c *C) {
+	requestor, err := NewPlymouthAuthRequestor(new(mockPlymouthAuthRequestorStringer))
+	c.Assert(err, IsNil)
+
+	s.stopPlymouthd(c)
+
+	err = requestor.NotifyUserAuthResult(context.Background(), UserAuthResultSuccess, UserAuthTypePassphrase, 0)
+	c.Check(err, ErrorMatches, "the auth requestor is not available")
+	c.Check(errors.Is(err, ErrAuthRequestorNotAvailable), testutil.IsTrue)
+}
+
 func (s *authRequestorPlymouthSuite) TestNotifyUserAuthResultObtainMessageError(c *C) {
 	requestor, err := NewPlymouthAuthRequestor(&mockPlymouthAuthRequestorStringer{
 		err: errors.New("some error"),
@@ -522,6 +589,15 @@ func (s *authRequestorPlymouthSuite) TestNotifyUserAuthResultCanceledContext(c *
 	cancel()
 
 	err := requestor.NotifyUserAuthResult(ctx, UserAuthResultSuccess, UserAuthTypePassphrase, 0)
-	c.Check(err, ErrorMatches, "cannot execute plymouth display-message: context canceled")
+	c.Check(err, ErrorMatches, "cannot execute plymouth --ping: context canceled")
 	c.Check(errors.Is(err, context.Canceled), testutil.IsTrue)
+}
+
+func (s *authRequestorPlymouthSuite) TestNotifyUserAuthResultFailure(c *C) {
+	requestor := NewPlymouthAuthRequestorForTesting(new(mockPlymouthAuthRequestorStringer), &PlymouthRequestUserCredentialContext{Name: "data", Path: "/dev/sda1"})
+
+	s.makePlymouthDisplayMessageFail(c)
+
+	err := requestor.NotifyUserAuthResult(context.Background(), UserAuthResultSuccess, UserAuthTypePassphrase, 0)
+	c.Check(err, ErrorMatches, "cannot execute plymouth display-message: exit status 1")
 }

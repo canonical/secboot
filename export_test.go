@@ -74,6 +74,7 @@ type (
 	ActivateConfigKey                     = activateConfigKey
 	ActivateOneContainerStateMachine      = activateOneContainerStateMachine
 	ActivateOneContainerStateMachineFlags = activateOneContainerStateMachineFlags
+	AutoAuthRequestor                     = autoAuthRequestor
 	ExternalKeyData                       = externalKeyData
 	ExternalUnlockKey                     = externalUnlockKey
 	KdfParams                             = kdfParams
@@ -263,6 +264,22 @@ func MockNewLUKSView(fn func(context.Context, string) (*luksview.View, error)) (
 	}
 }
 
+func MockNewPlymouthAuthRequestor(fn func(PlymouthAuthRequestorStringer) (AuthRequestor, error)) (restore func()) {
+	orig := newPlymouthAuthRequestor
+	newPlymouthAuthRequestor = fn
+	return func() {
+		newPlymouthAuthRequestor = orig
+	}
+}
+
+func MockNewSystemdAuthRequestor(fn func(io.Writer, SystemdAuthRequestorStringFn) (AuthRequestor, error)) (restore func()) {
+	orig := newSystemdAuthRequestor
+	newSystemdAuthRequestor = fn
+	return func() {
+		newSystemdAuthRequestor = orig
+	}
+}
+
 func MockPBKDF2Benchmark(fn func(time.Duration, crypto.Hash) (uint, error)) (restore func()) {
 	orig := pbkdf2Benchmark
 	pbkdf2Benchmark = fn
@@ -309,6 +326,21 @@ func MockHashAlgAvailable() (restore func()) {
 
 func (d *KeyData) DerivePassphraseKeys(passphrase string) (key, iv, auth []byte, err error) {
 	return d.derivePassphraseKeys(passphrase)
+}
+
+func (r *autoAuthRequestor) Requestors() []AuthRequestor {
+	return r.requestors
+}
+
+func (r *autoAuthRequestor) LastUsed() AuthRequestor {
+	return r.lastUsed
+}
+
+func NewAutoAuthRequestorForTesting(requestors []AuthRequestor, lastUsed AuthRequestor) *autoAuthRequestor {
+	return &autoAuthRequestor{
+		requestors: requestors,
+		lastUsed:   lastUsed,
+	}
 }
 
 func (r *plymouthAuthRequestor) LastRequestUserCredentialCtx() plymouthRequestUserCredentialContext {
