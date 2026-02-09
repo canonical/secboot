@@ -38,7 +38,7 @@ import (
 type SystemdAuthRequestorStringFn func(name, path string, authTypes UserAuthType) (string, error)
 
 type systemdAuthRequestor struct {
-	stderr   io.Writer
+	console  io.Writer
 	stringFn SystemdAuthRequestorStringFn
 
 	lastRequestUserCredentialPath string
@@ -75,12 +75,12 @@ func (r *systemdAuthRequestor) RequestUserCredential(ctx context.Context, name, 
 func (r *systemdAuthRequestor) NotifyUserAuthResult(ctx context.Context, result UserAuthResult, authTypes, exhaustedAuthTypes UserAuthType) error {
 	switch result {
 	case UserAuthResultFailed:
-		fmt.Fprintf(r.stderr, "Incorrect %s for %s\n", formatUserAuthTypeString(authTypes), r.lastRequestUserCredentialPath)
+		fmt.Fprintf(r.console, "Incorrect %s for %s\n", formatUserAuthTypeString(authTypes), r.lastRequestUserCredentialPath)
 		if exhaustedAuthTypes != UserAuthType(0) {
-			fmt.Fprintf(r.stderr, "No more %s tries remaining\n", formatUserAuthTypeString(exhaustedAuthTypes))
+			fmt.Fprintf(r.console, "No more %s tries remaining\n", formatUserAuthTypeString(exhaustedAuthTypes))
 		}
 	case UserAuthResultInvalidFormat:
-		fmt.Fprintf(r.stderr, "Incorrectly formatted %s\n", formatUserAuthTypeString(authTypes))
+		fmt.Fprintf(r.console, "Incorrectly formatted %s\n", formatUserAuthTypeString(authTypes))
 	}
 
 	r.lastRequestUserCredentialPath = ""
@@ -89,16 +89,18 @@ func (r *systemdAuthRequestor) NotifyUserAuthResult(ctx context.Context, result 
 
 // NewSystemdAuthRequestor creates an implementation of AuthRequestor that
 // delegates to the systemd-ask-password binary. The caller supplies a callback
-// to supply messages for user auth requests.
-func NewSystemdAuthRequestor(stderr io.Writer, stringFn SystemdAuthRequestorStringFn) (AuthRequestor, error) {
-	if stderr == nil {
-		stderr = os.Stderr
+// to supply messages for user auth requests. The console argument is used by
+// the implementation of [AuthRequestor.NotifyUserAuthResult] where result is
+// not [UserAuthResultSuccess]. If not provided, it defaults to [os.Stderr].
+func NewSystemdAuthRequestor(console io.Writer, stringFn SystemdAuthRequestorStringFn) (AuthRequestor, error) {
+	if console == nil {
+		console = os.Stderr
 	}
 	if stringFn == nil {
 		return nil, errors.New("must supply a SystemdAuthRequestorStringFn")
 	}
 	return &systemdAuthRequestor{
-		stderr:   stderr,
+		console:  console,
 		stringFn: stringFn,
 	}, nil
 }

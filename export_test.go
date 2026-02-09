@@ -330,9 +330,9 @@ func (r *systemdAuthRequestor) LastRequestUserCredentialPath() string {
 	return r.lastRequestUserCredentialPath
 }
 
-func NewSystemdAuthRequestorForTesting(stderr io.Writer, stringFn SystemdAuthRequestorStringFn, lastRequestUserCredentialPath string) *systemdAuthRequestor {
+func NewSystemdAuthRequestorForTesting(console io.Writer, stringFn SystemdAuthRequestorStringFn, lastRequestUserCredentialPath string) *systemdAuthRequestor {
 	return &systemdAuthRequestor{
-		stderr:                        stderr,
+		console:                       console,
 		stringFn:                      stringFn,
 		lastRequestUserCredentialPath: lastRequestUserCredentialPath,
 	}

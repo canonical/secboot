@@ -290,11 +290,11 @@ type testSystemdNotifyUserAuthResultParams struct {
 }
 
 func (s *authRequestorSystemdSuite) testNotifyUserAuthResult(c *C, params *testSystemdNotifyUserAuthResultParams) {
-	stderr := new(bytes.Buffer)
-	requestor := NewSystemdAuthRequestorForTesting(stderr, nil, params.path)
+	console := new(bytes.Buffer)
+	requestor := NewSystemdAuthRequestorForTesting(console, nil, params.path)
 
 	c.Check(requestor.NotifyUserAuthResult(nil, params.result, params.authTypes, params.unavailableAuthTypes), IsNil)
-	c.Check(stderr.String(), Equals, params.expectedMsg)
+	c.Check(console.String(), Equals, params.expectedMsg)
 }
 
 func (s *authRequestorSystemdSuite) TestNotifyUserAuthResultSuccess(c *C) {
