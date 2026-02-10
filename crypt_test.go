@@ -69,6 +69,12 @@ type mockAuthRequestorResponse struct {
 	authTypes UserAuthType
 }
 
+type mockAuthRequestorResult struct {
+	result             UserAuthResult
+	authTypes          UserAuthType
+	exhaustedAuthTypes UserAuthType
+}
+
 type mockAuthRequestor struct {
 	responses []any
 	requests  []struct {
@@ -76,6 +82,7 @@ type mockAuthRequestor struct {
 		path      string
 		authTypes UserAuthType
 	}
+	results []mockAuthRequestorResult
 }
 
 func (r *mockAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, UserAuthType, error) {
@@ -111,6 +118,15 @@ func (r *mockAuthRequestor) RequestUserCredential(ctx context.Context, name, pat
 	default:
 		panic("invalid type")
 	}
+}
+
+func (r *mockAuthRequestor) NotifyUserAuthResult(ctx context.Context, result UserAuthResult, authTypes, exhaustedAuthTypes UserAuthType) error {
+	r.results = append(r.results, mockAuthRequestorResult{
+		result:             result,
+		authTypes:          authTypes,
+		exhaustedAuthTypes: exhaustedAuthTypes,
+	})
+	return nil
 }
 
 // mockLUKS2Container represents a LUKS2 container and its associated state

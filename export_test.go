@@ -61,6 +61,7 @@ var (
 	ErrInvalidRecoveryKey                         = errInvalidRecoveryKey
 	ErrorToKeyslotError                           = errorToKeyslotError
 	FormatKeyringKeyDesc                          = formatKeyringKeyDesc
+	FormatUserAuthTypeString                      = formatUserAuthTypeString
 	NewActivateOneContainerStateMachine           = newActivateOneContainerStateMachine
 	ParseKeyringKeyDesc                           = parseKeyringKeyDesc
 	StorageContainerHandlers                      = storageContainerHandlers
@@ -76,7 +77,10 @@ type (
 	ExternalKeyData                       = externalKeyData
 	ExternalUnlockKey                     = externalUnlockKey
 	KdfParams                             = kdfParams
+	PlymouthAuthRequestor                 = plymouthAuthRequestor
+	PlymouthRequestUserCredentialContext  = plymouthRequestUserCredentialContext
 	ProtectedKeys                         = protectedKeys
+	SystemdAuthRequestor                  = systemdAuthRequestor
 )
 
 func KDFOptionsKdfParams(opts KDFOptions, defaultTargetDuration time.Duration, keyLen uint32) (*KdfParams, error) {
@@ -305,6 +309,33 @@ func MockHashAlgAvailable() (restore func()) {
 
 func (d *KeyData) DerivePassphraseKeys(passphrase string) (key, iv, auth []byte, err error) {
 	return d.derivePassphraseKeys(passphrase)
+}
+
+func (r *plymouthAuthRequestor) LastRequestUserCredentialCtx() plymouthRequestUserCredentialContext {
+	return r.lastRequestUserCredentialCtx
+}
+
+func NewPlymouthAuthRequestorForTesting(stringer PlymouthAuthRequestorStringer, lastRequestUserCredentialCtx *plymouthRequestUserCredentialContext) *plymouthAuthRequestor {
+	if lastRequestUserCredentialCtx == nil {
+		var zeroCtx plymouthRequestUserCredentialContext
+		lastRequestUserCredentialCtx = &zeroCtx
+	}
+	return &plymouthAuthRequestor{
+		stringer:                     stringer,
+		lastRequestUserCredentialCtx: *lastRequestUserCredentialCtx,
+	}
+}
+
+func (r *systemdAuthRequestor) LastRequestUserCredentialPath() string {
+	return r.lastRequestUserCredentialPath
+}
+
+func NewSystemdAuthRequestorForTesting(console io.Writer, stringFn SystemdAuthRequestorStringFn, lastRequestUserCredentialPath string) *systemdAuthRequestor {
+	return &systemdAuthRequestor{
+		console:                       console,
+		stringFn:                      stringFn,
+		lastRequestUserCredentialPath: lastRequestUserCredentialPath,
+	}
 }
 
 func MockUnixStat(f func(devicePath string, st *unix.Stat_t) error) (restore func()) {
