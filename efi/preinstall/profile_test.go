@@ -569,3 +569,27 @@ func (s *profileSuite) TestWithAutoTCGPCRInsufficientDMAProtection(c *C) {
 		},
 	})
 }
+
+func (s *profileSuite) TestWithAutoTCGPCRInvalidSecureBootMode(c *C) {
+	result := &CheckResult{
+		PCRAlg:            tpm2.HashAlgorithmSHA256,
+		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		AcceptedErrors:    map[ErrorKind]json.RawMessage{ErrorKindInvalidSecureBootMode: nil},
+	}
+	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
+
+	profile = profile.Options(PCRProfileOptionsDefault)
+
+	visitor := &mockPcrProfileOptionVisitor{
+		imageLoadParams: []internal_efi.LoadParams{{}},
+	}
+	c.Check(profile.ApplyOptionTo(visitor), IsNil)
+	c.Check(visitor.imageLoadParams, DeepEquals, []internal_efi.LoadParams{
+		{
+			"include_secure_boot_user_mode": false,
+		},
+		{
+			"include_secure_boot_user_mode": true,
+		},
+	})
+}

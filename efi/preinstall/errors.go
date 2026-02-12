@@ -926,10 +926,8 @@ var (
 	ErrNoSecureBoot = errors.New("secure boot should be enabled in order to generate secure boot profiles")
 
 	// ErrNoDeployedMode is returned wrapped in SecureBootPolicyPCRError to indicate
-	// that deployed mode is not enabled. In the future, this package will permit
-	// generation of profiles on systems that implement UEFI >= 2.5 that are in user
-	// mode, but this is not the case today.
-	ErrNoDeployedMode = errors.New("deployed mode should be enabled in order to generate secure boot profiles")
+	// that deployed mode is not enabled.
+	ErrNoDeployedMode = errors.New("secure boot is enabled but not in deployed mode")
 
 	// ErrWeakSecureBootAlgorithmDetected is returned wrapped in a type that implements CompoundError and
 	// indicates that weak algorithms were detected during secure boot verification, such as authenticating
