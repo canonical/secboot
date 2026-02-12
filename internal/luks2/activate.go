@@ -25,28 +25,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
 
 	"github.com/snapcore/snapd/osutil"
 )
 
 var (
-	systemdCryptsetupPath string
-	once                  sync.Once
-
 	// getSystemdCryptsetupPath is internal and can be overridden by tests.
 	getSystemdCryptsetupPath = defaultSystemdCryptsetupPath
 )
 
 func defaultSystemdCryptsetupPath() string {
-	once.Do(func() {
-		systemdCryptsetupPath = "/lib/systemd/systemd-cryptsetup"
-		if snapPath := os.Getenv("SNAP"); snapPath != "" {
-			systemdCryptsetupPath = filepath.Join(snapPath, "usr/bin/systemd-cryptsetup")
-		}
-	})
+	root := "/"
+	if p := os.Getenv("SNAP"); p != "" {
+		root = p
+	}
 
-	return systemdCryptsetupPath
+	return filepath.Join(root, "lib", "systemd", "systemd-cryptsetup")
 }
 
 // Activate unlocks the LUKS device at sourceDevicePath using systemd-cryptsetup and creates a device

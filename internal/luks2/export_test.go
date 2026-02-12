@@ -73,10 +73,10 @@ func MockDataDeviceInfo(stMock *unix.Stat_t) (restore func()) {
 }
 
 func MockSystemdCryptsetupPath(path string) (restore func()) {
-	origFn := getSystemdCryptsetupPath
+	orig := getSystemdCryptsetupPath
 	getSystemdCryptsetupPath = func() string { return path }
 	return func() {
-		getSystemdCryptsetupPath = origFn
+		getSystemdCryptsetupPath = orig
 	}
 }
 
