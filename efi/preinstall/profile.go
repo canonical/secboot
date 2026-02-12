@@ -103,8 +103,27 @@ type authorityTrustData struct {
 
 var (
 	knownCAs = authorityTrustDataSet{
+		// The 2011 UEFI CA was used to sign both drivers and boot code. Because
+		// what is signed isn't audit-able, and we know it signed boot code that
+		// doesn't meet our requirements for FDE, we distrust it for both drivers
+		// and boot code.
 		{internal_efi.MSUefiCA2011, 0},
-		{internal_efi.MSUefiCA2023, 0}, // be conservative here for now, but will we be able to set the authorityTrustDrivers flag for the MS2023 CA?
+
+		// The 2023 UEFI CA is only used for signing boot code. Like with the 2011
+		// UEFI CA, the boot code that is signed isn't audit-able so we distrust
+		// it for signing boot code because we can't be sure that everything it
+		// signed meets our requirements for FDE. We trust it for signing drivers
+		// based on the fact it isn't used for this, which allows us to optimise
+		// the PCR selection for this CA.
+		{internal_efi.MSUefiCA2023, authorityTrustDrivers},
+
+		// The 2023 option ROM UEFI CA is only used for signing drivers. Like with
+		// the 2011 UEFI CA, the drivers that are signed aren't audit-able so we
+		// distrust it for signing drivers because we can't be sure that everything
+		// it signed meets our requirements for FDE. We trust it for signing boot
+		// code based on the fact it isn't used for this, which allows us to optimise
+		// the PCR selection for this CA.
+		{internal_efi.MSOptionROMUefiCA2023, authorityTrustBootCode},
 	}
 )
 
