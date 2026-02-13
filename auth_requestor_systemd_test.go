@@ -36,24 +36,31 @@ import (
 	. "github.com/snapcore/secboot"
 )
 
-type authRequestorSystemdSuite struct {
-	snapd_testutil.BaseTest
-
+type authRequestorSystemdTestMixin struct {
 	passwordFile      string
 	mockSdAskPassword *snapd_testutil.MockCmd
 }
 
-func (s *authRequestorSystemdSuite) SetUpTest(c *C) {
+func (m *authRequestorSystemdTestMixin) setUpTest(c *C) (restore func()) {
 	dir := c.MkDir()
-	s.passwordFile = filepath.Join(dir, "password") // password to be returned by the mock sd-ask-password
+	m.passwordFile = filepath.Join(dir, "password") // password to be returned by the mock sd-ask-password
 
 	sdAskPasswordBottom := `cat %[1]s`
-	s.mockSdAskPassword = snapd_testutil.MockCommand(c, "systemd-ask-password", fmt.Sprintf(sdAskPasswordBottom, s.passwordFile))
-	s.AddCleanup(s.mockSdAskPassword.Restore)
+	m.mockSdAskPassword = snapd_testutil.MockCommand(c, "systemd-ask-password", fmt.Sprintf(sdAskPasswordBottom, m.passwordFile))
+	return m.mockSdAskPassword.Restore
 }
 
-func (s *authRequestorSystemdSuite) setPassphrase(c *C, passphrase string) {
-	c.Assert(ioutil.WriteFile(s.passwordFile, []byte(passphrase+"\n"), 0600), IsNil)
+func (m *authRequestorSystemdTestMixin) setPassphrase(c *C, passphrase string) {
+	c.Assert(ioutil.WriteFile(m.passwordFile, []byte(passphrase+"\n"), 0600), IsNil)
+}
+
+type authRequestorSystemdSuite struct {
+	snapd_testutil.BaseTest
+	authRequestorSystemdTestMixin
+}
+
+func (s *authRequestorSystemdSuite) SetUpTest(c *C) {
+	s.AddCleanup(s.authRequestorSystemdTestMixin.setUpTest(c))
 }
 
 var _ = Suite(&authRequestorSystemdSuite{})
@@ -217,6 +224,17 @@ func (s *authRequestorSystemdSuite) TestRequestUserCredentialPassphraseOrPINOrRe
 		authTypes:   UserAuthTypePassphrase | UserAuthTypePIN | UserAuthTypeRecoveryKey,
 		expectedMsg: "Enter passphrase, PIN or recovery key for data (/dev/sda1):",
 	})
+}
+
+func (s *authRequestorSystemdSuite) TestNewRequestorNotAvailable(c *C) {
+	old := os.Getenv("PATH")
+	dir := c.MkDir()
+	os.Setenv("PATH", dir)
+	defer func() { os.Setenv("PATH", old) }()
+
+	_, err := NewSystemdAuthRequestor(nil, nil)
+	c.Check(err, ErrorMatches, `the auth requestor is not available`)
+	c.Check(errors.Is(err, ErrAuthRequestorNotAvailable), testutil.IsTrue)
 }
 
 func (s *authRequestorSystemdSuite) TestNewRequestorNoFormatStringCallback(c *C) {

@@ -51,7 +51,23 @@ type plymouthAuthRequestor struct {
 	lastRequestUserCredentialCtx plymouthRequestUserCredentialContext
 }
 
+func (r *plymouthAuthRequestor) ping(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, "plymouth", "--ping")
+	if err := cmd.Run(); err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			return ErrAuthRequestorNotAvailable
+		}
+		return fmt.Errorf("cannot execute plymouth --ping: %w", err)
+	}
+	return nil
+}
+
 func (r *plymouthAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, UserAuthType, error) {
+	if err := r.ping(ctx); err != nil {
+		return "", 0, err
+	}
+
 	msg, err := r.stringer.RequestUserCredentialString(name, path, authTypes)
 	if err != nil {
 		return "", 0, fmt.Errorf("cannot request message string: %w", err)
@@ -81,6 +97,10 @@ func (r *plymouthAuthRequestor) RequestUserCredential(ctx context.Context, name,
 }
 
 func (r *plymouthAuthRequestor) NotifyUserAuthResult(ctx context.Context, result UserAuthResult, authTypes, exhaustedAuthTypes UserAuthType) error {
+	if err := r.ping(ctx); err != nil {
+		return err
+	}
+
 	msg, err := r.stringer.NotifyUserAuthResultString(r.lastRequestUserCredentialCtx.Name, r.lastRequestUserCredentialCtx.Path, result, authTypes, exhaustedAuthTypes)
 	if err != nil {
 		return fmt.Errorf("cannot request message string: %w", err)
@@ -100,6 +120,10 @@ func (r *plymouthAuthRequestor) NotifyUserAuthResult(ctx context.Context, result
 // NewPlymouthAuthRequestor creates an implementation of AuthRequestor that
 // communicates directly with Plymouth.
 func NewPlymouthAuthRequestor(stringer PlymouthAuthRequestorStringer) (AuthRequestor, error) {
+	if _, err := exec.LookPath("plymouth"); err != nil {
+		return nil, ErrAuthRequestorNotAvailable
+	}
+
 	if stringer == nil {
 		return nil, errors.New("must supply an implementation of PlymouthAuthRequestorStringer")
 	}

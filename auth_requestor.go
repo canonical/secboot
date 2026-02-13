@@ -21,6 +21,7 @@ package secboot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -80,6 +81,8 @@ const (
 	// incorrectly for the type.
 	UserAuthResultInvalidFormat
 )
+
+var ErrAuthRequestorNotAvailable = errors.New("the auth requestor is not available")
 
 // AuthRequestor is an interface for requesting credentials.
 type AuthRequestor interface {
