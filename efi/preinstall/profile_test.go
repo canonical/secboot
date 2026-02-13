@@ -209,12 +209,6 @@ func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToPlatformFirmar
 //}
 
 func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionDefaultCAsTrustedForDrivers(c *C) {
-	restore := MockKnownCAs(AuthorityTrustDataSet{
-		{internal_efi.MSUefiCA2011, 0},
-		{internal_efi.MSUefiCA2023, AuthorityTrustDrivers},
-	})
-	defer restore()
-
 	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
 		usedSecureBootCAs: [][]byte{msUefiCACert2023},
 		expectedPcrs:      tpm2.HandleList{4, 7},
@@ -222,12 +216,6 @@ func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionDefaultCAsTrustedFor
 }
 
 func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToDriversAndApps(c *C) {
-	restore := MockKnownCAs(AuthorityTrustDataSet{
-		{internal_efi.MSUefiCA2011, 0},
-		{internal_efi.MSUefiCA2023, AuthorityTrustDrivers},
-	})
-	defer restore()
-
 	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
 		usedSecureBootCAs: [][]byte{msUefiCACert2023},
 		opts:              PCRProfileOptionLockToDriversAndApps,
@@ -270,27 +258,15 @@ func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionTrustSecureBootAutho
 //}
 
 func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionDefaultCAsTrustedForBootCode(c *C) {
-	restore := MockKnownCAs(AuthorityTrustDataSet{
-		{internal_efi.MSUefiCA2011, 0},
-		{internal_efi.MSUefiCA2023, AuthorityTrustBootCode},
-	})
-	defer restore()
-
 	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
-		usedSecureBootCAs: [][]byte{msUefiCACert2023},
+		usedSecureBootCAs: [][]byte{msOptionROMUefiCACert2023},
 		expectedPcrs:      tpm2.HandleList{2, 7},
 	})
 }
 
 func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToBootManagerCode(c *C) {
-	restore := MockKnownCAs(AuthorityTrustDataSet{
-		{internal_efi.MSUefiCA2011, 0},
-		{internal_efi.MSUefiCA2023, AuthorityTrustBootCode},
-	})
-	defer restore()
-
 	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
-		usedSecureBootCAs: [][]byte{msUefiCACert2023},
+		usedSecureBootCAs: [][]byte{msOptionROMUefiCACert2023},
 		opts:              PCRProfileOptionLockToBootManagerCode,
 		expectedPcrs:      tpm2.HandleList{2, 4, 7},
 	})
