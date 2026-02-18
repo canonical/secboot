@@ -493,6 +493,11 @@ func (o *pcrProfileAutoSetPcrsOption) ApplyOptionTo(visitor internal_efi.PCRProf
 			return fmt.Errorf("cannot add DMA allow insufficient protection profile option: %w", err)
 		}
 	}
+	if _, permitted := o.result.AcceptedErrors[ErrorKindInvalidSecureBootMode]; permitted {
+		if err := secboot_efi.WithAllowSecureBootUserMode().ApplyOptionTo(visitor); err != nil {
+			return fmt.Errorf("cannot add profile option for secure boot user mode: %w", err)
+		}
+	}
 	return nil
 }
 

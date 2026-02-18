@@ -315,3 +315,43 @@ func (o allowInsufficientDmaProtectionOption) ApplyOptionTo(visitor internal_efi
 func WithAllowInsufficientDmaProtection() PCRProfileOption {
 	return allowInsufficientDmaProtectionOption{}
 }
+
+const (
+	// includeSecureBootUserModeParamKey is used to indicate that user mode related
+	// measurements should be included in the secure boot PCR profile if the system is
+	// in user mode.
+	includeSecureBootUserModeParamKey = "include_secure_boot_user_mode"
+)
+
+type allowSecureBootUserModeOption struct{}
+
+func (o allowSecureBootUserModeOption) ApplyOptionTo(visitor internal_efi.PCRProfileOptionVisitor) error {
+	visitor.AddImageLoadParams(func(params ...loadParams) []loadParams {
+		var out []loadParams
+		for _, v := range []bool{false, true} {
+			var newParams []loadParams
+			for _, p := range params {
+				newParams = append(newParams, p.Clone())
+			}
+			for _, p := range newParams {
+				p[includeSecureBootUserModeParamKey] = v
+			}
+			out = append(out, newParams...)
+		}
+		return out
+	})
+	return nil
+}
+
+// WithAllowSecureBootUserMode can be supplied to AddPCRProfile to allow for secure boot
+// PCR profiles that support user mode to be generated on systems where user mode is
+// currently enabled. This is opt-in to ensure that a system that was originally in
+// deployed mode doesn't automatically regenerate a PCR profile for user mode in the case
+// where the firmware settings are inadvertently degraded.
+//
+// If the system is in user mode, PCR profile branches will be generated both for user mode
+// and deployed mode to allow a system to be placed back into deployed mode without making
+// the generated policy invalid. If the system is in deployed mode, this option has no effect.
+func WithAllowSecureBootUserMode() PCRProfileOption {
+	return allowSecureBootUserModeOption{}
+}
