@@ -1427,7 +1427,7 @@ func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy
 		},
 	})
 	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
-	c.Check(err, ErrorMatches, "cannot verify PCR policy signature: TPM returned an error for parameter 2 whilst executing command TPM_CC_VerifySignature: TPM_RC_SIGNATURE \\(the signature is not valid\\)")
+	c.Check(err, ErrorMatches, "cannot verify PCR policy signature: TPM returned an error for parameter 2 whilst executing command TPM_CC_VerifySignature: TPM_RC_SIGNATURE \\+ TPM_RC_P \\+ TPM_RC_2 \\(the signature is not valid\\)")
 }
 
 func (s *policyV3Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy(c *C) {
