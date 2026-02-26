@@ -102,7 +102,7 @@ type testProvisionNewTPMData struct {
 func (s *provisioningSimulatorSuite) testProvisionNewTPM(c *C, data *testProvisionNewTPMData) {
 	origHmacSession := s.TPM().HmacSession()
 
-	c.Check(s.TPM().EnsureProvisioned(data.mode, data.lockoutAuth), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(data.mode.Option(), WithProvisionNewLockoutAuthValue(data.lockoutAuth)), IsNil)
 	s.AddCleanup(func() {
 		// github.com/canonical/go-tpm2/testutil cannot restore this because
 		// EnsureProvisioned uses command parameter encryption. We have to do
@@ -196,7 +196,7 @@ func (s *provisioningSimulatorSuite) testProvisionErrorHandling(c *C, mode Provi
 		// else the test fixture fails the test.
 		s.ClearTPMUsingPlatformHierarchy(c)
 	}()
-	return s.TPM().EnsureProvisioned(mode, nil)
+	return s.TPM().EnsureProvisioned(mode.Option())
 }
 
 func (s *provisioningSuite) testProvisionErrorHandling(c *C, mode ProvisionMode) error {
@@ -206,7 +206,7 @@ func (s *provisioningSuite) testProvisionErrorHandling(c *C, mode ProvisionMode)
 		// else the test fixture fails the test.
 		s.ClearTPMUsingPlatformHierarchy(c)
 	}()
-	return s.TPM().EnsureProvisioned(mode, nil)
+	return s.TPM().EnsureProvisioned(mode.Option())
 }
 
 func (s *provisioningSuite) TestProvisionErrorHandlingClearRequiresPPI(c *C) {
@@ -328,7 +328,7 @@ func (s *provisioningSimulatorSuite) TestProvisionErrorHandlingRequiresLockout5(
 func (s *provisioningSuite) testProvisionRecreateEK(c *C, mode ProvisionMode) {
 	lockoutAuth := []byte("1234")
 
-	c.Check(s.TPM().EnsureProvisioned(ProvisionModeFull, lockoutAuth), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(WithProvisionNewLockoutAuthValue(lockoutAuth)), IsNil)
 	s.AddCleanup(func() {
 		// github.com/canonical/go-tpm2/testutil cannot restore this because
 		// EnsureProvisioned uses command parameter encryption. We have to do
@@ -342,7 +342,7 @@ func (s *provisioningSuite) testProvisionRecreateEK(c *C, mode ProvisionMode) {
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, ek, ek.Handle())
 
-	c.Check(s.TPM().EnsureProvisioned(mode, lockoutAuth), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(mode.Option(), WithProvisionNewLockoutAuthValue(lockoutAuth)), IsNil)
 
 	s.validateEK(c)
 	s.validateSRK(c)
@@ -364,7 +364,7 @@ func (s *provisioningSuite) TestRecreateEKWithoutLockout(c *C) {
 func (s *provisioningSuite) testProvisionRecreateSRK(c *C, mode ProvisionMode) {
 	lockoutAuth := []byte("1234")
 
-	c.Check(s.TPM().EnsureProvisioned(ProvisionModeFull, lockoutAuth), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(WithProvisionNewLockoutAuthValue(lockoutAuth)), IsNil)
 	s.AddCleanup(func() {
 		// github.com/canonical/go-tpm2/testutil cannot restore this because
 		// EnsureProvisioned uses command parameter encryption. We have to do
@@ -377,7 +377,7 @@ func (s *provisioningSuite) testProvisionRecreateSRK(c *C, mode ProvisionMode) {
 	expectedName := srk.Name()
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
-	c.Check(s.TPM().EnsureProvisioned(mode, lockoutAuth), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(mode.Option(), WithProvisionNewLockoutAuthValue(lockoutAuth)), IsNil)
 
 	s.validateEK(c)
 	s.validateSRK(c)
@@ -398,7 +398,7 @@ func (s *provisioningSuite) TestProvisionRecreateSRKWithoutLockout(c *C) {
 func (s *provisioningSuite) TestProvisionWithEndorsementAuth(c *C) {
 	s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
 
-	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
+	c.Check(s.TPM().EnsureProvisioned(ProvisionWithoutLockout()),
 		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 
 	s.validateEK(c)
@@ -408,7 +408,7 @@ func (s *provisioningSuite) TestProvisionWithEndorsementAuth(c *C) {
 func (s *provisioningSuite) TestProvisionWithOwnerAuth(c *C) {
 	s.HierarchyChangeAuth(c, tpm2.HandleOwner, []byte("1234"))
 
-	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil),
+	c.Check(s.TPM().EnsureProvisioned(ProvisionWithoutLockout()),
 		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 
 	s.validateEK(c)
@@ -430,7 +430,7 @@ func (s *provisioningSuite) testProvisionWithCustomSRKTemplate(c *C, mode Provis
 				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
 				KeyBits:  2048,
 				Exponent: 0}}}
-	c.Check(s.TPM().EnsureProvisionedWithCustomSRK(mode, nil, &template), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(mode.Option(), WithCustomSRKTemplate(&template)), IsNil)
 
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template)
 
@@ -469,7 +469,7 @@ func (s *provisioningSuite) TestProvisionWithInvalidCustomSRKTemplate(c *C) {
 				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
 				KeyBits:  2048,
 				Exponent: 0}}}
-	err := s.TPM().EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template)
+	err := s.TPM().EnsureProvisioned(WithCustomSRKTemplate(&template))
 	c.Check(err, ErrorMatches, "supplied SRK template is not valid for a parent key")
 }
 
@@ -490,7 +490,7 @@ func (s *provisioningSuite) testProvisionDefaultPreservesCustomSRKTemplate(c *C,
 				Exponent: 0}}}
 
 	lockoutAuth := []byte("1234")
-	c.Check(s.TPM().EnsureProvisionedWithCustomSRK(ProvisionModeFull, lockoutAuth, &template), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(WithProvisionNewLockoutAuthValue(lockoutAuth), WithCustomSRKTemplate(&template)), IsNil)
 	s.AddCleanup(func() {
 		// github.com/canonical/go-tpm2/testutil cannot restore this because
 		// EnsureProvisioned uses command parameter encryption. We have to do
@@ -502,7 +502,7 @@ func (s *provisioningSuite) testProvisionDefaultPreservesCustomSRKTemplate(c *C,
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
-	c.Check(s.TPM().EnsureProvisioned(mode, lockoutAuth), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(mode.Option(), WithProvisionNewLockoutAuthValue(lockoutAuth)), IsNil)
 
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template)
 }
@@ -530,11 +530,11 @@ func (s *provisioningSuite) TestProvisionDefaultClearRemovesCustomSRKTemplate(c 
 				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
 				KeyBits:  2048,
 				Exponent: 0}}}
-	c.Check(s.TPM().EnsureProvisionedWithCustomSRK(ProvisionModeWithoutLockout, nil, &template),
+	c.Check(s.TPM().EnsureProvisioned(ProvisionWithoutLockout(), WithCustomSRKTemplate(&template)),
 		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template)
 
-	c.Check(s.TPM().EnsureProvisioned(ProvisionModeClear, nil), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(WithClearBeforeProvision()), IsNil)
 	s.validateSRK(c)
 }
 
@@ -553,7 +553,7 @@ func (s *provisioningSuite) TestProvisionWithCustomSRKTemplateOverwritesExisting
 				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
 				KeyBits:  2048,
 				Exponent: 0}}}
-	c.Check(s.TPM().EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template1), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(WithCustomSRKTemplate(&template1)), IsNil)
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template1)
 
 	template2 := tpm2.Public{
@@ -570,7 +570,7 @@ func (s *provisioningSuite) TestProvisionWithCustomSRKTemplateOverwritesExisting
 				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
 				KeyBits:  2048,
 				Exponent: 0}}}
-	c.Check(s.TPM().EnsureProvisionedWithCustomSRK(ProvisionModeFull, nil, &template2), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(WithCustomSRKTemplate(&template2)), IsNil)
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template2)
 
 	nv, err := s.TPM().NewResourceContext(0x01810001)

@@ -62,7 +62,7 @@ func (s *compatTestV0Suite) TestUnseal2(c *C) {
 
 func (s *compatTestV0Suite) TestUnsealAfterReprovision(c *C) {
 	// Test that reprovisioning doesn't touch the legacy lock NV index if it is valid
-	c.Assert(s.TPM().EnsureProvisioned(secboot_tpm2.ProvisionModeWithoutLockout, nil), IsNil)
+	c.Assert(s.TPM().EnsureProvisioned(secboot_tpm2.ProvisionWithoutLockout()), IsNil)
 	s.testUnseal(c, s.absPath("pcrSequence.1"))
 }
 
