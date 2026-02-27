@@ -28,25 +28,13 @@ import (
 	"os/exec"
 )
 
-// PlymouthAuthRequestorStringer is used by the Plymouth implementation
-// of [AuthRequestor] to obtain translated strings.
-type PlymouthAuthRequestorStringer interface {
-	// RequestUserCredentialString returns messages used by RequestUserCredential. The
-	// name is a string supplied via the WithAuthRequestorUserVisibleName option, and the
-	// path is the storage container path.
-	RequestUserCredentialString(name, path string, authTypes UserAuthType) (string, error)
-
-	// NotifyUserAuthResultString returns messages used by NotifyUserAuthResult.
-	NotifyUserAuthResultString(name, path string, result UserAuthResult, authTypes, exhaustedAuthTypes UserAuthType) (string, error)
-}
-
 type plymouthRequestUserCredentialContext struct {
 	Name string
 	Path string
 }
 
 type plymouthAuthRequestor struct {
-	stringer PlymouthAuthRequestorStringer
+	stringer AuthRequestorStringer
 
 	lastRequestUserCredentialCtx plymouthRequestUserCredentialContext
 }
@@ -119,13 +107,13 @@ func (r *plymouthAuthRequestor) NotifyUserAuthResult(ctx context.Context, result
 
 // NewPlymouthAuthRequestor creates an implementation of AuthRequestor that
 // communicates directly with Plymouth.
-func NewPlymouthAuthRequestor(stringer PlymouthAuthRequestorStringer) (AuthRequestor, error) {
+func NewPlymouthAuthRequestor(stringer AuthRequestorStringer) (AuthRequestor, error) {
 	if _, err := exec.LookPath("plymouth"); err != nil {
 		return nil, ErrAuthRequestorNotAvailable
 	}
 
 	if stringer == nil {
-		return nil, errors.New("must supply an implementation of PlymouthAuthRequestorStringer")
+		return nil, errors.New("must supply an implementation of AuthRequestorStringer")
 	}
 	return &plymouthAuthRequestor{
 		stringer: stringer,

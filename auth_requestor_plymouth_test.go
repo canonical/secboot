@@ -354,7 +354,7 @@ func (s *authRequestorPlymouthSuite) TestNewRequestorNotAvailable(c *C) {
 
 func (s *authRequestorPlymouthSuite) TestNewRequestorNoStringer(c *C) {
 	_, err := NewPlymouthAuthRequestor(nil)
-	c.Check(err, ErrorMatches, `must supply an implementation of PlymouthAuthRequestorStringer`)
+	c.Check(err, ErrorMatches, `must supply an implementation of AuthRequestorStringer`)
 }
 
 func (s *authRequestorPlymouthSuite) TestRequestUserCredentialObtainMessageError(c *C) {

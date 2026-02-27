@@ -264,7 +264,7 @@ func MockNewLUKSView(fn func(context.Context, string) (*luksview.View, error)) (
 	}
 }
 
-func MockNewPlymouthAuthRequestor(fn func(PlymouthAuthRequestorStringer) (AuthRequestor, error)) (restore func()) {
+func MockNewPlymouthAuthRequestor(fn func(AuthRequestorStringer) (AuthRequestor, error)) (restore func()) {
 	orig := newPlymouthAuthRequestor
 	newPlymouthAuthRequestor = fn
 	return func() {
@@ -347,7 +347,7 @@ func (r *plymouthAuthRequestor) LastRequestUserCredentialCtx() plymouthRequestUs
 	return r.lastRequestUserCredentialCtx
 }
 
-func NewPlymouthAuthRequestorForTesting(stringer PlymouthAuthRequestorStringer, lastRequestUserCredentialCtx *plymouthRequestUserCredentialContext) *plymouthAuthRequestor {
+func NewPlymouthAuthRequestorForTesting(stringer AuthRequestorStringer, lastRequestUserCredentialCtx *plymouthRequestUserCredentialContext) *plymouthAuthRequestor {
 	if lastRequestUserCredentialCtx == nil {
 		var zeroCtx plymouthRequestUserCredentialContext
 		lastRequestUserCredentialCtx = &zeroCtx

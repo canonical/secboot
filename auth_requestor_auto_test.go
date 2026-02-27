@@ -180,7 +180,7 @@ func (s *authRequestorAutoSuite) TestNewAuthRequestor(c *C) {
 }
 
 func (s *authRequestorAutoSuite) TestNewAuthRequestorPlymouthNotAvailable(c *C) {
-	restore := MockNewPlymouthAuthRequestor(func(_ PlymouthAuthRequestorStringer) (AuthRequestor, error) {
+	restore := MockNewPlymouthAuthRequestor(func(_ AuthRequestorStringer) (AuthRequestor, error) {
 		return nil, ErrAuthRequestorNotAvailable
 	})
 	defer restore()
@@ -208,7 +208,7 @@ func (s *authRequestorAutoSuite) TestNewAuthRequestorSystemdNotAvailable(c *C) {
 }
 
 func (s *authRequestorAutoSuite) TestNewAuthRequestorNotAvailable(c *C) {
-	restore := MockNewPlymouthAuthRequestor(func(_ PlymouthAuthRequestorStringer) (AuthRequestor, error) {
+	restore := MockNewPlymouthAuthRequestor(func(_ AuthRequestorStringer) (AuthRequestor, error) {
 		return nil, ErrAuthRequestorNotAvailable
 	})
 	defer restore()
@@ -225,7 +225,7 @@ func (s *authRequestorAutoSuite) TestNewAuthRequestorNotAvailable(c *C) {
 
 func (s *authRequestorAutoSuite) TestNewAuthRequestorPlymouthError(c *C) {
 	_, err := NewAutoAuthRequestor(nil, nil)
-	c.Check(err, ErrorMatches, "cannot create Plymouth AuthRequestor: must supply an implementation of PlymouthAuthRequestorStringer")
+	c.Check(err, ErrorMatches, "cannot create Plymouth AuthRequestor: must supply an implementation of AuthRequestorStringer")
 }
 
 func (s *authRequestorAutoSuite) TestNewAuthRequestorSystemdError(c *C) {

@@ -31,16 +31,6 @@ var (
 	newSystemdAuthRequestor  = NewSystemdAuthRequestor
 )
 
-// AutoAuthRequestorStringer is used by the auto selecting implementation
-// of [AuthRequestor] to obtain translated strings.
-type AutoAuthRequestorStringer interface {
-	// RequestUserCredentialString returns messages used by RequestUserCredential.
-	RequestUserCredentialString(name, path string, authTypes UserAuthType) (string, error)
-
-	// NotifyUserAuthResultString returns messages used by NotifyUserAuthResult.
-	NotifyUserAuthResultString(name, path string, result UserAuthResult, authTypes, exhaustedAuthTypes UserAuthType) (string, error)
-}
-
 type autoAuthRequestor struct {
 	requestors []AuthRequestor
 	lastUsed   AuthRequestor
@@ -72,11 +62,11 @@ func (r *autoAuthRequestor) NotifyUserAuthResult(ctx context.Context, result Use
 // - Plymouth.
 // - systemd-ask-password.
 //
-// The caller supplies an implementation of AutoAuthRequestorStringer that returns messages.
+// The caller supplies an implementation of AuthRequestorStringer that returns messages.
 // The console argument is used by the systemd-ask-password implementation of
 // [AuthRequestor.NotifyUserAuthResult] where result is not [UserAuthResultSuccess]. If not
 // provided, it defaults to [os.Stderr].
-func NewAutoAuthRequestor(stderr io.Writer, stringer AutoAuthRequestorStringer) (AuthRequestor, error) {
+func NewAutoAuthRequestor(stderr io.Writer, stringer AuthRequestorStringer) (AuthRequestor, error) {
 	var requestors []AuthRequestor
 	switch ply, err := newPlymouthAuthRequestor(stringer); {
 	case errors.Is(err, ErrAuthRequestorNotAvailable):

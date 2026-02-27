@@ -84,6 +84,18 @@ const (
 
 var ErrAuthRequestorNotAvailable = errors.New("the auth requestor is not available")
 
+// AuthRequestorStringer is used by the some implementation of [AuthRequestor] to
+// obtain translated strings.
+type AuthRequestorStringer interface {
+	// RequestUserCredentialString returns messages used by RequestUserCredential. The
+	// name is a string supplied via the WithAuthRequestorUserVisibleName option, and the
+	// path is the storage container path.
+	RequestUserCredentialString(name, path string, authTypes UserAuthType) (string, error)
+
+	// NotifyUserAuthResultString returns messages used by NotifyUserAuthResult.
+	NotifyUserAuthResultString(name, path string, result UserAuthResult, authTypes, exhaustedAuthTypes UserAuthType) (string, error)
+}
+
 // AuthRequestor is an interface for requesting credentials.
 type AuthRequestor interface {
 	// RequestUserCredential is used to request a user credential that is
