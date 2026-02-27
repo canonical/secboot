@@ -27,9 +27,12 @@ import (
 
 // Export constants for testing
 const (
-	LockNVHandle          = lockNVHandle
-	ResetPcrPolicyVersion = resetPcrPolicyVersion
-	SrkTemplateHandle     = srkTemplateHandle
+	LockNVHandle                = lockNVHandle
+	ProvisionModeWithoutLockout = provisionModeWithoutLockout
+	ProvisionModeFull           = provisionModeFull
+	ProvisionModeClear          = provisionModeClear
+	ResetPcrPolicyVersion       = resetPcrPolicyVersion
+	SrkTemplateHandle           = srkTemplateHandle
 )
 
 // Export variables and unexported functions for testing
@@ -145,6 +148,20 @@ func NewPcrPolicyData_v3(v2 *PcrPolicyData_v2) *PcrPolicyData_v3 {
 }
 
 type PlatformKeyDataHandler = platformKeyDataHandler
+
+type ProvisionMode = provisionMode
+
+func (m ProvisionMode) Option() EnsureProvisionedOption {
+	switch m {
+	case provisionModeWithoutLockout:
+		return ProvisionWithoutLockout()
+	case provisionModeClear:
+		return WithClearBeforeProvision()
+	default:
+		return func(_ *ensureProvisionedParams) {}
+	}
+}
+
 type SealedKeyDataBase = sealedKeyDataBase
 type SnapModelHasher = snapModelHasher
 type StaticPolicyData_v0 = staticPolicyData_v0

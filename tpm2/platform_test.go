@@ -59,7 +59,7 @@ func (s *platformSuite) SetUpSuite(c *C) {
 func (s *platformSuite) SetUpTest(c *C) {
 	s.TPMTest.SetUpTest(c)
 
-	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil), Equals, ErrTPMProvisioningRequiresLockout)
+	c.Check(s.TPM().EnsureProvisioned(ProvisionWithoutLockout()), Equals, ErrTPMProvisioningRequiresLockout)
 
 	s.lastEncryptedPayload = nil
 	s.AddCleanup(MockSecbootNewKeyData(func(params *secboot.KeyParams) (*secboot.KeyData, error) {

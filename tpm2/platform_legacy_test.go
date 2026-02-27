@@ -49,7 +49,7 @@ func (s *platformLegacySuite) SetUpSuite(c *C) {
 func (s *platformLegacySuite) SetUpTest(c *C) {
 	s.TPMTest.SetUpTest(c)
 
-	c.Check(s.TPM().EnsureProvisioned(ProvisionModeWithoutLockout, nil), Equals, ErrTPMProvisioningRequiresLockout)
+	c.Check(s.TPM().EnsureProvisioned(ProvisionWithoutLockout()), Equals, ErrTPMProvisioningRequiresLockout)
 }
 
 var _ = Suite(&platformLegacySuite{})
