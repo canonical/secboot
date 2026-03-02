@@ -60,7 +60,7 @@ func Deactivate(volumeName string) error {
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
 
-	if output, err := cmd.CombinedOutput(); err != nil {
+	if output, err := cmd.CombinedOutput(); err != nil || len(output) > 0 {
 		return fmt.Errorf("systemd-cryptsetup failed with: %v", osutil.OutputErr(output, err))
 	}
 
