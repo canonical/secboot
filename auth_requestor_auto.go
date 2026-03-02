@@ -62,6 +62,12 @@ func (r *autoAuthRequestor) NotifyUserAuthResult(ctx context.Context, result Use
 // - Plymouth.
 // - systemd-ask-password.
 //
+// The returned implementation selects the underlying implementation on each call to
+// [AuthRequestor.RequestUserCredential] by skipping any that return
+// [ErrAuthRequestorNotAvailable]. The selected implementation is used in the subsequent
+// call to [AuthRequestor.NotifyUserAuthResult]. Note that if the selected implementation
+// returns [ErrAuthRequestorNotAvailable] here, then this is returned directly.
+//
 // The caller supplies an implementation of AuthRequestorStringer that returns messages.
 // The console argument is used by the systemd-ask-password implementation of
 // [AuthRequestor.NotifyUserAuthResult] where result is not [UserAuthResultSuccess]. If not

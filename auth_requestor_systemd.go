@@ -92,6 +92,9 @@ func (r *systemdAuthRequestor) NotifyUserAuthResult(ctx context.Context, result 
 // to supply messages for user auth requests. The console argument is used by
 // the implementation of [AuthRequestor.NotifyUserAuthResult] where result is
 // not [UserAuthResultSuccess]. If not provided, it defaults to [os.Stderr].
+//
+// This will return [ErrAuthRequestorNotAvailable] if systemd-ask-password is
+// not available.
 func NewSystemdAuthRequestor(console io.Writer, stringFn SystemdAuthRequestorStringFn) (AuthRequestor, error) {
 	if _, err := exec.LookPath("systemd-ask-password"); err != nil {
 		return nil, ErrAuthRequestorNotAvailable

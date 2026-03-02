@@ -107,6 +107,10 @@ func (r *plymouthAuthRequestor) NotifyUserAuthResult(ctx context.Context, result
 
 // NewPlymouthAuthRequestor creates an implementation of AuthRequestor that
 // communicates directly with Plymouth.
+//
+// This will return [ErrAuthRequestorNotAvailable] if the plymouth client is
+// not available. The returned AuthRequestor implementation will return the same
+// error on any method if it is called whilst Plymouth isn't running.
 func NewPlymouthAuthRequestor(stringer AuthRequestorStringer) (AuthRequestor, error) {
 	if _, err := exec.LookPath("plymouth"); err != nil {
 		return nil, ErrAuthRequestorNotAvailable

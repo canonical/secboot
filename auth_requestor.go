@@ -82,6 +82,8 @@ const (
 	UserAuthResultInvalidFormat
 )
 
+// ErrAuthRequestorNotAvailable can be returned from any method of AuthRequestor
+// to indicate that the underlying mechanism is not available.
 var ErrAuthRequestorNotAvailable = errors.New("the auth requestor is not available")
 
 // AuthRequestorStringer is used by the some implementation of [AuthRequestor] to
@@ -106,7 +108,9 @@ type AuthRequestor interface {
 	// to indicate what types of credential are being requested.
 	//
 	// The implementation returns the requested credential and its type, which
-	// may be a subset of the requested credential types.
+	// may be a subset of the requested credential types. It may return
+	// ErrAuthRequestorNotAvailable if the corresponding mechanism is not
+	// available.
 	RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, UserAuthType, error)
 
 	// NotifyUserAuthResult is used to inform the user about the result of an
@@ -126,5 +130,8 @@ type AuthRequestor interface {
 	// authTypes argument indicates the credential types that the user supplied
 	// credential was badly formatted for. The exhaustedAuthTypes argument
 	// is unused.
+	//
+	// It may return ErrAuthRequestorNotAvailable if the corresponding mechanism
+	// is not available.
 	NotifyUserAuthResult(ctx context.Context, result UserAuthResult, authTypes, exhaustedAuthTypes UserAuthType) error
 }
