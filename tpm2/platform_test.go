@@ -904,7 +904,7 @@ func (s *platformSuite) TestRecoverKeysWithIncorrectAuthKey(c *C) {
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidAuthKey)
 	c.Check(err, ErrorMatches, "cannot unseal key: TPM returned an error for session 1 whilst executing command TPM_CC_Unseal: "+
-		"TPM_RC_AUTH_FAIL \\(the authorization HMAC check failed and DA counter incremented\\)")
+		"TPM_RC_AUTH_FAIL \\+ TPM_RC_S \\+ TPM_RC_1 \\(the authorization HMAC check failed and DA counter incremented\\)")
 }
 
 func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
@@ -986,7 +986,7 @@ func (s *platformSuite) TestChangeAuthKeyWithIncorrectAuthKey(c *C) {
 	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
 	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorInvalidAuthKey)
 	c.Check(err, ErrorMatches, "TPM returned an error for session 1 whilst executing command TPM_CC_ObjectChangeAuth: "+
-		"TPM_RC_AUTH_FAIL \\(the authorization HMAC check failed and DA counter incremented\\)")
+		"TPM_RC_AUTH_FAIL \\+ TPM_RC_S \\+ TPM_RC_1 \\(the authorization HMAC check failed and DA counter incremented\\)")
 }
 
 func (s *platformSuite) TestChangeAuthKeyWithTPMLockout(c *C) {

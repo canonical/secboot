@@ -1124,5 +1124,5 @@ func (s *pcrProfileTPMSuite) TestAddValueFromTPMInvalidPCR(c *C) {
 	c.Check(p.RootBranch().AddPCRValueFromTPM(tpm2.HashAlgorithmSHA256, 100), Equals, p.RootBranch())
 
 	_, _, err := p.ComputePCRDigests(s.TPM().TPMContext, tpm2.HashAlgorithmSHA256)
-	c.Check(err, ErrorMatches, `cannot read current PCR values from TPM: TPM returned an error for parameter 1 whilst executing command TPM_CC_PCR_Read: TPM_RC_VALUE \(value is out of range or is not correct for the context\)`)
+	c.Check(err, ErrorMatches, `cannot read current PCR values from TPM: TPM returned an error for parameter 1 whilst executing command TPM_CC_PCR_Read: TPM_RC_VALUE \+ TPM_RC_P \+ TPM_RC_1 \(value is out of range or is not correct for the context\)`)
 }
