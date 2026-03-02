@@ -21,6 +21,7 @@ package secboot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -81,6 +82,22 @@ const (
 	UserAuthResultInvalidFormat
 )
 
+// ErrAuthRequestorNotAvailable can be returned from any method of AuthRequestor
+// to indicate that the underlying mechanism is not available.
+var ErrAuthRequestorNotAvailable = errors.New("the auth requestor is not available")
+
+// AuthRequestorStringer is used by the some implementation of [AuthRequestor] to
+// obtain translated strings.
+type AuthRequestorStringer interface {
+	// RequestUserCredentialString returns messages used by RequestUserCredential. The
+	// name is a string supplied via the WithAuthRequestorUserVisibleName option, and the
+	// path is the storage container path.
+	RequestUserCredentialString(name, path string, authTypes UserAuthType) (string, error)
+
+	// NotifyUserAuthResultString returns messages used by NotifyUserAuthResult.
+	NotifyUserAuthResultString(name, path string, result UserAuthResult, authTypes, exhaustedAuthTypes UserAuthType) (string, error)
+}
+
 // AuthRequestor is an interface for requesting credentials.
 type AuthRequestor interface {
 	// RequestUserCredential is used to request a user credential that is
@@ -91,7 +108,9 @@ type AuthRequestor interface {
 	// to indicate what types of credential are being requested.
 	//
 	// The implementation returns the requested credential and its type, which
-	// may be a subset of the requested credential types.
+	// may be a subset of the requested credential types. It may return
+	// ErrAuthRequestorNotAvailable if the corresponding mechanism is not
+	// available.
 	RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, UserAuthType, error)
 
 	// NotifyUserAuthResult is used to inform the user about the result of an
@@ -111,5 +130,8 @@ type AuthRequestor interface {
 	// authTypes argument indicates the credential types that the user supplied
 	// credential was badly formatted for. The exhaustedAuthTypes argument
 	// is unused.
+	//
+	// It may return ErrAuthRequestorNotAvailable if the corresponding mechanism
+	// is not available.
 	NotifyUserAuthResult(ctx context.Context, result UserAuthResult, authTypes, exhaustedAuthTypes UserAuthType) error
 }
