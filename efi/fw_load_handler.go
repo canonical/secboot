@@ -199,6 +199,28 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 
 	// TODO: Support optional dbt/dbr database
 
+	// Include the user mode related measurements if the system is in user mode, it is
+	// permitted with the WithSecureBootUserMode option and they are being included in this
+	// branch.
+	includeUserMode := boolParamOrFalse(ctx.Params(), includeSecureBootUserModeParamKey)
+	switch deployedMode, _, err := ctx.Vars().ReadVar("DeployedMode", efi.GlobalVariable); {
+	case errors.Is(err, efi.ErrVarNotExist):
+		// pre-2.5 UEFI system
+	case err != nil:
+		return fmt.Errorf("cannot read DeployedMode variable: %w", err)
+	case len(deployedMode) != 1:
+		return fmt.Errorf("invalid DeployedMode value %#x", deployedMode)
+	case deployedMode[0] == 0 && includeUserMode:
+		// System is in user mode, the WithSecureBootUserMode option was supplied and
+		// we are including the user mode related measurements in this branch.
+		ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, "AuditMode", []byte{0})
+		ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, "DeployedMode", []byte{0})
+	default:
+		// Do nothing for the deployed mode case, or where the system is in user mode
+		// but where the WithSecureBootUserMode option is not supplied or we are creating
+		// a branch that allows for deployed mode to be enabled.
+	}
+
 	// We don't measure a EV_SEPARATOR here yet because we need to preserve the
 	// device-specific measurement ordering - see the notes above about when the
 	// verification of third-party pre-OS code is measured. We don't know whether
@@ -256,24 +278,6 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			// once we've encountered the first EV_EFI_VARIABLE_AUTHORITY event and
 			// we'll likely generate an invalid profile if we do. The preinstall
 			// checks will catch this.
-
-			// Except...
-			// Backward compliance: On Ubuntu Core not using preinstall checks,
-			// the firmware might be UEFI 2.5 compliant but not be in deployed mode.
-			// In that case we should still expect those measurements due to the mode.
-			if data, ok := e.Data.(*tcglog.EFIVariableData); ok {
-				if (data.VariableName == efi.GlobalVariable && data.UnicodeName == "AuditMode") {
-					if bytes.Equal(data.VariableData, []byte{0}) {
-						ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, "AuditMode", data.VariableData)
-					}
-				}
-				if (data.VariableName == efi.GlobalVariable && data.UnicodeName == "DeployedMode") {
-					if bytes.Equal(data.VariableData, []byte{0}) {
-						ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, "DeployedMode", data.VariableData)
-					}
-				}
-			}
-
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIAction &&
 			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) || bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))) &&
 			allowInsufficientDMAProtection:

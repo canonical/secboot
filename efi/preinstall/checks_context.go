@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"time"
 
+	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/ppi"
 	secboot_efi "github.com/snapcore/secboot/efi"
@@ -60,6 +61,13 @@ var errorKindToActions map[ErrorKind][]Action
 // errorKindToProceedFlag maps an error kind to a flag that can be set
 // to ignore the error. Not all errors can be ignored in this way.
 var errorKindToProceedFlag map[ErrorKind]CheckFlags
+
+type errorKindWithArgs struct {
+	kind ErrorKind
+	args any
+}
+
+var errorKindWithArgsToProceedFlag map[errorKindWithArgs]CheckFlags
 
 // unsupportedPcrs are the PCRs that are currently unsupported.
 var unsupportedPcrs tpm2.HandleList
@@ -159,6 +167,10 @@ func init() {
 		ErrorKindPreOSSecureBootAuthByEnrolledDigests: PermitPreOSSecureBootAuthByEnrolledDigests,
 	}
 
+	errorKindWithArgsToProceedFlag = map[errorKindWithArgs]CheckFlags{
+		{kind: ErrorKindInvalidSecureBootMode, args: SecureBootModeArg{Enabled: true, Mode: efi.UserMode}}: PermitSecureBootUserMode,
+	}
+
 	unsupportedPcrs = tpm2.HandleList{
 		internal_efi.PlatformConfigPCR,
 		internal_efi.DriversAndAppsConfigPCR,
@@ -198,7 +210,7 @@ type RunChecksContext struct {
 
 	// proceedFlags indicates the CheckFlags that can be enabled if Run is called
 	// with ActionProceed.
-	proceedFlags CheckFlags
+	proceedFlags map[ErrorKind]CheckFlags
 }
 
 // NewRunChecksContext returns a new RunChecksContext instance with the initial flags for [RunChecks]
@@ -376,7 +388,7 @@ func insertActionProceed(actions []Action) []Action {
 // (see the documentation for each error kind).
 //
 // Note that certain errors can make some actions become unavailable.
-func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, outErr error) {
+func (c *RunChecksContext) classifyRunChecksError(ctx context.Context, err error) (info errorInfo, outErr error) {
 	defer func() {
 		if outErr != nil {
 			return
@@ -579,7 +591,22 @@ func (c *RunChecksContext) classifyRunChecksError(err error) (info errorInfo, ou
 	}
 
 	if errors.Is(err, ErrNoSecureBoot) || errors.Is(err, ErrNoDeployedMode) {
-		return errorInfo{kind: ErrorKindInvalidSecureBootMode}, nil
+		varCtx := runChecksEnv.VarContext(ctx)
+		enabled, err := efi.ReadSecureBootVariable(varCtx)
+		if err != nil {
+			return errorInfo{}, fmt.Errorf("cannot read secure boot variable: %w", err)
+		}
+		mode, err := efi.ComputeSecureBootMode(varCtx)
+		if err != nil {
+			return errorInfo{}, fmt.Errorf("cannot compute secure boot mode: %w", err)
+		}
+		return errorInfo{
+			kind: ErrorKindInvalidSecureBootMode,
+			args: SecureBootModeArg{
+				Enabled: enabled,
+				Mode:    mode,
+			},
+		}, nil
 	}
 	if errors.Is(err, ErrWeakSecureBootAlgorithmDetected) {
 		return errorInfo{kind: ErrorKindWeakSecureBootAlgorithmsDetected}, nil
@@ -755,20 +782,14 @@ func (c *RunChecksContext) runAction(action Action, args map[string]json.RawMess
 			}
 
 			for i, kind := range kinds {
-				flag, ok := errorKindToProceedFlag[kind]
-				if !ok {
-					return NewWithKindAndActionsError(
-						ErrorKindInvalidArgument,
-						InvalidActionArgumentDetails{
-							Field:  fieldName,
-							Reason: InvalidActionArgumentReasonValue,
-						},
-						nil, // actions
-						fmt.Errorf("invalid value for argument %q at index %d: %q does not support the %q action", fieldName, i, kind, ActionProceed),
-					)
+				var (
+					flag CheckFlags
+					ok   bool
+				)
+				if c.proceedFlags != nil {
+					flag, ok = c.proceedFlags[kind]
 				}
-
-				if c.proceedFlags&flag == 0 {
+				if !ok {
 					return NewWithKindAndActionsError(
 						ErrorKindInvalidArgument,
 						InvalidActionArgumentDetails{
@@ -781,15 +802,17 @@ func (c *RunChecksContext) runAction(action Action, args map[string]json.RawMess
 				}
 
 				proceedFlags |= flag
-				c.proceedFlags &^= flag
+				delete(c.proceedFlags, kind)
 			}
 		}
 
-		if proceedFlags == CheckFlags(0) {
+		if proceedFlags == CheckFlags(0) && c.proceedFlags != nil {
 			// Handle the case where no argument is supplied or
 			// an empty []ErrorKind slice is supplied
-			proceedFlags = c.proceedFlags
-			c.proceedFlags = 0
+			for _, flag := range c.proceedFlags {
+				proceedFlags |= flag
+			}
+			c.proceedFlags = nil
 		}
 
 		c.flags |= proceedFlags
@@ -869,7 +892,7 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 			c.expectedActions = nil
 
 			// Reset the flags that would be enabled if ActionProceed is used.
-			c.proceedFlags = 0
+			c.proceedFlags = nil
 
 			// errInfo contains the error kind and arguments for each error.
 			var errInfo []errorInfo
@@ -879,7 +902,7 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 			// the WithKindAndActionsError because some errors encountered here
 			// may change the available actions.
 			for _, e := range unwrapCompoundError(err) {
-				info, err := c.classifyRunChecksError(e)
+				info, err := c.classifyRunChecksError(ctx, e)
 				if err != nil {
 					return nil, NewWithKindAndActionsError(
 						ErrorKindInternal,
@@ -901,6 +924,8 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 			// ordering these errors to appear after all other errors.
 			var errsProceed []*WithKindAndActionsError
 
+			proceedFlags := make(map[ErrorKind]CheckFlags)
+
 			// Iterate over the error info, creating a WithKindAndActionsError
 			// for each one with associated actions.
 			for _, info := range errInfo {
@@ -914,7 +939,11 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 					)
 				}
 
-				if _, canProceed := errorKindToProceedFlag[info.kind]; !canProceed {
+				proceedFlag, canProceed := errorKindToProceedFlag[info.kind]
+				if !canProceed {
+					proceedFlag, canProceed = errorKindWithArgsToProceedFlag[errorKindWithArgs{kind: info.kind, args: info.args}]
+				}
+				if !canProceed {
 					// This error kind doesn't support ActionProceed. Don't
 					// permit it at all for now, waiting until all of the errors
 					// we return support it.
@@ -922,6 +951,7 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 					errs = append(errs, NewWithKindAndActionsError(info.kind, info.args, actions, info.err))
 				} else {
 					errsProceed = append(errsProceed, NewWithKindAndActionsError(info.kind, info.args, actions, info.err))
+					proceedFlags[info.kind] = proceedFlag
 				}
 
 				c.expectedActions = append(c.expectedActions, actions...)
@@ -931,14 +961,14 @@ func (c *RunChecksContext) Run(ctx context.Context, action Action, args map[stri
 			// right now, and append these errors to the list of errors we return.
 			for _, e := range errsProceed {
 				if permitActionProceed {
-					flag := errorKindToProceedFlag[e.Kind]
-					c.proceedFlags |= flag
 					e.Actions = insertActionProceed(e.Actions)
 				}
 				errs = append(errs, e)
 			}
-
-			if c.proceedFlags != 0 {
+			if permitActionProceed {
+				c.proceedFlags = proceedFlags
+			}
+			if len(c.proceedFlags) > 0 {
 				// We are returning errors with ActionProceed enabled.
 				c.expectedActions = append(c.expectedActions, ActionProceed)
 			}

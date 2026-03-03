@@ -58,6 +58,7 @@ const (
 	InsufficientDMAProtectionDetected           = insufficientDMAProtectionDetected
 	SecureBootIncludesWeakAlg                   = secureBootIncludesWeakAlg
 	SecureBootPreOSVerificationIncludesDigest   = secureBootPreOSVerificationIncludesDigest
+	SecureBootNoDeployedMode                    = secureBootNoDeployedMode
 	StartupLocalityNotProtected                 = startupLocalityNotProtected
 )
 
