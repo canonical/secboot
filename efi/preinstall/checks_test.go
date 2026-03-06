@@ -3297,7 +3297,7 @@ C7E003CB
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		flags:        PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport,
 	})
-	c.Check(err, ErrorMatches, `error with system security: encountered an error when checking Intel BootGuard configuration: no hardware root-of-trust properly configured: ME is in manufacturing mode`)
+	c.Check(err, ErrorMatches, `error with system security: encountered an error when checking Intel BootGuard configuration: no hardware root-of-trust properly configured: system is in manufacturing mode`)
 
 	var hse *HostSecurityError
 	c.Assert(errors.As(err, &hse), testutil.IsTrue)
