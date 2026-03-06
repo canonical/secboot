@@ -115,6 +115,7 @@ func WithDelayedVirtModeError(err error) MockHostEnvironmentOption {
 
 type mockHostEnvironmentAMD64 struct {
 	vendorIdentificator string
+	family              uint32
 	features            map[uint64]struct{}
 	cpus                uint32
 	msrs                map[uint32]uint64
@@ -122,6 +123,10 @@ type mockHostEnvironmentAMD64 struct {
 
 func (e *mockHostEnvironmentAMD64) CPUVendorIdentificator() string {
 	return e.vendorIdentificator
+}
+
+func (e *mockHostEnvironmentAMD64) CPUFamily() uint32 {
+	return e.family
 }
 
 func (e *mockHostEnvironmentAMD64) HasCPUIDFeature(feature uint64) bool {
@@ -200,7 +205,7 @@ func WithSysfsDevices(devices ...internal_efi.SysfsDevice) MockHostEnvironmentOp
 
 // WithAMD64Environment adds a [github.com/snapcore/secboot/efi/internal.HostEnvironmentAMD64] to the [MockHostEnvironment].
 // Whilst this supports mocking MSRs, it only supports the same value for every CPU.
-func WithAMD64Environment(cpuVendorIdentificator string, cpuidFeatures []uint64, cpus uint32, msrs map[uint32]uint64) MockHostEnvironmentOption {
+func WithAMD64Environment(cpuVendorIdentificator string, family uint32, cpuidFeatures []uint64, cpus uint32, msrs map[uint32]uint64) MockHostEnvironmentOption {
 	return func(env *MockHostEnvironment) {
 		features := make(map[uint64]struct{})
 		for _, feature := range cpuidFeatures {
@@ -208,6 +213,7 @@ func WithAMD64Environment(cpuVendorIdentificator string, cpuidFeatures []uint64,
 		}
 		env.AMD64Env = &mockHostEnvironmentAMD64{
 			vendorIdentificator: cpuVendorIdentificator,
+			family:              family,
 			features:            features,
 			cpus:                cpus,
 			msrs:                msrs,

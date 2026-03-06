@@ -34,6 +34,8 @@ var _ = Suite(&hostSecurityAMDSuite{})
 
 func (s *hostSecurityAMDSuite) TestCheckHostSecurityAMDPSPGood(c *C) {
 	attrs := map[string][]byte{
+		"boot_integrity": []byte(`1
+`),
 		"debug_lock_on": []byte(`1
 `),
 		"fused_part": []byte(`1
@@ -41,43 +43,106 @@ func (s *hostSecurityAMDSuite) TestCheckHostSecurityAMDPSPGood(c *C) {
 	}
 
 	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", attrs, nil)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
-	err := CheckHostSecurityAMDPSP(env)
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(device),
+		efitest.WithAMD64Environment("AuthenticAMD", 0x1a, nil, 0, nil),
+	)
+	integrity, err := CheckHostSecurityAMDPSP(env)
 	c.Check(err, IsNil)
+	c.Check(integrity, Equals, PlatformFirmwareIntegrityVerified)
+}
+
+func (s *hostSecurityAMDSuite) TestCheckHostSecurityAMDPSPGoodBootIntegrityDisabled(c *C) {
+	attrs := map[string][]byte{
+		"boot_integrity": []byte(`0
+`),
+		"debug_lock_on": []byte(`1
+`),
+		"fused_part": []byte(`1
+`),
+	}
+
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", attrs, nil)
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(device),
+		efitest.WithAMD64Environment("AuthenticAMD", 0x1a, nil, 0, nil),
+	)
+	integrity, err := CheckHostSecurityAMDPSP(env)
+	c.Check(err, IsNil)
+	c.Check(integrity, Equals, PlatformFirmwareIntegrityMeasured)
+}
+
+func (s *hostSecurityAMDSuite) TestCheckHostSecurityAMDPSPGoodNoBootIntegrityAttr(c *C) {
+	attrs := map[string][]byte{
+		"debug_lock_on": []byte(`1
+`),
+		"fused_part": []byte(`1
+`),
+	}
+
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", attrs, nil)
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(device),
+		efitest.WithAMD64Environment("AuthenticAMD", 0x1a, nil, 0, nil),
+	)
+	integrity, err := CheckHostSecurityAMDPSP(env)
+	c.Check(err, IsNil)
+	c.Check(integrity, Equals, PlatformFirmwareIntegrityMeasured)
+}
+
+func (s *hostSecurityAMDSuite) TestCheckHostSecurityAMDPSPGoodNotFused(c *C) {
+	attrs := map[string][]byte{
+		"boot_integrity": []byte(`0
+`),
+		"debug_lock_on": []byte(`1
+`),
+		"fused_part": []byte(`0
+`),
+	}
+
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", attrs, nil)
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(device),
+		efitest.WithAMD64Environment("AuthenticAMD", 0x1a, nil, 0, nil),
+	)
+	integrity, err := CheckHostSecurityAMDPSP(env)
+	c.Check(err, IsNil)
+	c.Check(integrity, Equals, PlatformFirmwareIntegrityMeasured)
 }
 
 func (s *hostSecurityAMDSuite) TestCheckHostSecurityErrNoCCPModule(c *C) {
 	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"PCI_CLASS": "108000", "PCI_ID": "1022:15C7"}, "pci", nil, nil)
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
-	err := CheckHostSecurityAMDPSP(env)
+	_, err := CheckHostSecurityAMDPSP(env)
 	c.Check(err, ErrorMatches, `the kernel module "ccp" must be loaded`)
 	c.Check(err, Equals, MissingKernelModuleError("ccp"))
 }
 
 func (s *hostSecurityAMDSuite) TestCheckHostSecurityErrNoPSPDevice(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices())
-	err := CheckHostSecurityAMDPSP(env)
+	_, err := CheckHostSecurityAMDPSP(env)
 	c.Check(err, ErrorMatches, `unsupported platform: no PSP PCI device`)
+	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
+}
+
+func (s *hostSecurityAMDSuite) TestCheckHostSecurityErrUnsupportedFamily(c *C) {
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", nil, nil)
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(device),
+		efitest.WithAMD64Environment("AuthenticAMD", 0x16, nil, 0, nil),
+	)
+	_, err := CheckHostSecurityAMDPSP(env)
+	c.Check(err, ErrorMatches, `unsupported platform: unsupported CPU family`)
 	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
 }
 
 func (s *hostSecurityAMDSuite) TestCheckHostSecurityErrNoSecurityReporting1(c *C) {
 	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", nil, nil)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
-	err := CheckHostSecurityAMDPSP(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: PSP security reporting not available`)
-	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
-}
-
-func (s *hostSecurityAMDSuite) TestCheckHostSecurityErrNoSecurityReporting2(c *C) {
-	attrs := map[string][]byte{
-		"debug_lock_on": []byte(`1
-`),
-	}
-
-	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", attrs, nil)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
-	err := CheckHostSecurityAMDPSP(env)
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(device),
+		efitest.WithAMD64Environment("AuthenticAMD", 0x1a, nil, 0, nil),
+	)
+	_, err := CheckHostSecurityAMDPSP(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: PSP security reporting not available`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
@@ -91,23 +156,11 @@ func (s *hostSecurityAMDSuite) TestCheckHostSecurityAMDPSPErrNoDebugLock(c *C) {
 	}
 
 	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", attrs, nil)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
-	err := CheckHostSecurityAMDPSP(env)
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(device),
+		efitest.WithAMD64Environment("AuthenticAMD", 0x1a, nil, 0, nil),
+	)
+	_, err := CheckHostSecurityAMDPSP(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: PSP debug lock is not enabled`)
-	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
-}
-
-func (s *hostSecurityAMDSuite) TestCheckHostSecurityAMDPSPErrNoPSB(c *C) {
-	attrs := map[string][]byte{
-		"debug_lock_on": []byte(`1
-`),
-		"fused_part": []byte(`0
-`),
-	}
-
-	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", attrs, nil)
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
-	err := CheckHostSecurityAMDPSP(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: Platform Secure Boot is not enabled`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
