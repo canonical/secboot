@@ -56,6 +56,26 @@ func (s *defaultEnvAMD64Suite) TestCPUVendorIdentificatorAMD(c *C) {
 	c.Check(amd64.CPUVendorIdentificator(), Equals, "AuthenticAMD")
 }
 
+func (s *defaultEnvAMD64Suite) TestCPUFamily1(c *C) {
+	orig := cpuid.DisplayFamily
+	cpuid.DisplayFamily = 0x12
+	defer func() { cpuid.DisplayFamily = orig }()
+
+	amd64, err := DefaultEnv.AMD64()
+	c.Assert(err, IsNil)
+	c.Check(amd64.CPUFamily(), Equals, uint32(0x12))
+}
+
+func (s *defaultEnvAMD64Suite) TestCPUFamily2(c *C) {
+	orig := cpuid.DisplayFamily
+	cpuid.DisplayFamily = 0x17
+	defer func() { cpuid.DisplayFamily = orig }()
+
+	amd64, err := DefaultEnv.AMD64()
+	c.Assert(err, IsNil)
+	c.Check(amd64.CPUFamily(), Equals, uint32(0x17))
+}
+
 func (s *defaultEnvAMD64Suite) TestCPUIDHasFeatureSDBGTrue(c *C) {
 	restore := MockCPUIDHasFeature(func(feature uint64) bool {
 		c.Check(feature, Equals, cpuid.SDBG)

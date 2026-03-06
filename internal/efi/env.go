@@ -71,6 +71,9 @@ type HostEnvironmentAMD64 interface {
 	// CPUVendorIdentificator returns the CPU vendor.
 	CPUVendorIdentificator() string
 
+	// CPUFamily returns the CPU family ID.
+	CPUFamily() uint32
+
 	// HasCPUIDFeature returns if feature from FeatureNames map in the
 	// github.com/intel-go/cpuid package is available.
 	HasCPUIDFeature(feature uint64) bool

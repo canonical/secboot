@@ -43,6 +43,11 @@ func (defaultEnvAMD64Impl) CPUVendorIdentificator() string {
 	return cpuid.VendorIdentificatorString
 }
 
+// CPUFamily implements [HostEnvironmentAMD64.CPUFamily].
+func (defaultEnvAMD64Impl) CPUFamily() uint32 {
+	return cpuid.DisplayFamily
+}
+
 // HasCPUIDFeature implements [HostEnvironmentAMD64.HasCPUIDFeature].
 func (defaultEnvAMD64Impl) HasCPUIDFeature(feature uint64) bool {
 	return cpuidHasFeature(feature)

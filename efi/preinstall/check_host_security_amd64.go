@@ -31,28 +31,31 @@ import (
 // is sufficient. Errors that can't be resolved or which should prevent further checks from running
 // are returned immediately and without any wrapping. Errors that can be resolved and which shouldn't
 // prevent further checks from running are returned wrapped in [joinError].
-func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) error {
+func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (platformFirmwareIntegrityConfig, error) {
 	cpuVendor, err := determineCPUVendor(env)
 	if err != nil {
-		return &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
+		return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
 	}
 
 	amd64Env, err := env.AMD64()
 	if err != nil {
-		return fmt.Errorf("cannot obtain AMD64 environment: %w", err)
+		return platformFirmwareIntegrityNone, fmt.Errorf("cannot obtain AMD64 environment: %w", err)
 	}
 
+	var integrity platformFirmwareIntegrityConfig
 	switch cpuVendor {
 	case cpuVendorIntel:
 		if err := checkHostSecurityIntelBootGuard(env); err != nil {
-			return fmt.Errorf("encountered an error when checking Intel BootGuard configuration: %w", err)
+			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error when checking Intel BootGuard configuration: %w", err)
 		}
 		if err := checkHostSecurityIntelCPUDebuggingLocked(amd64Env); err != nil {
-			return fmt.Errorf("encountered an error when checking Intel CPU debugging configuration: %w", err)
+			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error when checking Intel CPU debugging configuration: %w", err)
 		}
+		integrity = platformFirmwareIntegrityVerified
 	case cpuVendorAMD:
-		if err := checkHostSecurityAMDPSP(env); err != nil {
-			return fmt.Errorf("encountered an error when checking the AMD PSP configuration: %w", err)
+		integrity, err = checkHostSecurityAMDPSP(env)
+		if err != nil {
+			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error when checking the AMD PSP configuration: %w", err)
 		}
 	default:
 		panic("not reached")
@@ -63,7 +66,7 @@ func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) error 
 	if err := checkSecureBootPolicyPCRForDegradedFirmwareSettings(log); err != nil {
 		var ce CompoundError
 		if !errors.As(err, &ce) {
-			return fmt.Errorf("encountered an error whilst checking the TCG log for degraded firmware settings: %w", err)
+			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error whilst checking the TCG log for degraded firmware settings: %w", err)
 		}
 		errs = append(errs, ce.Unwrap()...)
 	}
@@ -72,15 +75,15 @@ func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) error 
 		case errors.Is(err, ErrNoKernelIOMMU):
 			errs = append(errs, err)
 		default:
-			return fmt.Errorf("encountered an error whilst checking sysfs to determine that kernel IOMMU support is enabled: %w", err)
+			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error whilst checking sysfs to determine that kernel IOMMU support is enabled: %w", err)
 		}
 	}
 
 	if len(errs) > 0 {
-		return joinErrors(errs...)
+		return platformFirmwareIntegrityNone, joinErrors(errs...)
 	}
 
-	return nil
+	return integrity, nil
 }
 
 // checkDiscreteTPMPartialResetAttackMitigationStatus determines whether a partial mitigation

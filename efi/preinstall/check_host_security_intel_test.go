@@ -779,7 +779,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupport
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDisabledCPUID(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0xc80: 0}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 1, map[uint32]uint64{0xc80: 0}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -787,7 +787,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDis
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDisabledMSR(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -795,7 +795,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDis
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDisabledAvailable(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -803,7 +803,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDis
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedEnabled(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 1}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 1}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -811,7 +811,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedEna
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErrMissingMSR(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 4, map[uint32]uint64{}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -821,7 +821,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErr
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErrNoMSRSupport(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 0, nil))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 0, nil))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -832,7 +832,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErr
 
 func (s *hostSecurityIntelSuite) TestRestrictedTPMLocalitiesIntel(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SMX}, 0, nil),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SMX}, 0, nil),
 	)
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
@@ -842,7 +842,7 @@ func (s *hostSecurityIntelSuite) TestRestrictedTPMLocalitiesIntel(c *C) {
 
 func (s *hostSecurityIntelSuite) TestRestrictedTPMLocalitiesIntelNoTXT(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", nil, 0, nil),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 0, nil),
 	)
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
