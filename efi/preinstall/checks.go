@@ -303,7 +303,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 
 	if virtMode == detectVirtNone {
 		// Only run host security checks if we are not in a VM
-		if err := checkHostSecurity(runChecksEnv, log); err != nil {
+		fwIntegrity, err := checkHostSecurity(runChecksEnv, log)
+		if err != nil {
 			var ce CompoundError
 			if !errors.As(err, &ce) {
 				return nil, &HostSecurityError{err}
@@ -315,6 +316,9 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 					deferredErrs = append(deferredErrs, &HostSecurityError{e})
 				}
 			}
+		}
+		if fwIntegrity == platformFirmwareIntegrityMeasured {
+			result.Flags |= RequireLockToPlatformFirmware
 		}
 
 		status, err := checkDiscreteTPMPartialResetAttackMitigationStatus(runChecksEnv, logResults)

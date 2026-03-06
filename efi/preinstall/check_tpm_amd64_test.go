@@ -34,7 +34,7 @@ var _ = Suite(&tpmAmd64Suite{})
 
 func (s *tpmIntelSuite) TestIsTPMDiscreteIntelYes(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (2 << 1)}),
+		efitest.WithAMD64Environment("GenuineIntel", 0x12, nil, 1, map[uint32]uint64{0x13a: (2 << 1)}),
 	)
 	discrete, err := IsTPMDiscrete(env)
 	c.Check(err, IsNil)
@@ -43,7 +43,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteIntelYes(c *C) {
 
 func (s *tpmIntelSuite) TestIsTPMDiscreteIntelNo(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (3 << 1)}),
+		efitest.WithAMD64Environment("GenuineIntel", 0x12, nil, 1, map[uint32]uint64{0x13a: (3 << 1)}),
 	)
 	discrete, err := IsTPMDiscrete(env)
 	c.Check(err, IsNil)
@@ -52,7 +52,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteIntelNo(c *C) {
 
 func (s *tpmIntelSuite) TestIsTPMDiscreteIntelNoTPM2(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (0 << 1)}),
+		efitest.WithAMD64Environment("GenuineIntel", 0x12, nil, 1, map[uint32]uint64{0x13a: (0 << 1)}),
 	)
 	_, err := IsTPMDiscrete(env)
 	c.Check(err, ErrorMatches, `cannot check TPM discreteness using Intel BootGuard status: no TPM2 device is available`)
@@ -60,7 +60,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteIntelNoTPM2(c *C) {
 }
 
 func (s *tpmIntelSuite) TestIsTPMDiscreteAMD(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("AuthenticAMD", nil, 1, nil))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("AuthenticAMD", 0x1a, nil, 1, nil))
 	_, err := IsTPMDiscrete(env)
 	c.Check(err, ErrorMatches, `unsupported platform: cannot check TPM discreteness on AMD systems`)
 
@@ -69,7 +69,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteAMD(c *C) {
 }
 
 func (s *tpmIntelSuite) TestIsTPMDiscreteUnrecognizedCPUVendor(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineInte", nil, 1, nil))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineInte", 0x12, nil, 1, nil))
 	_, err := IsTPMDiscrete(env)
 	c.Check(err, ErrorMatches, `unsupported platform: cannot determine CPU vendor: unknown CPU vendor: GenuineInte`)
 

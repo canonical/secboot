@@ -51,6 +51,24 @@ const (
 	dtpmPartialResetAttackMitigationUnavailable
 )
 
+// platformFirmwareIntegrityConfig indicates how the root-of-trust provides
+// assurances of the platform firmware integrity.
+type platformFirmwareIntegrityConfig int
+
+const (
+	// platformFirmwareIntegrityNone indicates that no firmware integrity assurances
+	// are provided.
+	platformFirmwareIntegrityNone platformFirmwareIntegrityConfig = iota
+
+	// platformFirmwareIntegrityMeasured indicates that firmware integrity is provided
+	// by measured boot.
+	platformFirmwareIntegrityMeasured
+
+	// platformFirmwareIntegrityVerified indicates that firmware integrity is provided
+	// by verifying it against a key that is fused into the platform.
+	platformFirmwareIntegrityVerified
+)
+
 // checkForKernelIOMMU checks that the kernel has enabled some sort of DMA protection.
 // On Intel devices, the domains are defined by the DMAR ACPI table. The check is quite
 // simple, and based on the fwupd HSI checks. If it is not enabled, a [ErrNoKernelIOMMU]

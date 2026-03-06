@@ -67,6 +67,7 @@ func (s *resultSuite) TestCheckResultFlagsUnmarshalJSON(c *C) {
 		{flags: `["no-boot-manager-config-profile-support"]`, expected: NoBootManagerConfigProfileSupport},
 		{flags: `["no-secure-boot-policy-profile-support"]`, expected: NoSecureBootPolicyProfileSupport},
 		{flags: `["request-partial-dtpm-reset-attack-mitigation"]`, expected: RequestPartialDiscreteTPMResetAttackMitigation},
+		{flags: `["require-lock-platform-firmware"]`, expected: RequireLockToPlatformFirmware},
 		{flags: `["insufficient-dma-protection-detected"]`, expected: InsufficientDMAProtectionDetected},
 		{flags: `["no-platform-config-profile-support","no-drivers-and-apps-config-profile-support","no-boot-manager-config-profile-support"]`, expected: NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport},
 		{flags: `["0x8"]`, expected: NoDriversAndAppsConfigProfileSupport},
@@ -102,6 +103,7 @@ func (s *resultSuite) TestCheckResultFlagsString(c *C) {
 		{flags: NoBootManagerConfigProfileSupport, expected: "no-boot-manager-config-profile-support"},
 		{flags: NoSecureBootPolicyProfileSupport, expected: "no-secure-boot-policy-profile-support"},
 		{flags: RequestPartialDiscreteTPMResetAttackMitigation, expected: "request-partial-dtpm-reset-attack-mitigation"},
+		{flags: RequireLockToPlatformFirmware, expected: "require-lock-platform-firmware"},
 		{flags: NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport, expected: "no-platform-config-profile-support,no-drivers-and-apps-config-profile-support,no-boot-manager-config-profile-support"},
 		{flags: InsufficientDMAProtectionDetected, expected: "0x00000400"},
 	} {
