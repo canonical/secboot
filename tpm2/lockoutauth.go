@@ -142,6 +142,8 @@ func (t *Connection) resetDictionaryAttackLockImpl(params *lockoutAuthParams) er
 		}
 		defer t.FlushContext(session)
 
+		// Execute policy session, constraining the use to the TPM2_DictionaryAttackLockReset command so
+		// that the correct branch executes.
 		_, err := params.AuthPolicy.Execute(
 			policyutil.NewPolicyExecuteSession(t.TPMContext, session),
 			policyutil.WithSessionUsageCommandConstraint(tpm2.CommandDictionaryAttackLockReset, []policyutil.NamedHandle{t.LockoutHandleContext()}),
