@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 
+	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 )
 
@@ -286,4 +287,76 @@ type InvalidActionArgumentDetails struct {
 // String implements [fmt.Stringer].
 func (a *InvalidActionArgumentDetails) String() string {
 	return fmt.Sprintf("invalid action argument %q: invalid %s", a.Field, a.Reason)
+}
+
+type secureBootModeJson efi.SecureBootMode
+
+func (m secureBootModeJson) MarshalJSON() ([]byte, error) {
+	var s string
+	switch efi.SecureBootMode(m) {
+	case efi.SetupMode:
+		s = "setup"
+	case efi.AuditMode:
+		s = "audit"
+	case efi.UserMode:
+		s = "user"
+	case efi.DeployedMode:
+		s = "deployed"
+	default:
+		return nil, errors.New("invalid secure boot mode")
+	}
+
+	return json.Marshal(s)
+}
+
+func (m *secureBootModeJson) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+
+	switch s {
+	case "setup":
+		*m = secureBootModeJson(efi.SetupMode)
+	case "audit":
+		*m = secureBootModeJson(efi.AuditMode)
+	case "user":
+		*m = secureBootModeJson(efi.UserMode)
+	case "deployed":
+		*m = secureBootModeJson(efi.DeployedMode)
+	default:
+		return fmt.Errorf("invalid secure boot mode %q", s)
+	}
+
+	return nil
+}
+
+type secureBootModeArgJson struct {
+	Enabled bool               `json:"enabled"`
+	Mode    secureBootModeJson `json:"mode"`
+}
+
+type SecureBootModeArg struct {
+	Enabled bool
+	Mode    efi.SecureBootMode
+}
+
+func (a SecureBootModeArg) MarshalJSON() ([]byte, error) {
+	return json.Marshal(secureBootModeArgJson{
+		Enabled: a.Enabled,
+		Mode:    secureBootModeJson(a.Mode),
+	})
+}
+
+func (a *SecureBootModeArg) UnmarshalJSON(data []byte) error {
+	var m secureBootModeArgJson
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+
+	*a = SecureBootModeArg{
+		Enabled: m.Enabled,
+		Mode:    efi.SecureBootMode(m.Mode),
+	}
+	return nil
 }

@@ -291,6 +291,7 @@ type secureBootPolicyResultFlags int
 const (
 	secureBootIncludesWeakAlg                 secureBootPolicyResultFlags = 1 << iota // Weak algorithms were used during image verification.
 	secureBootPreOSVerificationIncludesDigest                                         // Authenticode digests were used to authenticate pre-OS components.
+	secureBootNoDeployedMode                                                          // Deployed mode is not enabled.
 )
 
 // secureBootPolicyResult is the result of a successful call to checkSecureBootPolicyMeasurementsAndObtainAuthorities.
@@ -300,7 +301,7 @@ type secureBootPolicyResult struct {
 }
 
 // checkSecureBootPolicyMeasurementsAndObtainAuthorities performs some checks on the secure boot policy PCR (7).
-
+//
 // The supplied context is used to attach an EFI variable backend to, for functions that read
 // from EFI variables. The supplied env and log arguments provide other inputs to this function.
 // The pcrAlg argument is the PCR bank that is chosen as the best one to use. The iblImage
@@ -308,41 +309,41 @@ type secureBootPolicyResult struct {
 // launch of the OS, at which checks for PCR7 end. There are some limitations of this, ie, we may
 // not detect LoadImage bugs that happen later on, but once the OS has loaded, it's impossible to
 // tell whicj events come from firmware and which are under the control of OS components.
-
+//
 // This ensures that secure boot is enabled, else an error is returned, as WithSecureBootPolicyProfile
 // only generates profiles compatible with secure boot being enabled.
-
+//
 // If the version of UEFI is >= 2.5, it also makes sure that the secure boot mode is "deployed mode".
 // If the secure boot mode is "user mode", then the "AuditMode" and "DeployedMode" values are measured to PCR7,
 // something that WithSecureBootPolicyProfile doesn't support today. Support for "user mode" will be added
 // in the future, although the public RunChecks API will probably require a flag to opt in to supporting user
 // mode, as it is the less secure mode of the 2 (see the documentation for SecureBootMode in
 // github.com/canonical/go-efilib).
-
+//
 // It also reads the "OsIndicationsSupported" variable to test for features that are not supported by
 // WithSecureBootPolicyProfile. These are timestamp revocation (which requires an extra signature database -
 // "dbt") and OS recovery (which requires an extra signature database -"dbr", used to control access to
 // OsRecoveryOrder and OsRecover#### variables). Of the 2, it's likely that we might need to add support for
 // timestamp revocation at some point in the future.
-
+//
 // It reads the "BootCurrent" EFI variable and matches this to the EFI_LOAD_OPTION associated with the current
 // boot from the TCG log - it uses the log as "BootXXXX" EFI variables can be updated at runtime and
 // might be out of data when this code runs. It uses this to detect the launch of the initial boot loader,
 // which might not necessarily be the first EV_EFI_BOOT_SERVICES_APPLICATION event in the OS-present
 // environment in PCR4 (eg, if Absolute is active).
-
+//
 // After these checks, it iterates over the secure boot configuration in the log, making sure that the
 // configuration is measured in the correct order, that the event data is valid, and that the measured digest
 // is the tagged hash of the event data. It makes sure that the value of "SecureBoot" in the log is consistent
 // with the "SecureBoot" variable (which is read-only at runtime), and it verifies that all of the signature
 // databases are formatted correctly and can be decoded. It will return an error if any of these checks fail.
-
+//
 // If the pre-OS environment contains events other than EV_EFI_VARIABLE_DRIVER_CONFIG, it will return an error.
 // This can happen a firmware debugger is enabled, in which case PCR7 will begin with a EV_EFI_ACTION
 // "UEFI Debug Mode" event. This case is detected by earlier firmware protection checks.
-
+//
 // If not all of the expected secure boot configuration is measured, an error is returned.
-
+//
 // Once the secure boot configuration has been measured, it looks for EV_EFI_VARIABLE_AUTHORITY events in PCR7,
 // until it detects the launch of the initial boot loader. It verifies that each of these come from db, and
 // if the log is in the OS-present environment, it ensures that the measured digest is the tagged hash of the
@@ -357,7 +358,7 @@ type secureBootPolicyResult struct {
 // reflect the new components each time. If the digest being matched is SHA-1, it sets the flag in the return
 // value indicating a weak algorithm. If any of these checks fail, an error is returned. If an event type
 // other than EV_EFI_VARIABLE_AUTHORITY is detected, an error is returned.
-
+//
 // Upon detecting the launch of the initial boot loader in PCR4, it extracts the authenticode signatures from
 // the supplied image, and matches these to a previously measured CA. If no match is found, an error is returned.
 // If a match is found, it ensures that the signing certificate has an RSA public key with a modulus that is at
@@ -389,23 +390,18 @@ func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, 
 		return nil, ErrNoSecureBoot
 	}
 
+	result = new(secureBootPolicyResult)
+
 	// On UEFI 2.5 and later, we require that deployed mode is enabled, because if it's disabled, it
 	// changes the sequence of events for PCR7 (the DeployedMode and AuditMode global variables are
 	// also measured).
-	// TODO(chrisccoulson): relax this later on in the profile generation to support user mode, but
-	// maybe add a new flag (RequireDeployedMode or AllowUserMode) to RunChecks. We should be
-	// able to generate policies for user mode as well - it shouldn't be necessary to enable deployed
-	// mode as long as secure boot is enabled, particularly because the only paths back from deployed
-	// mode are platform specific (ie, it could be a one way operation!)
 	if efi.IsDeployedModeSupported(varCtx) {
 		secureBootMode, err := efi.ComputeSecureBootMode(varCtx)
 		if err != nil {
 			return nil, fmt.Errorf("cannot compute secure boot mode: %w", err)
 		}
 		if secureBootMode != efi.DeployedMode {
-			// WithSecureBootPolicyProfile() doesn't generate working profiles if deployed mode is not
-			// enabled on UEFI >= 2.5.
-			return nil, ErrNoDeployedMode
+			result.Flags |= secureBootNoDeployedMode
 		}
 	}
 
@@ -449,7 +445,6 @@ func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, 
 		// TODO: Add optional dbt / SPDM in the future.
 	}
 
-	result = new(secureBootPolicyResult)
 	var (
 		db                        efi.SignatureDatabase // The authorized signature database from the TCG log.
 		measuredSignatures        tpm2.DigestList       // The verification event digests measured by the firmware

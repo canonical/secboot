@@ -60,6 +60,7 @@ const (
 	PlatformFirmwareIntegrityVerified           = platformFirmwareIntegrityVerified
 	SecureBootIncludesWeakAlg                   = secureBootIncludesWeakAlg
 	SecureBootPreOSVerificationIncludesDigest   = secureBootPreOSVerificationIncludesDigest
+	SecureBootNoDeployedMode                    = secureBootNoDeployedMode
 	StartupLocalityNotProtected                 = startupLocalityNotProtected
 )
 

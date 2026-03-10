@@ -1196,7 +1196,34 @@ func (s *fwLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyAndBootManagerC
 	})
 }
 
-func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileDisabledDeployedMode(c *C) {
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileUserMode(c *C) {
+	vars := makeMockVars(c, withMsSecureBootConfig(), withDeployedModeDisabled())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DisableDeployedMode: true,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		loadParams: &LoadParams{
+			"include_secure_boot_user_mode": true,
+		},
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "AuditMode", GUID: efi.GlobalVariable}, varData: []byte{0x00}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "DeployedMode", GUID: efi.GlobalVariable}, varData: []byte{0x00}},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileUserModeNotIncluded(c *C) {
 	vars := makeMockVars(c, withMsSecureBootConfig(), withDeployedModeDisabled())
 	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
 		vars: vars,
@@ -1213,8 +1240,6 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileDisable
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
-			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "AuditMode", GUID: efi.GlobalVariable}, varData: []byte{0x00}},
-			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "DeployedMode", GUID: efi.GlobalVariable}, varData: []byte{0x00}},
 			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
 		},
 	})
