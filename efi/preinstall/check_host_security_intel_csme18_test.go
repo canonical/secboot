@@ -32,29 +32,79 @@ type hostSecurityIntelCsme18Suite struct{}
 var _ = Suite(&hostSecurityIntelCsme18Suite{})
 
 func (*hostSecurityIntelCsme18Suite) TestCheckHostSecurityIntelBootGuardCSME18GoodFVMEProfile(c *C) {
-	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{Hfsts5: 0x02F61F03})
+	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{
+		Hfsts1: 0x94000245,
+		Hfsts5: 0x02F61F03,
+		Hfsts6: 0x40200000,
+	})
 	c.Check(err, IsNil)
 }
 
 func (*hostSecurityIntelCsme18Suite) TestCheckHostSecurityIntelBootGuardCSME18GoodFVEProfile(c *C) {
-	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{Hfsts5: 0x02F21F03})
+	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{
+		Hfsts1: 0x94000245,
+		Hfsts5: 0x02F21F03,
+		Hfsts6: 0x40200000,
+	})
 	c.Check(err, IsNil)
 }
 
+func (*hostSecurityIntelCsme18Suite) TestCheckHostSecurityIntelBootGuardCSME18ErrNoSPIProtection(c *C) {
+	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{
+		Hfsts1: 0x94000255,
+		Hfsts5: 0x02F61F03,
+		Hfsts6: 0x40200000,
+	})
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (*hostSecurityIntelCsme18Suite) TestCheckHostSecurityIntelBootGuardCSME18ErrFPFsNotLocked(c *C) {
+	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{
+		Hfsts1: 0x94000245,
+		Hfsts5: 0x02F61F03,
+		Hfsts6: 0x00200000,
+	})
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (*hostSecurityIntelCsme18Suite) TestCheckHostSecurityIntelBootGuardCSME18ErrNoManufLock(c *C) {
+	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{
+		Hfsts1: 0x94000245,
+		Hfsts5: 0x02F61F03,
+		Hfsts6: 0x40000000,
+	})
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
 func (*hostSecurityIntelCsme18Suite) TestCheckHostSecurityIntelBootGuardCSME18ErrInvalidProfile(c *C) {
-	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{Hfsts5: 0x02F61F01})
+	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{
+		Hfsts1: 0x94000245,
+		Hfsts5: 0x02F61F01,
+		Hfsts6: 0x40200000,
+	})
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: invalid BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
 func (*hostSecurityIntelCsme18Suite) TestCheckHostSecurityIntelBootGuardCSME18ErrUnsupportedNoFVMEProfile(c *C) {
-	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{Hfsts5: 0x02E21F03})
+	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{
+		Hfsts1: 0x94000245,
+		Hfsts5: 0x02E21F03,
+		Hfsts6: 0x40200000,
+	})
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: unsupported BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
 func (*hostSecurityIntelCsme18Suite) TestCheckHostSecurityIntelBootGuardCSME18ErrUnsupportedVMProfile(c *C) {
-	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{Hfsts5: 0x02EE1F03})
+	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{
+		Hfsts1: 0x94000245,
+		Hfsts5: 0x02EE1F03,
+		Hfsts6: 0x40200000,
+	})
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: unsupported BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
