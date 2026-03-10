@@ -90,6 +90,7 @@ func NewSealedObjectKeySealer(tpm *Connection) keySealer {
 
 type KeyDataConstructor = keyDataConstructor
 type KeySealer = keySealer
+type LockoutAuthParams = lockoutAuthParams
 
 type PcrPolicyVersionOption = pcrPolicyVersionOption
 type PolicyDataError = policyDataError
