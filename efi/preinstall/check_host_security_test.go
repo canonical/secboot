@@ -22,9 +22,7 @@ package preinstall_test
 import (
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/tcglog-parser"
 	. "github.com/snapcore/secboot/efi/preinstall"
-	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/efitest"
 )
 
@@ -126,31 +124,4 @@ func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsFirmw
 	var tmpl CompoundError
 	c.Assert(err, Implements, &tmpl)
 	c.Check(err.(CompoundError).Unwrap(), DeepEquals, []error{ErrUEFIDebuggingEnabled, ErrInsufficientDMAProtection})
-}
-
-func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrUnexpectedData(c *C) {
-	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
-	for _, ev := range log.Events {
-		if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {
-			continue
-		}
-		ev.Data = tcglog.EFICallingEFIApplicationEvent
-		break
-	}
-	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
-	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event data in PCR7 event: \"Calling EFI Application from Boot Option\"`)
-}
-
-func (s *hostSecuritySuite) TestCheckSecureBootPolicyPCRForDegradedSettingsErrUnexpectedType(c *C) {
-	log := efitest.NewLog(c, &efitest.LogOptions{FirmwareDebugger: true})
-	for _, ev := range log.Events {
-		if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {
-			continue
-		}
-		ev.EventType = tcglog.EventTypeAction
-		break
-	}
-	c.Check(CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log), ErrorMatches, `unexpected event type \(EV_ACTION\) in PCR7`)
-	err := CheckSecureBootPolicyPCRForDegradedFirmwareSettings(log)
-	c.Check(err, ErrorMatches, `unexpected event type \(EV_ACTION\) in PCR7`)
 }

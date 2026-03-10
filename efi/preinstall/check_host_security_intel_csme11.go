@@ -83,22 +83,54 @@ func toHfstsRegistersCsme11(regs hfstsRegisters) hfstsRegistersCsme11 {
 }
 
 const (
+	// hfsts1Csme11MfgMode indicates that the system is in manufacturing mode. Note that
+	// fwupd and coreboot refer to this bit as manufacturing mode whilst slimbootloader refers
+	// to this as SPI protection mode. Based on this and the comments in coreboot, this bit
+	// is set when the SPI flash descriptor is locked.
+	hfsts1Csme11MfgMode hfsts1Csme11 = 1 << 4
+
 	hfsts6Csme11ForceBootPolicy        hfsts6Csme11 = 1 << 0
 	hfsts6Csme11CpuDebugDisable        hfsts6Csme11 = 1 << 1
 	hfsts6Csme11ProtectBIOSEnv         hfsts6Csme11 = 1 << 3
 	hfsts6Csme11ErrorEnforcementPolicy hfsts6Csme11 = 0xc0
 	hfsts6Csme11MeasuredBoot           hfsts6Csme11 = 1 << 8
 	hfsts6Csme11VerifiedBoot           hfsts6Csme11 = 1 << 9
+	hfsts6Csme11MfgLock                hfsts6Csme11 = 1 << 21
 	hfsts6Csme11BootGuardDisable       hfsts6Csme11 = 1 << 28
+	hfsts6Csme11FPFSOCLock             hfsts6Csme11 = 1 << 30
 
 	errorEnforcementPolicyCsme11Nothing        errorEnforcementPolicyCsme11 = 0
 	errorEnforcementPolicyCsme11Shutdown30Mins errorEnforcementPolicyCsme11 = 1 // fwupd defines this as 3, which I think is wrong.
 	errorEnforcementPolicyCsme11ShutdownNow    errorEnforcementPolicyCsme11 = 3 // fwupd defines this as 2, which I think is wrong.
 )
 
-func checkHostSecurityIntelBootGuardCSME11(regs hfstsRegistersCsme11) error {
+func isInManufacturingModeCSME11(vers meVersion, regs hfstsRegistersCsme11) bool {
+	// This is based on the checks from
+	// https://github.com/coreboot/coreboot/blob/eb5bdf06b92534b6f66f612297a4ccb69008b4ac/src/soc/intel/common/block/cse/cse_spec.c#L15
+	if regs.Hfsts1&hfsts1Csme11MfgMode > 0 {
+		return true
+	}
+	if vers.Major > 13 {
+		if regs.Hfsts6&hfsts6Csme11FPFSOCLock == 0 {
+			return true
+		}
+	}
+	if vers.Major > 15 {
+		if regs.Hfsts6&hfsts6Csme11MfgLock == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func checkHostSecurityIntelBootGuardCSME11(vers meVersion, regs hfstsRegistersCsme11) error {
 	// These checks are based on the HSI checks performed in the pci-mei
 	// plugin in fwupd.
+
+	// Make sure that the system is not in manufacturing mode.
+	if isInManufacturingModeCSME11(vers, regs) {
+		return &NoHardwareRootOfTrustError{errors.New("system is in manufacturing mode")}
+	}
 
 	// Check that BootGuard is enabled.
 	if regs.Hfsts6&hfsts6Csme11BootGuardDisable > 0 {

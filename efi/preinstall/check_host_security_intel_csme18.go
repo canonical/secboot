@@ -46,7 +46,12 @@ func (reg hfsts5Csme18) btgProfile() btgProfile {
 }
 
 const (
+	hfsts1Csme18SPIProtectionMode hfsts1Csme18 = 1 << 4
+
 	hfsts5Csme18BtgProfileValid hfsts5Csme18 = 1 << 1
+
+	hfsts6Csme18MfgLock    hfsts6Csme18 = 1 << 21
+	hfsts6Csme18FPFSOCLock hfsts6Csme18 = 1 << 30
 
 	// hfsts5Csme18BtgProfile is the bitmask for the BootGuard profile.
 	// fwupd defines this as 0xe0000, but I think this is off by one bit.
@@ -68,9 +73,29 @@ func toHfstsRegistersCsme18(regs hfstsRegisters) hfstsRegistersCsme18 {
 	}
 }
 
+func isInManufacturingModeCSME18(regs hfstsRegistersCsme18) bool {
+	// This is based on the checks from
+	// https://github.com/coreboot/coreboot/blob/eb5bdf06b92534b6f66f612297a4ccb69008b4ac/src/soc/intel/common/block/cse/cse_spec.c#L15
+	if regs.Hfsts1&hfsts1Csme18SPIProtectionMode > 0 {
+		return true
+	}
+	if regs.Hfsts6&hfsts6Csme18MfgLock == 0 {
+		return true
+	}
+	if regs.Hfsts6&hfsts6Csme18FPFSOCLock == 0 {
+		return true
+	}
+	return false
+}
+
 func checkHostSecurityIntelBootGuardCSME18(regs hfstsRegistersCsme18) error {
 	// These checks are based on the HSI checks performed in the pci-mei
 	// plugin in fwupd.
+
+	// Make sure that the system is not in manufacturing mode.
+	if isInManufacturingModeCSME18(regs) {
+		return &NoHardwareRootOfTrustError{errors.New("system is in manufacturing mode")}
+	}
 
 	// Check that the BootGuard profile is valid. I think that's what this
 	// is checking - fwupd's definition of this bit is just called "valid".

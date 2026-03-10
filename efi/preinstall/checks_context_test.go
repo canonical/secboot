@@ -5271,7 +5271,7 @@ C7E003CB
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with system security: encountered an error when checking Intel BootGuard configuration: no hardware root-of-trust properly configured: ME is in manufacturing mode`)
+	c.Check(errs[0], ErrorMatches, `error with system security: encountered an error when checking Intel BootGuard configuration: no hardware root-of-trust properly configured: system is in manufacturing mode`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindHostSecurity, nil, []Action{ActionContactOEM}, errs[0].Unwrap()))
 }
 

@@ -32,35 +32,96 @@ type hostSecurityIntelCsme11Suite struct{}
 var _ = Suite(&hostSecurityIntelCsme11Suite{})
 
 func (*hostSecurityIntelCsme11Suite) TestCheckHostSecurityIntelBootGuardCSME11GoodFVMEProfile(c *C) {
-	err := CheckHostSecurityIntelBootGuardCSME11(HfstsRegistersCsme11{Hfsts6: 0xC7E003CB})
+	err := CheckHostSecurityIntelBootGuardCSME11(MeVersion{Major: 16}, HfstsRegistersCsme11{
+		Hfsts1: 0x94000245,
+		Hfsts6: 0xC7E003CB,
+	})
 	c.Check(err, IsNil)
 }
 
 func (*hostSecurityIntelCsme11Suite) TestCheckHostSecurityIntelBootGuardCSME11GoodFVEProfile(c *C) {
-	err := CheckHostSecurityIntelBootGuardCSME11(HfstsRegistersCsme11{Hfsts6: 0xC7E002CB})
+	err := CheckHostSecurityIntelBootGuardCSME11(MeVersion{Major: 16}, HfstsRegistersCsme11{
+		Hfsts1: 0x94000245,
+		Hfsts6: 0xC7E002CB,
+	})
 	c.Check(err, IsNil)
 }
 
+func (*hostSecurityIntelCsme11Suite) TestCheckHostSecurityIntelBootGuardCSME11Good13(c *C) {
+	err := CheckHostSecurityIntelBootGuardCSME11(MeVersion{Major: 13}, HfstsRegistersCsme11{
+		Hfsts1: 0x94000245,
+		Hfsts6: 0x87C003CB,
+	})
+	c.Check(err, IsNil)
+}
+
+func (*hostSecurityIntelCsme11Suite) TestCheckHostSecurityIntelBootGuardCSME11Good15(c *C) {
+	err := CheckHostSecurityIntelBootGuardCSME11(MeVersion{Major: 15}, HfstsRegistersCsme11{
+		Hfsts1: 0x94000245,
+		Hfsts6: 0xC7C003CB,
+	})
+	c.Check(err, IsNil)
+}
+
+func (*hostSecurityIntelCsme11Suite) TestCheckHostSecurityIntelBootGuardCSME11ErrMfgMode(c *C) {
+	err := CheckHostSecurityIntelBootGuardCSME11(MeVersion{Major: 13}, HfstsRegistersCsme11{
+		Hfsts1: 0x94000255,
+		Hfsts6: 0x87C003CB,
+	})
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (*hostSecurityIntelCsme11Suite) TestCheckHostSecurityIntelBootGuardCSME11ErrFPFsNotLocked(c *C) {
+	err := CheckHostSecurityIntelBootGuardCSME11(MeVersion{Major: 15}, HfstsRegistersCsme11{
+		Hfsts1: 0x94000245,
+		Hfsts6: 0x87C003CB,
+	})
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (*hostSecurityIntelCsme11Suite) TestCheckHostSecurityIntelBootGuardCSME11ErrNoManufLock(c *C) {
+	err := CheckHostSecurityIntelBootGuardCSME11(MeVersion{Major: 16}, HfstsRegistersCsme11{
+		Hfsts1: 0x94000245,
+		Hfsts6: 0x87C003CB,
+	})
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
 func (*hostSecurityIntelCsme11Suite) TestCheckHostSecurityIntelBootGuardCSME11ErrBootGuardDisabled(c *C) {
-	err := CheckHostSecurityIntelBootGuardCSME11(HfstsRegistersCsme11{Hfsts6: 0xD7E003CB})
+	err := CheckHostSecurityIntelBootGuardCSME11(MeVersion{Major: 16}, HfstsRegistersCsme11{
+		Hfsts1: 0x94000245,
+		Hfsts6: 0xD7E003CB,
+	})
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard is disabled`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
 func (*hostSecurityIntelCsme11Suite) TestCheckHostSecurityIntelBootGuardCSME11ErrInvalidProfile(c *C) {
-	err := CheckHostSecurityIntelBootGuardCSME11(HfstsRegistersCsme11{Hfsts6: 0xC7E0024A})
+	err := CheckHostSecurityIntelBootGuardCSME11(MeVersion{Major: 16}, HfstsRegistersCsme11{
+		Hfsts1: 0x94000245,
+		Hfsts6: 0xC7E0024A,
+	})
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: cannot determine BootGuard profile: invalid profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
 func (*hostSecurityIntelCsme11Suite) TestCheckHostSecurityIntelBootGuardCSME11ErrUnsupportedNoFVMEProfile(c *C) {
-	err := CheckHostSecurityIntelBootGuardCSME11(HfstsRegistersCsme11{Hfsts6: 0xC7E00002})
+	err := CheckHostSecurityIntelBootGuardCSME11(MeVersion{Major: 16}, HfstsRegistersCsme11{
+		Hfsts1: 0x94000245,
+		Hfsts6: 0xC7E00002,
+	})
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: unsupported BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
 func (*hostSecurityIntelCsme11Suite) TestCheckHostSecurityIntelBootGuardCSME11ErrUnsupportedVMProfile(c *C) {
-	err := CheckHostSecurityIntelBootGuardCSME11(HfstsRegistersCsme11{Hfsts6: 0xC7E0030A})
+	err := CheckHostSecurityIntelBootGuardCSME11(MeVersion{Major: 16}, HfstsRegistersCsme11{
+		Hfsts1: 0x94000245,
+		Hfsts6: 0xC7E0030A,
+	})
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: unsupported BootGuard profile`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }

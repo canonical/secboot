@@ -61,18 +61,11 @@ func (reg hfsts1) operationMode() meOperationMode {
 }
 
 const (
-	// hfsts1MfgMode indicates that the ME is in manufacturing mode. Fwupd refers to this
-	// as manufacturing mode for CSME #11 and SPI protection mode for CSME #18. Slimbootloader
-	// refers to this as the latter for everything other than Comet Lake.
-	hfsts1MfgMode hfsts1 = 1 << 4
-
 	// hfsts1OperationMode is the ME operation mode bitmask, from fwupd and slimbootloader.
 	hfsts1OperationMode hfsts1 = 0xf0000
 
 	hfsts5BtgAcmActive hfsts5 = 1 << 0
 	hfsts5BtgAcmDone   hfsts5 = 1 << 8
-
-	hfsts6FPFSOCLock hfsts6 = 1 << 30
 
 	meOperationModeNormal         meOperationMode = 0x0
 	meOperationModeDebug          meOperationMode = 0x2
@@ -316,24 +309,14 @@ func checkHostSecurityIntelBootGuard(env internal_efi.HostEnvironment) error {
 		return &NoHardwareRootOfTrustError{errors.New("invalid ME operation mode")}
 	}
 
-	// Check manufacturing mode is not enabled.
-	if regs.Hfsts1&hfsts1MfgMode > 0 {
-		return &NoHardwareRootOfTrustError{errors.New("ME is in manufacturing mode")}
-	}
-
 	// Check that the BootGuard ACM is active. Fwupd only checks this for CSME #18, but it
 	// appears that the same bits are defined for both versions.
 	if regs.Hfsts5&(hfsts5BtgAcmActive|hfsts5BtgAcmDone) != hfsts5BtgAcmActive|hfsts5BtgAcmDone {
 		return &NoHardwareRootOfTrustError{errors.New("BootGuard ACM is not active")}
 	}
 
-	// Check that the FPFs are locked.
-	if regs.Hfsts6&hfsts6FPFSOCLock == 0 {
-		return &NoHardwareRootOfTrustError{errors.New("BootGuard OTP fuses are not locked")}
-	}
-
 	if vers.Major < 18 {
-		return checkHostSecurityIntelBootGuardCSME11(toHfstsRegistersCsme11(regs))
+		return checkHostSecurityIntelBootGuardCSME11(vers, toHfstsRegistersCsme11(regs))
 	}
 
 	return checkHostSecurityIntelBootGuardCSME18(toHfstsRegistersCsme18(regs))
