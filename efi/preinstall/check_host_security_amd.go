@@ -47,7 +47,7 @@ func readAMDPSPBooleanAttribute(dev internal_efi.SysfsDevice, name string) (bool
 	return strconv.ParseBool(string(bytes.TrimSuffix(data, []byte("\n"))))
 }
 
-func checkHostSecurityAMDPSP(env internal_efi.HostEnvironment) error {
+func checkHostSecurityAMDPSP(env internal_efi.HostEnvironment) (platformFirmwareIntegrityConfig, error) {
 	// Enumerate the PCI devices that are bound to the ccp driver.
 	devices, err := env.EnumerateDevices(&netlink.RuleDefinition{
 		Env: map[string]string{
@@ -56,7 +56,7 @@ func checkHostSecurityAMDPSP(env internal_efi.HostEnvironment) error {
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("cannot obtain PCI devices that are bound to the ccp driver: %w", err)
+		return platformFirmwareIntegrityNone, fmt.Errorf("cannot obtain PCI devices that are bound to the ccp driver: %w", err)
 	}
 
 	if len(devices) == 0 {
@@ -70,39 +70,54 @@ func checkHostSecurityAMDPSP(env internal_efi.HostEnvironment) error {
 			},
 		})
 		if err != nil {
-			return fmt.Errorf("cannot enumerate AMD PCI CCP devices: %w", err)
+			return platformFirmwareIntegrityNone, fmt.Errorf("cannot enumerate AMD PCI CCP devices: %w", err)
 		}
 		if len(devices) == 0 {
 			// We can't find the PSP device, so this platform is unsupported.
-			return &UnsupportedPlatformError{errors.New("no PSP PCI device")}
+			return platformFirmwareIntegrityNone, &UnsupportedPlatformError{errors.New("no PSP PCI device")}
 		}
 
 		// We found the PSP device, so indicate that the ccp module should
 		// be loaded.
-		return MissingKernelModuleError("ccp")
+		return platformFirmwareIntegrityNone, MissingKernelModuleError("ccp")
 	}
 
 	device := devices[0]
 
-	debugLock, err := readAMDPSPBooleanAttribute(device, "debug_lock_on")
-	switch {
+	amd64Env, err := env.AMD64()
+	if err != nil {
+		return platformFirmwareIntegrityNone, fmt.Errorf("cannot obtain AMD64 environment: %w", err)
+	}
+	if amd64Env.CPUFamily() < 0x17 {
+		// Require at least Zen.
+		return platformFirmwareIntegrityNone, &UnsupportedPlatformError{errors.New("unsupported CPU family")}
+	}
+
+	switch debugLock, err := readAMDPSPBooleanAttribute(device, "debug_lock_on"); {
 	case errors.Is(err, internal_efi.ErrNoDeviceAttribute):
-		return &NoHardwareRootOfTrustError{errors.New("PSP security reporting not available")}
+		return platformFirmwareIntegrityNone, &NoHardwareRootOfTrustError{errors.New("PSP security reporting not available")}
 	case err != nil:
-		return fmt.Errorf("cannot determine if debug lock is on: %w", err)
+		return platformFirmwareIntegrityNone, fmt.Errorf("cannot determine if debug lock is on: %w", err)
 	case !debugLock:
-		return &NoHardwareRootOfTrustError{errors.New("PSP debug lock is not enabled")}
+		return platformFirmwareIntegrityNone, &NoHardwareRootOfTrustError{errors.New("PSP debug lock is not enabled")}
 	}
 
-	fused, err := readAMDPSPBooleanAttribute(device, "fused_part")
-	switch {
-	case errors.Is(err, internal_efi.ErrNoDeviceAttribute):
-		return &NoHardwareRootOfTrustError{errors.New("PSP security reporting not available")}
+	switch fused, err := readAMDPSPBooleanAttribute(device, "fused_part"); {
 	case err != nil:
-		return fmt.Errorf("cannot determine if PSB is enabled: %w", err)
+		return platformFirmwareIntegrityNone, fmt.Errorf("cannot determine if part is fused: %w", err)
 	case !fused:
-		return &NoHardwareRootOfTrustError{errors.New("Platform Secure Boot is not enabled")}
+		return platformFirmwareIntegrityMeasured, nil
 	}
 
-	return nil
+	switch integrity, err := readAMDPSPBooleanAttribute(device, "boot_integrity"); {
+	case errors.Is(err, internal_efi.ErrNoDeviceAttribute):
+		// Only exists since https://lore.kernel.org/linux-crypto/20260123033457.645189-1-superm1@kernel.org/
+		return platformFirmwareIntegrityMeasured, nil
+	case err != nil:
+		return platformFirmwareIntegrityNone, fmt.Errorf("cannot determine if PSB is enabled: %w", err)
+	case !integrity:
+		return platformFirmwareIntegrityMeasured, nil
+	}
+
+	return platformFirmwareIntegrityVerified, nil
 }

@@ -30,7 +30,7 @@ type utilAmd64Suite struct{}
 var _ = Suite(&utilAmd64Suite{})
 
 func (s *utilAmd64Suite) TestDetermineCPUVendorIntel(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", nil, 0, nil))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 0, nil))
 
 	vendor, err := DetermineCPUVendor(env)
 	c.Check(err, IsNil)
@@ -38,7 +38,7 @@ func (s *utilAmd64Suite) TestDetermineCPUVendorIntel(c *C) {
 }
 
 func (s *utilAmd64Suite) TestDetermineCPUVendorAMD(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("AuthenticAMD", nil, 0, nil))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("AuthenticAMD", 0x1a, nil, 0, nil))
 
 	vendor, err := DetermineCPUVendor(env)
 	c.Check(err, IsNil)
@@ -46,7 +46,7 @@ func (s *utilAmd64Suite) TestDetermineCPUVendorAMD(c *C) {
 }
 
 func (s *utilAmd64Suite) TestDetermineCPUVendorUnknown(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineInte", nil, 0, nil))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineInte", 0x6, nil, 0, nil))
 
 	_, err := DetermineCPUVendor(env)
 	c.Check(err, ErrorMatches, `unknown CPU vendor: GenuineInte`)
