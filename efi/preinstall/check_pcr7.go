@@ -505,6 +505,7 @@ NextEvent:
 				return nil, fmt.Errorf("unexpected %v event %q before config", ev.EventType, ev.Data)
 			}
 		case tcglogPhaseMeasuringSecureBootConfig:
+			// ev.PCRIndex is always SecureBootPolicyPCR in this phase.
 			switch ev.EventType {
 			case tcglog.EventTypeEFIVariableDriverConfig:
 				if len(configs) == 0 {
