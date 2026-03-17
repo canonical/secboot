@@ -308,7 +308,7 @@ type secureBootPolicyResult struct {
 // corresponds to the initial boot loader image for the current boot. This is used to detect the
 // launch of the OS, at which checks for PCR7 end. There are some limitations of this, ie, we may
 // not detect LoadImage bugs that happen later on, but once the OS has loaded, it's impossible to
-// tell whicj events come from firmware and which are under the control of OS components.
+// tell which events come from firmware and which are under the control of OS components.
 //
 // This ensures that secure boot is enabled, else an error is returned, as WithSecureBootPolicyProfile
 // only generates profiles compatible with secure boot being enabled.
@@ -461,12 +461,51 @@ NextEvent:
 		}
 
 		switch phase {
-		case tcglogPhaseMeasuringSecureBootConfig:
+		case tcglogPhaseFirmwareLaunch:
 			if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {
 				// Not PCR7
 				continue NextEvent
 			}
 
+			switch ev.EventType {
+			case tcglog.EventTypeEFIAction:
+				// An EV_EFI_ACTION event measured to PCR7 may indicate some degraded condition
+				// that weakens device security. 2 known ones are:
+				// - "UEFI Debug Mode", which indicates the presence of a debugging endpoint.
+				//   The TCG PC Client PFP spec says this goes before the secure boot config
+				//   is measured.
+				// - "DMA Protection Disabled" to indicate that pre-boot DMA protection was
+				//   disabled. This event isn't formally documented anywhere - it is mentioned
+				//   in some tianocore documentation, although EDK2 doesn't have a reference
+				//   implementation. This event can be permitted, which means that we can
+				//   generate a policy that includes it. However, the tianocore documentation
+				//   doesn't specify event ordering, so we need to accommodate any possible
+				//   ordering of events.
+				//
+				// The presence of an EV_EFI_ACTION event other than "DMA Protection Disabled"
+				// will result in WithSecureBootPolicyProfile() creating an invalid policy,
+				// because it generally doesn't emit these measurements. Just return an error
+				// here to prevent the use of WithSecureBootPolicyProfile() unless it is a
+				// "DMA Protection Disabled" event and it is permitted.
+				//
+				// Note that "UEFI Debug Mode" and "DMA Protection Disabled" events are both
+				// caught by the host security checks, which run before this.
+				if permitDMAProtectionDisabledEvent && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
+					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00))) {
+					// This event is detected by the host security checks which will result in a flag
+					// being added to the results so that it can be picked up by the code in
+					// profile. We don't need to do anything else here other than make sure
+					// this event only appears once.
+					permitDMAProtectionDisabledEvent = false // Don't allow this more than once.
+					continue NextEvent
+				}
+				fallthrough
+			default:
+				// Anything that isn't EV_EFI_ACTION ends up here.
+				return nil, fmt.Errorf("unexpected %v event %q before config", ev.EventType, ev.Data)
+			}
+		case tcglogPhaseMeasuringSecureBootConfig:
+			// ev.PCRIndex is always SecureBootPolicyPCR in this phase.
 			switch ev.EventType {
 			case tcglog.EventTypeEFIVariableDriverConfig:
 				if len(configs) == 0 {
@@ -518,27 +557,16 @@ NextEvent:
 					db = sigDb
 				}
 			case tcglog.EventTypeEFIAction:
-				// An EV_EFI_ACTION events with the string "UEFI Debug Mode" appears at the
-				// start of the log if a debugging endpoint is enabled. It's also possible that
-				// EV_EFI_ACTION events are used for other conditions in PCR7 that weaken device
-				// security (eg, the "DMA Protection Disabled" event).
-				//
-				// In general, it's not normal to see EV_EFI_ACTION events and these indicate some
-				// sort of abnormal condition that has a detrimental effect on device security.
-				// WithSecureBootPolicyProfile() will generate an invalid policy in this case because,
-				// with some exceptions, it doesn't emit them.
-				//
-				// Just return an error here to prevent the use of WithSecureBootPolicyProfile(). The
-				// "UEFI Debug Mode" and "DMA Protection Disabled" cases are already picked up by the
-				// firmware protection checks, so we don't need any special handling here.
-				//
-				// We do permit the "DMA Protection Disabled" case if required. In this case,
-				// WithSecureBootPolicyProfile() needs a separate option.
+				// See the doc notes for this event type in the tcglogPhaseFirmwareLaunch
+				// phase. This leg is here to accommodate a "DMA Protection Disabled" event
+				// as part of the secure boot configuration, just at the end of the signature
+				// database measurements.
 				if permitDMAProtectionDisabledEvent && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
 					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00))) {
-					// This event is detected by the host security checks so we can skip it here.
-					// We'll emit a flag in the results which is picked up by the code in profile.go
-					// to add an option to permit this with WithSecureBootPolicyProfile().
+					// This event is detected by the host security checks which will result in a flag
+					// being added to the results so that it can be picked up by the code in
+					// profile. We don't need to do anything else here other than make sure
+					// this event only appears once.
 					permitDMAProtectionDisabledEvent = false // Don't allow this more than once.
 					continue NextEvent
 				}
@@ -594,23 +622,16 @@ NextEvent:
 			case tcglog.EventTypeSeparator:
 				// ok
 			case tcglog.EventTypeEFIAction:
-				// In general, it's not normal to see EV_EFI_ACTION events and these indicate some
-				// sort of abnormal condition that has a detrimental effect on device security.
-				// WithSecureBootPolicyProfile() will generate an invalid policy in this case because,
-				// with some exceptions, it doesn't emit them.
-				//
-				// Just return an error here to prevent the use of WithSecureBootPolicyProfile(). The
-				// "UEFI Debug Mode" and "DMA Protection Disabled" cases are already picked up by the
-				// firmware protection checks, so we don't need any special handling here.
-				//
-				// We do permit the "DMA Protection Disabled" case if required. In this case,
-				// WithSecureBootPolicyProfile() needs a separate option. Some firmware measures
-				// this after the EV_SEPARATOR in PCR7 but part of the pre-OS environment.
+				// See the doc notes for this event type in the tcglogPhaseFirmwareLaunch
+				// phase. This leg is here to accommodate a "DMA Protection Disabled" event
+				// as part of the secure boot configuration, just at the end of the signature
+				// database measurements.
 				if permitDMAProtectionDisabledEvent && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
 					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00))) {
-					// This event is detected by the host security checks so we can skip it here.
-					// We'll emit a flag in the results which is picked up by the code in profile.go
-					// to add an option to permit this with WithSecureBootPolicyProfile().
+					// This event is detected by the host security checks which will result in a flag
+					// being added to the results so that it can be picked up by the code in
+					// profile. We don't need to do anything else here other than make sure
+					// this event only appears once.
 					permitDMAProtectionDisabledEvent = false // Don't allow this more than once.
 					continue NextEvent
 				}
@@ -722,10 +743,6 @@ NextEvent:
 			default:
 				// Anything that isn't EV_EFI_VARIABLE_AUTHORITY ends up here.
 				return nil, fmt.Errorf("unexpected %v event %q whilst measuring verification", ev.EventType, ev.Data)
-			}
-		case tcglogPhasePreOSThirdPartyDispatchUnterminated:
-			if ev.PCRIndex == internal_efi.SecureBootPolicyPCR {
-				return nil, fmt.Errorf("unexpected %v event in PCR7 after measuring config but before transitioning to OS-present", ev.EventType)
 			}
 		}
 	}

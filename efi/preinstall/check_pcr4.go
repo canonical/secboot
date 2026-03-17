@@ -127,7 +127,7 @@ NextEvent:
 		}
 
 		switch phase {
-		case tcglogPhaseFirmwareLaunch, tcglogPhasePreOSThirdPartyDispatch, tcglogPhasePreOSThirdPartyDispatchUnterminated:
+		case tcglogPhaseFirmwareLaunch, tcglogPhasePreOSThirdPartyDispatch:
 			if ev.PCRIndex != internal_efi.BootManagerCodePCR {
 				// Not PCR4
 				continue NextEvent
