@@ -502,7 +502,12 @@ NextEvent:
 				fallthrough
 			default:
 				// Anything that isn't EV_EFI_ACTION ends up here.
-				return nil, fmt.Errorf("unexpected %v event %q before config", ev.EventType, ev.Data)
+				switch {
+				case internal_efi.IsVendorEventType(ev.EventType):
+					// ok
+				default:
+					return nil, fmt.Errorf("unexpected %v event %q before config", ev.EventType, ev.Data)
+				}
 			}
 		case tcglogPhaseMeasuringSecureBootConfig:
 			// ev.PCRIndex is always SecureBootPolicyPCR in this phase.
@@ -560,8 +565,9 @@ NextEvent:
 				// See the doc notes for this event type in the tcglogPhaseFirmwareLaunch
 				// phase. This leg is here to accommodate a "DMA Protection Disabled" event
 				// as part of the secure boot configuration, just at the end of the signature
-				// database measurements.
-				if permitDMAProtectionDisabledEvent && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
+				// database measurements. We only permit this if there are no signature database
+				// measurements remaining.
+				if permitDMAProtectionDisabledEvent && len(configs) == 0 && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
 					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00))) {
 					// This event is detected by the host security checks which will result in a flag
 					// being added to the results so that it can be picked up by the code in
@@ -572,8 +578,13 @@ NextEvent:
 				}
 				fallthrough
 			default:
-				// Anything that isn't EV_EFI_VARIABLE_DRIVER_CONFIG ends up here.
-				return nil, fmt.Errorf("unexpected %v event %q whilst measuring config", ev.EventType, ev.Data)
+				// Anything that isn't EV_EFI_VARIABLE_DRIVER_CONFIG or EV_EFI_ACTION ends up here.
+				switch {
+				case internal_efi.IsVendorEventType(ev.EventType) && len(configs) == 0:
+					// ok
+				default:
+					return nil, fmt.Errorf("unexpected %v event %q whilst measuring config", ev.EventType, ev.Data)
+				}
 			}
 		case tcglogPhasePreOSThirdPartyDispatch:
 			if len(configs) > 0 {
@@ -637,8 +648,13 @@ NextEvent:
 				}
 				fallthrough
 			default:
-				// Anything that isn't EV_EFI_VARIABLE_AUTHORITY ends up here.
-				return nil, fmt.Errorf("unexpected %v event %q whilst measuring verification", ev.EventType, ev.Data)
+				// Anything that isn't EV_EFI_VARIABLE_AUTHORITY, EV_SEPARATOR or EV_EFI_ACTION ends up here.
+				switch {
+				case internal_efi.IsVendorEventType(ev.EventType):
+					// ok
+				default:
+					return nil, fmt.Errorf("unexpected %v event %q whilst measuring verification", ev.EventType, ev.Data)
+				}
 			}
 		case tcglogPhaseOSPresent:
 			if len(configs) > 0 {
@@ -741,8 +757,13 @@ NextEvent:
 			case tcglog.EventTypeSeparator:
 				// ok
 			default:
-				// Anything that isn't EV_EFI_VARIABLE_AUTHORITY ends up here.
-				return nil, fmt.Errorf("unexpected %v event %q whilst measuring verification", ev.EventType, ev.Data)
+				// Anything that isn't EV_EFI_VARIABLE_AUTHORITY or EV_SEPARATOR ends up here.
+				switch {
+				case internal_efi.IsVendorEventType(ev.EventType):
+					// ok
+				default:
+					return nil, fmt.Errorf("unexpected %v event %q whilst measuring verification", ev.EventType, ev.Data)
+				}
 			}
 		}
 	}
