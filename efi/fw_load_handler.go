@@ -150,7 +150,12 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		e := events[0]
 		events = events[1:]
 
-		if e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIVariableDriverConfig {
+		if e.PCRIndex != internal_efi.SecureBootPolicyPCR {
+			// we don't care about this event.
+			continue
+		}
+
+		if e.EventType == tcglog.EventTypeEFIVariableDriverConfig {
 			// This is the first secure boot configuration measurement. In most
 			// circumstances, this will be the first measurement to PCR7. Only
 			// in the case where the first event is a EV_EFI_ACTION "DMA Protection
@@ -159,7 +164,7 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		}
 
 		switch {
-		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIAction &&
+		case e.EventType == tcglog.EventTypeEFIAction &&
 			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) || bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))) &&
 			allowInsufficientDMAProtection:
 			// This is a EV_EFI_ACTION "DMA Protection Disabled" measurement and is
@@ -175,10 +180,10 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 				ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 			}
 			allowInsufficientDMAProtection = false // Only allow this event to appear once
-		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType != tcglog.EventTypeEFIVariableDriverConfig:
-			return fmt.Errorf("unexpected event type (%v) found in log, before config", e.EventType)
+		case internal_efi.IsVendorEventType(e.EventType):
+			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 		default:
-			// we don't care about this event.
+			return fmt.Errorf("unexpected event type (%v) found in log, before config", e.EventType)
 		}
 	}
 
@@ -297,6 +302,8 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 				ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 			}
 			allowInsufficientDMAProtection = false // Only allow this event to appear once
+		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && internal_efi.IsVendorEventType(e.EventType):
+			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR:
 			return fmt.Errorf("unexpected event type (%v) found in log", e.EventType)
 		default:
@@ -315,6 +322,29 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	if !measuredSecureBootSeparator {
 		return errors.New("missing separator in log")
 	}
+
+	// Retain any other vendor defined events that occur before the first EV_EFI_VARIABLE_AUTHORITY
+	// event.
+	for len(events) > 0 {
+		e := events[0]
+		events = events[1:]
+
+		if e.PCRIndex != internal_efi.SecureBootPolicyPCR {
+			continue
+		}
+
+		if e.EventType == tcglog.EventTypeEFIVariableAuthority {
+			break
+		}
+
+		switch {
+		case internal_efi.IsVendorEventType(e.EventType):
+			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
+		default:
+			return fmt.Errorf("unexpected event type (%v) found in log", e.EventType)
+		}
+	}
+
 	return nil
 }
 

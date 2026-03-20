@@ -49,6 +49,7 @@ var _ = Suite(&fwLoadHandlerSuite{})
 type testFwMeasureImageStartData struct {
 	vars           efitest.MockVars
 	logOptions     *efitest.LogOptions
+	log            *tcglog.Log
 	alg            tpm2.HashAlgorithmId
 	pcrs           PcrFlags
 	expectedEvents []*mockPcrBranchEvent
@@ -61,7 +62,15 @@ func (s *fwLoadHandlerSuite) testMeasureImageStart(c *C, data *testFwMeasureImag
 		alg:  data.alg,
 		pcrs: data.pcrs}, data.loadParams, collector.Next())
 
-	handler := NewFwLoadHandler(efitest.NewLog(c, data.logOptions))
+	log := data.log
+	switch {
+	case log != nil:
+		c.Assert(data.logOptions, IsNil)
+	default:
+		log = efitest.NewLog(c, data.logOptions)
+	}
+
+	handler := NewFwLoadHandler(log)
 	c.Check(handler.MeasureImageStart(ctx), IsNil)
 	c.Check(ctx.events, DeepEquals, data.expectedEvents)
 	for _, event := range ctx.events {
@@ -508,6 +517,138 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileInclude
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
 			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
 			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileWithVendorEventBeforeConfig(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	var eventsCopy []*tcglog.Event
+	added := false
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
+		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR && !added {
+			eventsCopy = append(eventsCopy, &tcglog.Event{
+				PCRIndex:  internal_efi.SecureBootPolicyPCR,
+				EventType: 0x8041,
+				Digests: tcglog.DigestMap{
+					tpm2.HashAlgorithmSHA256: testutil.DecodeHexString(c, "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"),
+				},
+				Data: tcglog.OpaqueEventData{0},
+			})
+			added = true
+		}
+
+		eventsCopy = append(eventsCopy, ev)
+	}
+	log.Events = eventsCopy
+
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		log:  log,
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d")}, // vendor event
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileWithVendorEventWithConfig(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	var eventsCopy []*tcglog.Event
+	added := false
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
+		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR && ev.EventType == tcglog.EventTypeSeparator && !added {
+			eventsCopy = append(eventsCopy, &tcglog.Event{
+				PCRIndex:  internal_efi.SecureBootPolicyPCR,
+				EventType: 0x8041,
+				Digests: tcglog.DigestMap{
+					tpm2.HashAlgorithmSHA256: testutil.DecodeHexString(c, "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"),
+				},
+				Data: tcglog.OpaqueEventData{0},
+			})
+			added = true
+		}
+
+		eventsCopy = append(eventsCopy, ev)
+	}
+	log.Events = eventsCopy
+
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		log:  log,
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d")}, // vendor event
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileWithVendorEventWithVerification(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	var eventsCopy []*tcglog.Event
+	added := false
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
+		eventsCopy = append(eventsCopy, ev)
+
+		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR && ev.EventType == tcglog.EventTypeSeparator && !added {
+			eventsCopy = append(eventsCopy, &tcglog.Event{
+				PCRIndex:  internal_efi.SecureBootPolicyPCR,
+				EventType: 0x8041,
+				Digests: tcglog.DigestMap{
+					tpm2.HashAlgorithmSHA256: testutil.DecodeHexString(c, "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"),
+				},
+				Data: tcglog.OpaqueEventData{0},
+			})
+			added = true
+		}
+	}
+	log.Events = eventsCopy
+
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		log:  log,
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d")}, // vendor event
 		},
 	})
 }
