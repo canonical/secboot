@@ -20,6 +20,10 @@
 package efi
 
 import (
+	"errors"
+	"fmt"
+
+	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
 )
 
@@ -36,4 +40,27 @@ func IsVendorEventType(t tcglog.EventType) bool {
 	default:
 		return t > 0x7fff
 	}
+}
+
+// IsLaunchedFromFirmwareVolume indicates that the supplied event is associated
+// with an image launch from a firmware volume.
+func IsLaunchedFromFirmwareVolume(ev *tcglog.Event) (yes bool, err error) {
+	// The caller should check this.
+	switch ev.EventType {
+	case tcglog.EventTypeEFIBootServicesDriver, tcglog.EventTypeEFIRuntimeServicesDriver, tcglog.EventTypeEFIBootServicesApplication:
+		// ok
+	default:
+		return false, fmt.Errorf("unexpected event type %v", ev.EventType)
+	}
+
+	data, ok := ev.Data.(*tcglog.EFIImageLoadEvent)
+	if !ok {
+		return false, fmt.Errorf("event has invalid event data: %w", ev.Data.(error))
+	}
+
+	if len(data.DevicePath) == 0 {
+		return false, errors.New("empty device path")
+	}
+
+	return data.DevicePath[0].CompoundType() == efi.DevicePathNodeFwVolType, nil
 }

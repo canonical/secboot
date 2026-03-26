@@ -79,7 +79,6 @@ var (
 	DetectVirtualization                                  = detectVirtualization
 	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
 	InsertActionProceed                                   = insertActionProceed
-	IsLaunchedFromFirmwareVolume                          = isLaunchedFromFirmwareVolume
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
 	IsPPIActionAvailable                                  = isPPIActionAvailable
 	IsTPMDiscrete                                         = isTPMDiscrete

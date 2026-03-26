@@ -294,6 +294,69 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodWithAbsoluteOSPresen
 	c.Check(err, IsNil)
 }
 
+func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodHPSystem(c *C) {
+	// Test good results with a log that comes from a HP system, which contains
+	// lots of additional EV_EFI_BOOT_SERVICES_APPLICATION events in PCR4.
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	// XXX: It would be good to have this sort of thing in internal/efitest
+	var eventsCopy []*tcglog.Event
+	for _, ev := range log.Events {
+		eventsCopy = append(eventsCopy, ev)
+
+		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR && ev.EventType == tcglog.EventTypeSeparator {
+			// Add HP events to PCR4
+			addEvent := func(guid efi.GUID) {
+				eventsCopy = append(eventsCopy, &tcglog.Event{
+					PCRIndex:  internal_efi.BootManagerCodePCR,
+					EventType: tcglog.EventTypeEFIBootServicesApplication,
+					Digests: tcglog.DigestMap{
+						tpm2.HashAlgorithmSHA256: make(tpm2.Digest, 32),
+					},
+					Data: &tcglog.EFIImageLoadEvent{
+						DevicePath: efi.DevicePath{
+							efi.MediaFvDevicePathNode(efi.MakeGUID(0xcdbb7b35, 0x6833, 0x4ed6, 0x9ab2, [...]uint8{0x57, 0xd2, 0xac, 0xdd, 0xf6, 0xf0})),
+							efi.MediaFvFileDevicePathNode(guid),
+						},
+					},
+				})
+			}
+
+			addEvent(efi.MakeGUID(0xb1dac9bd, 0x132e, 0x4f9f, 0xb2ca, [...]byte{0x14, 0xfd, 0xc6, 0x5b, 0xd6, 0x61}))
+			addEvent(efi.MakeGUID(0x9d8243e8, 0x8381, 0x453d, 0xaceb, [...]byte{0xc3, 0x50, 0xee, 0x77, 0x57, 0xca})) // StartupMenuApp
+			addEvent(efi.MakeGUID(0x96d0626b, 0x71d5, 0x4001, 0xac71, [...]byte{0xe0, 0x5B, 0x10, 0x3b, 0xd4, 0x5d})) // F10App
+			addEvent(efi.MakeGUID(0xeb6b71c3, 0x0659, 0x4a8a, 0x8ae1, [...]byte{0xda, 0xd2, 0xf5, 0x19, 0x2c, 0x62})) // BootMenuApp
+			addEvent(efi.MakeGUID(0xaf8898c9, 0x9b92, 0x4556, 0x8318, [...]byte{0xe4, 0x25, 0xc9, 0xde, 0x0a, 0x65})) // F2App
+			addEvent(efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d})) // AbsoluteAbtInstaller
+			addEvent(efi.MakeGUID(0xc988bded, 0x6977, 0x464d, 0xb714, [...]byte{0xe6, 0x1d, 0xeb, 0xd2, 0xde, 0x97}))
+			addEvent(efi.MakeGUID(0x4ea97c46, 0x7491, 0x4dfd, 0xb542, [...]byte{0x74, 0x70, 0x10, 0xf3, 0xce, 0x7f})) // HPNetworkTransferWorker
+			addEvent(efi.MakeGUID(0x8224846e, 0x6d50, 0x453d, 0xb7c2, [...]byte{0x3e, 0x7e, 0xd7, 0xd0, 0x0d, 0x52}))
+			addEvent(efi.MakeGUID(0xf02313f7, 0x581f, 0x4f31, 0xb09c, [...]byte{0xc1, 0xba, 0x2f, 0xc5, 0x87, 0x13})) // HPDriveWipe
+
+			// HP systems seem to measure this twice
+			addEvent(efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d})) // AbsoluteAbtInstaller
+		}
+	}
+	log.Events = eventsCopy
+
+	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
+				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+			}),
+			efitest.WithLog(log),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		images: []secboot_efi.Image{
+			&mockImage{contents: []byte("mock shim executable"), digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7")},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		expectedResult: &BootManagerCodeResult{HasAbsolute: true},
+	})
+	c.Check(err, IsNil)
+}
+
 func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsGoodWithoutCallingEFIApplicationEvent(c *C) {
 	// Test good result with log without EV_EFI_ACTION "Calling EFI Application from Boot Option" event
 	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
@@ -669,64 +732,6 @@ func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadUnexpectedFirstOSPres
 		},
 	})
 	c.Check(err, ErrorMatches, `unexpected OS-present log event type EV_IPL \(expected EV_EFI_BOOT_SERVICES_APPLICATION\)`)
-}
-
-func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadWithMultipleAbsoluteLaunches1(c *C) {
-	// Test error where there is an Absolute launch in both the pre-OS and OS-present phases.
-	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-			}),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
-				Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-				IncludePreOSFirmwareAppLaunch:     efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
-				IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
-			})),
-		),
-		pcrAlg: tpm2.HashAlgorithmSHA256,
-		images: []secboot_efi.Image{
-			&mockImage{contents: []byte("mock shim executable"), digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7")},
-		},
-	})
-	c.Check(err, ErrorMatches, `encountered more than one EV_EFI_BOOT_SERVICES_APPLICATION event associated with Absolute`)
-}
-
-func (s *pcr4Suite) TestCheckBootManagerCodeMeasurementsBadWithMultipleAbsoluteLaunches2(c *C) {
-	// Test error where there are 2 Absolute launches in the pre-OS phase.
-	log := efitest.NewLog(c, &efitest.LogOptions{
-		Algorithms:                    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		IncludePreOSFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
-	})
-
-	var (
-		copiedAbsolute bool
-		eventsCopy     []*tcglog.Event
-	)
-	for _, ev := range log.Events {
-		eventsCopy = append(eventsCopy, ev)
-		if ev.EventType == tcglog.EventTypeEFIBootServicesApplication && !copiedAbsolute {
-			eventsCopy = append(eventsCopy, ev)
-			copiedAbsolute = true
-		}
-	}
-	log.Events = eventsCopy
-
-	err := s.testCheckBootManagerCodeMeasurements(c, &testCheckBootManagerCodeMeasurementsParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-			}),
-			efitest.WithLog(log),
-		),
-		pcrAlg: tpm2.HashAlgorithmSHA256,
-		images: []secboot_efi.Image{
-			&mockImage{contents: []byte("mock shim executable"), digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7")},
-		},
-	})
-	c.Check(err, ErrorMatches, `encountered more than one EV_EFI_BOOT_SERVICES_APPLICATION event associated with Absolute`)
 }
 
 // TODO (other error cases - some harder, some may require more customizable log generator in internal/efitest/log.go):

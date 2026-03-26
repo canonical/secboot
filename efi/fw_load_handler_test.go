@@ -770,6 +770,73 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartBootManagerCodeProfileIgnoreUn
 	})
 }
 
+func (s *fwLoadHandlerSuite) TestMeasureImageStartBootManagerCodeProfileHP(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	// XXX: It would be good to have this sort of thing in internal/efitest
+	var eventsCopy []*tcglog.Event
+	for _, ev := range log.Events {
+		eventsCopy = append(eventsCopy, ev)
+
+		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR && ev.EventType == tcglog.EventTypeSeparator {
+			// Add HP events to PCR4
+			addEvent := func(guid efi.GUID, digest tpm2.Digest) {
+				eventsCopy = append(eventsCopy, &tcglog.Event{
+					PCRIndex:  internal_efi.BootManagerCodePCR,
+					EventType: tcglog.EventTypeEFIBootServicesApplication,
+					Digests: tcglog.DigestMap{
+						tpm2.HashAlgorithmSHA256: digest,
+					},
+					Data: &tcglog.EFIImageLoadEvent{
+						DevicePath: efi.DevicePath{
+							efi.MediaFvDevicePathNode(efi.MakeGUID(0xcdbb7b35, 0x6833, 0x4ed6, 0x9ab2, [...]uint8{0x57, 0xd2, 0xac, 0xdd, 0xf6, 0xf0})),
+							efi.MediaFvFileDevicePathNode(guid),
+						},
+					},
+				})
+			}
+
+			addEvent(efi.MakeGUID(0xb1dac9bd, 0x132e, 0x4f9f, 0xb2ca, [...]byte{0x14, 0xfd, 0xc6, 0x5b, 0xd6, 0x61}), testutil.DecodeHexString(c, "f407e3fd9a46e946d91522880ab771bce2fe08d1410bd1f10dab99ab2ec3d6c5"))
+			addEvent(efi.MakeGUID(0x9d8243e8, 0x8381, 0x453d, 0xaceb, [...]byte{0xc3, 0x50, 0xee, 0x77, 0x57, 0xca}), testutil.DecodeHexString(c, "3cfb0e1a22e6e1a203d3382e00db516107cbf948708befe8b1e7c79e5fb0455c")) // StartupMenuApp
+			addEvent(efi.MakeGUID(0x96d0626b, 0x71d5, 0x4001, 0xac71, [...]byte{0xe0, 0x5B, 0x10, 0x3b, 0xd4, 0x5d}), testutil.DecodeHexString(c, "ae1d24af29d3a27d49da12ad98b64e6072ad3e1786186dfe5e23b1001671b858")) // F10App
+			addEvent(efi.MakeGUID(0xeb6b71c3, 0x0659, 0x4a8a, 0x8ae1, [...]byte{0xda, 0xd2, 0xf5, 0x19, 0x2c, 0x62}), testutil.DecodeHexString(c, "ccf5d88d928171a2af8d0fec99fe142aa75684a49dda5c5db2feae19085a7a6b")) // BootMenuApp
+			addEvent(efi.MakeGUID(0xaf8898c9, 0x9b92, 0x4556, 0x8318, [...]byte{0xe4, 0x25, 0xc9, 0xde, 0x0a, 0x65}), testutil.DecodeHexString(c, "43099125543e0647d3918e5e06239e940157c42a881eed8d854f230beb96951b")) // F2App
+			addEvent(efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}), testutil.DecodeHexString(c, "6a8138a15c60aca1bfe06914987e3e2ea9a243b2e055e5c903482cea5b3893bc")) // AbsoluteAbtInstaller
+			addEvent(efi.MakeGUID(0xc988bded, 0x6977, 0x464d, 0xb714, [...]byte{0xe6, 0x1d, 0xeb, 0xd2, 0xde, 0x97}), testutil.DecodeHexString(c, "953e26aeecfea145f82a2be73674af76e54850387e5bdcb9e540ef01e51b145e"))
+			addEvent(efi.MakeGUID(0x4ea97c46, 0x7491, 0x4dfd, 0xb542, [...]byte{0x74, 0x70, 0x10, 0xf3, 0xce, 0x7f}), testutil.DecodeHexString(c, "63040d9100b9fdfd849c06d13bbfddc5eb08131a6c18f0e0aef7a46ccfb92630")) // HPNetworkTransferWorker
+			addEvent(efi.MakeGUID(0x8224846e, 0x6d50, 0x453d, 0xb7c2, [...]byte{0x3e, 0x7e, 0xd7, 0xd0, 0x0d, 0x52}), testutil.DecodeHexString(c, "445a4fe85fa4b48f4eb7a86e92b89a2f4ceb1c9a1a849c3b808226ac45039a17"))
+			addEvent(efi.MakeGUID(0xf02313f7, 0x581f, 0x4f31, 0xb09c, [...]byte{0xc1, 0xba, 0x2f, 0xc5, 0x87, 0x13}), testutil.DecodeHexString(c, "dd42008bac6b5c4c07919921ec21f39176811b597b3a7553badfa30c4e3dfe8a")) // HPDriveWipe
+
+			// HP systems seem to measure this twice
+			addEvent(efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}), testutil.DecodeHexString(c, "6a8138a15c60aca1bfe06914987e3e2ea9a243b2e055e5c903482cea5b3893bc")) // AbsoluteAbtInstaller
+		}
+	}
+	log.Events = eventsCopy
+
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		log:  log,
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.BootManagerCodePCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 4, eventType: mockPcrBranchResetEvent},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "f407e3fd9a46e946d91522880ab771bce2fe08d1410bd1f10dab99ab2ec3d6c5")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "3cfb0e1a22e6e1a203d3382e00db516107cbf948708befe8b1e7c79e5fb0455c")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "ae1d24af29d3a27d49da12ad98b64e6072ad3e1786186dfe5e23b1001671b858")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "ccf5d88d928171a2af8d0fec99fe142aa75684a49dda5c5db2feae19085a7a6b")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "43099125543e0647d3918e5e06239e940157c42a881eed8d854f230beb96951b")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "6a8138a15c60aca1bfe06914987e3e2ea9a243b2e055e5c903482cea5b3893bc")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "953e26aeecfea145f82a2be73674af76e54850387e5bdcb9e540ef01e51b145e")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "63040d9100b9fdfd849c06d13bbfddc5eb08131a6c18f0e0aef7a46ccfb92630")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "445a4fe85fa4b48f4eb7a86e92b89a2f4ceb1c9a1a849c3b808226ac45039a17")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "dd42008bac6b5c4c07919921ec21f39176811b597b3a7553badfa30c4e3dfe8a")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "6a8138a15c60aca1bfe06914987e3e2ea9a243b2e055e5c903482cea5b3893bc")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "3d6772b4f84ed47595d72a2c4c5ffd15f5bb72c7507fe26f2aaee2c69d5633ba")},
+			{pcr: 4, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+		},
+	})
+}
+
 func (s *fwLoadHandlerSuite) TestMeasureImageStartBootManagerCodeProfileIncludeAbsoluteAbtInstallerPreOS(c *C) {
 	// Verify the events associated with the "AbsoluteAbtInstaller" application contained in the firmware
 	// that loads as part of pre-OS.
