@@ -28,6 +28,8 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
+	"unicode"
 
 	"golang.org/x/sys/unix"
 	"golang.org/x/xerrors"
@@ -95,10 +97,11 @@ func ParseRecoveryKey(s string) (out RecoveryKey, err error) {
 
 		// Move to the next 5 digits
 		s = s[5:]
-		// Permit each set of 5 digits to be separated by an optional '-', but don't allow the formatted key to end or begin with one.
-		if len(s) > 1 && s[0] == '-' {
-			s = s[1:]
-		}
+
+		// Permit each set of 5 digits to be separated by an arbitrary number of spaces or '-' characters.
+		s = strings.TrimLeftFunc(s, func(c rune) bool {
+			return unicode.IsSpace(c) || c == '-'
+		})
 	}
 
 	if len(s) > 0 {
