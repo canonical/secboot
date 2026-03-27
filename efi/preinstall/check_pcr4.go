@@ -207,17 +207,22 @@ NextEvent:
 					return nil, fmt.Errorf("encountered pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v before secure boot configuration has been measured", data.DevicePath)
 				}
 
-				switch isAbsolute, err := internal_efi.IsAbsoluteAgentLaunch(ev); {
+				switch isFwVol, err := internal_efi.IsLaunchedFromFirmwareVolume(ev); {
 				case err != nil:
-					return nil, fmt.Errorf("cannot determine if pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with Absolute: %w", data.DevicePath, err)
-				case isAbsolute && result.HasAbsolute:
-					return nil, errors.New("encountered more than one EV_EFI_BOOT_SERVICES_APPLICATION event associated with Absolute")
-				case isAbsolute:
-					result.HasAbsolute = true
+					return nil, fmt.Errorf("cannot determine if pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v is launched from firmware volume: %w", data.DevicePath, err)
+				case isFwVol:
+					// Consider anything loaded from SPI flash to not be a sysprep application. Check if it is Absolute.
+					switch isAbsolute, err := internal_efi.IsAbsoluteAgentLaunch(ev); {
+					case err != nil:
+						return nil, fmt.Errorf("cannot determine if pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with Absolute: %w", data.DevicePath, err)
+					case isAbsolute:
+						result.HasAbsolute = true
+					}
 				case len(sysprepOpts) == 0:
-					// We are not expecting any sysprep applications.
+					// Not a launch from SPI flash and we are not expecting any sysprep applications.
 					return nil, fmt.Errorf("encountered pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v when no sysprep applications are expected", data.DevicePath)
 				default:
+					// This is a sysprep application.
 					for {
 						if len(sysprepOpts) == 0 {
 							return nil, fmt.Errorf("encountered unexpected pre-OS EV_EFI_BOOT_SERVICES_APPLICATION event for %v", data.DevicePath)
@@ -294,8 +299,6 @@ NextEvent:
 						return nil, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with Absolute: %w", data.DevicePath, err)
 					case !isAbsolute:
 						return nil, fmt.Errorf("OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is not associated with the current boot load option and is not Absolute", data.DevicePath)
-					case result.HasAbsolute:
-						return nil, errors.New("encountered more than one EV_EFI_BOOT_SERVICES_APPLICATION event associated with Absolute")
 					default:
 						result.HasAbsolute = true
 					}
