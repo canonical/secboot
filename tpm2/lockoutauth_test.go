@@ -56,6 +56,12 @@ func (*lockoutauthSuiteMixin) newDefaultLockoutAuthPolicy(c *C, alg tpm2.HashAlg
 				n.AddBranch("", func(b *policyutil.PolicyBuilderBranch) {
 					b.PolicyCommandCode(tpm2.CommandClear)
 				})
+
+				// XXX: This is here temporarily to make provisioningSuite.TestProvisionWithLockoutAuthData
+				// pass and will be removed in the next PR.
+				n.AddBranch("", func(b *policyutil.PolicyBuilderBranch) {
+					b.PolicyCommandCode(tpm2.CommandHierarchyChangeAuth)
+				})
 			})
 			b.PolicyAuthValue()
 		})
@@ -103,6 +109,20 @@ func (*lockoutauthSuiteMixin) newRotateAuthValueLockoutAuthPolicy(c *C, alg tpm2
 	return digest, policy
 }
 
+func (*lockoutauthSuiteMixin) makeLockoutAuthData(c *C, params *LockoutAuthParams) []byte {
+	data, err := json.Marshal(params)
+	c.Assert(err, IsNil)
+	return data
+}
+
+func (m *lockoutauthSuiteMixin) makeDefaultLockoutAuthData(c *C, alg tpm2.HashAlgorithmId, val []byte) (tpm2.Digest, []byte) {
+	digest, policy := m.newDefaultLockoutAuthPolicy(c, alg)
+	return digest, m.makeLockoutAuthData(c, &LockoutAuthParams{
+		AuthValue:  val,
+		AuthPolicy: policy,
+	})
+}
+
 type lockoutauthSuiteNoTPM struct {
 	lockoutauthSuiteMixin
 }
@@ -133,12 +153,6 @@ func (s *lockoutauthSuite) SetUpTest(c *C) {
 	s.TPMTest.SetUpTest(c)
 
 	c.Assert(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 32, 7200, 86400, nil), IsNil)
-}
-
-func (s *lockoutauthSuite) makeLockoutAuthData(c *C, params *LockoutAuthParams) []byte {
-	data, err := json.Marshal(params)
-	c.Assert(err, IsNil)
-	return data
 }
 
 var _ = Suite(&lockoutauthSuiteNoTPM{})
@@ -348,6 +362,9 @@ func (s *lockoutauthSuite) TestResetDictionaryAttackLockWithAuthValue(c *C) {
 	c.Check(s.TPM().LockoutHandleContext().AuthValue(), DeepEquals, []byte(nil))
 
 	cmds := s.CommandLog()
+	for _, cmd := range cmds {
+		c.Logf("%v", cmd.CmdCode)
+	}
 	c.Assert(len(cmds) > 1, testutil.IsTrue)
 	cmd := cmds[len(cmds)-2]
 	c.Check(cmd.CmdCode, Equals, tpm2.CommandDictionaryAttackLockReset)

@@ -53,8 +53,7 @@ func (s *updateLegacySuite) SetUpTest(c *C) {
 	s.TPMTest.SetUpTest(c)
 
 	s.primaryKeyMixin.tpmTest = &s.TPMTest.TPMTest
-	c.Assert(s.TPM().EnsureProvisioned(ProvisionWithoutLockout()),
-		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+	c.Assert(s.TPM().EnsureProvisioned(), testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 }
 
 var _ = Suite(&updateLegacySuite{})
