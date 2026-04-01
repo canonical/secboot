@@ -186,6 +186,14 @@ func MockOpenPeImage(fn func(Image) (peImageHandle, error)) (restore func()) {
 	}
 }
 
+func MockCheckImageSignatureIsValidForHost(fn func(context.Context, Image) error) (restore func()) {
+	orig := mockedCheckImageSignatureIsValidForHost
+	mockedCheckImageSignatureIsValidForHost = fn
+	return func() {
+		mockedCheckImageSignatureIsValidForHost = orig
+	}
+}
+
 func MockSnapdenvTesting(testing bool) (restore func()) {
 	orig := snapdenvTesting
 	snapdenvTesting = func() bool { return testing }
