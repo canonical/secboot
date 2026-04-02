@@ -50,7 +50,7 @@ func (s *sealedObjectKeySealerSuite) SetUpSuite(c *C) {
 func (s *sealedObjectKeySealerSuite) SetUpTest(c *C) {
 	s.TPMTest.SetUpTest(c)
 
-	c.Assert(s.TPM().EnsureProvisioned(ProvisionWithoutLockout()),
+	c.Assert(s.TPM().EnsureProvisioned(),
 		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 }
 

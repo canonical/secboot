@@ -139,8 +139,7 @@ func (s *tpmSuiteSimulator) TestConnectToDefaultTPMUnprovisioned(c *C) {
 }
 
 func (s *tpmSuite) TestConnectToDefaultTPMProvisioned(c *C) {
-	c.Check(s.TPM().EnsureProvisioned(ProvisionWithoutLockout()),
-		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+	c.Check(s.TPM().EnsureProvisioned(), Equals, ErrTPMProvisioningRequiresLockout)
 	s.AddCleanup(s.CloseMockConnection(c))
 	s.testConnectToDefaultTPM(c, true)
 }
