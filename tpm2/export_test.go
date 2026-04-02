@@ -51,12 +51,15 @@ var (
 	MakeSealedKeyData                       = makeSealedKeyData
 	MakeKeyDataNoAuth                       = makeKeyDataNoAuth
 	MakeKeyDataWithPassphraseConstructor    = makeKeyDataWithPassphraseConstructor
+	NewDefaultLockoutAuthPolicy             = newDefaultLockoutAuthPolicy
 	NewKeyData                              = newKeyData
 	NewKeyDataPolicy                        = newKeyDataPolicy
 	NewKeyDataPolicyLegacy                  = newKeyDataPolicyLegacy
 	NewPolicyAuthPublicKey                  = newPolicyAuthPublicKey
 	NewPolicyOrDataV0                       = newPolicyOrDataV0
 	NewPolicyOrTree                         = newPolicyOrTree
+	NewUpdateLockoutAuthValueKey            = newUpdateLockoutAuthValueKey
+	NewUpdateAuthValueLockoutAuthPolicy     = newUpdateAuthValueLockoutAuthPolicy
 	ReadKeyDataV0                           = readKeyDataV0
 	ReadKeyDataV1                           = readKeyDataV1
 	ReadKeyDataV2                           = readKeyDataV2

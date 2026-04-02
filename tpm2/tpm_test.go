@@ -20,7 +20,10 @@
 package tpm2_test
 
 import (
+	"bytes"
+	"crypto/rand"
 	"crypto/x509"
+	"io"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/objectutil"
@@ -104,9 +107,10 @@ func (s *tpmSuitePlatform) TestConnectionLockoutAuthSet(c *C) {
 	c.Check(s.TPM().LockoutAuthSet(), testutil.IsFalse)
 
 	// FullProvising of the TPM puts it in DA lockout mode
-	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthValue(nil), WithProvisionNewLockoutAuthValue([]byte("1234"))), IsNil)
+	lockoutAuth := bytes.NewBuffer(nil)
+	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthValue(nil), WithProvisionNewLockoutAuthValue(io.TeeReader(rand.Reader, lockoutAuth), func(_ []byte) error { return nil })), IsNil)
 	s.AddCleanup(func() {
-		s.TPM().LockoutHandleContext().SetAuthValue([]byte("1234"))
+		s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuth.Bytes())
 		c.Check(s.TPM().HierarchyChangeAuth(s.TPM().LockoutHandleContext(), nil, nil), IsNil)
 	})
 	c.Check(s.TPM().LockoutAuthSet(), testutil.IsTrue)

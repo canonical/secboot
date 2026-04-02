@@ -39,3 +39,9 @@ func ParsePKCS1PrivateKey(c *C, data []byte) *rsa.PrivateKey {
 	c.Assert(err, IsNil)
 	return key
 }
+
+func ParsePKCS8PrivateKey(c *C, data []byte) any {
+	key, err := x509.ParsePKCS8PrivateKey(data)
+	c.Assert(err, IsNil)
+	return key
+}
