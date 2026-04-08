@@ -45,6 +45,7 @@ var (
 	CheckHostSecurityIntelBootGuard          = checkHostSecurityIntelBootGuard
 	CheckHostSecurityIntelBootGuardCSME11    = checkHostSecurityIntelBootGuardCSME11
 	CheckHostSecurityIntelBootGuardCSME18    = checkHostSecurityIntelBootGuardCSME18
+	CheckHostSecurityIntelBootGuardMSR       = checkHostSecurityIntelBootGuardMSR
 	CheckHostSecurityIntelCPUDebuggingLocked = checkHostSecurityIntelCPUDebuggingLocked
 	DetermineCPUVendor                       = determineCPUVendor
 	IsTPMDiscreteFromIntelBootGuard          = isTPMDiscreteFromIntelBootGuard

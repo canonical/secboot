@@ -28,30 +28,8 @@ import (
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-const bootGuardStatusMsr = 0x13a
-
-type bootGuardStatus uint64
-
-const (
-	bootGuardStatusTPMShift                 = 1
-	bootGuardStatusTPMMask  bootGuardStatus = (3 << bootGuardStatusTPMShift)
-)
-
-type bootGuardTPMStatus uint64
-
-const (
-	bootGuardTPMStatusNone bootGuardTPMStatus = 0
-	bootGuardTPMStatus12   bootGuardTPMStatus = 1
-	bootGuardTPMStatus2    bootGuardTPMStatus = 2
-	bootGuardTPMStatusPTT  bootGuardTPMStatus = 3
-)
-
-func (s bootGuardStatus) tpmStatus() bootGuardTPMStatus {
-	return bootGuardTPMStatus(s&bootGuardStatusTPMMask) >> bootGuardStatusTPMShift
-}
-
 func isTPMDiscreteFromIntelBootGuard(env internal_efi.HostEnvironmentAMD64) (bool, error) {
-	msrValue, err := env.ReadMSRs(bootGuardStatusMsr)
+	status, err := readIntelBootGuardStatus(env)
 	switch {
 	case errors.Is(err, internal_efi.ErrNoKernelMSRSupport):
 		return false, MissingKernelModuleError("msr")
@@ -59,9 +37,6 @@ func isTPMDiscreteFromIntelBootGuard(env internal_efi.HostEnvironmentAMD64) (boo
 		return false, fmt.Errorf("cannot read BootGuard status MSR: %w", err)
 	}
 
-	status := bootGuardStatus(msrValue[0])
-
-	// NOTE: bootGuardStatus[0] is fine because BootGuard status MSR has the same value across all CPUs
 	switch status.tpmStatus() {
 	case bootGuardTPMStatusNone, bootGuardTPMStatus12:
 		// System has no TPM or unsupported TPM 1.2 device
