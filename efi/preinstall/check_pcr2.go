@@ -30,29 +30,6 @@ import (
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-// isLaunchedFromFirmwareVolume indicates that the supplied event is associated
-// with an image launch from a firmware volume.
-func isLaunchedFromFirmwareVolume(ev *tcglog.Event) (yes bool, err error) {
-	// The caller should check this.
-	switch ev.EventType {
-	case tcglog.EventTypeEFIBootServicesDriver, tcglog.EventTypeEFIRuntimeServicesDriver, tcglog.EventTypeEFIBootServicesApplication:
-		// ok
-	default:
-		return false, fmt.Errorf("unexpected event type %v", ev.EventType)
-	}
-
-	data, ok := ev.Data.(*tcglog.EFIImageLoadEvent)
-	if !ok {
-		return false, fmt.Errorf("event has invalid event data: %w", ev.Data.(error))
-	}
-
-	if len(data.DevicePath) == 0 {
-		return false, errors.New("empty device path")
-	}
-
-	return data.DevicePath[0].CompoundType() == efi.DevicePathNodeFwVolType, nil
-}
-
 // checkDriversAndAppsMeasurements performs minimal checks on PCR 2, which is where
 // addon code from value-added-retailer components such as option ROMs and UEFI
 // drivers are measured.
@@ -119,7 +96,7 @@ func checkDriversAndAppsMeasurements(ctx context.Context, env internal_efi.HostE
 			// volumes (as early firmware code verifies firmware volumes separately) and to require image
 			// verification for everything else. Drivers loaded from firmware volumes are not really addon
 			// drivers in any case.
-			switch yes, err := isLaunchedFromFirmwareVolume(ev); {
+			switch yes, err := internal_efi.IsLaunchedFromFirmwareVolume(ev); {
 			case err != nil:
 				return nil, fmt.Errorf("cannot determine if %v event for %v was loaded from an option ROM: %w", ev.EventType, data.DevicePath, err)
 			case yes:
