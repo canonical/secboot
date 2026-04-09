@@ -88,6 +88,7 @@ func isInManufacturingModeCSME18(regs hfstsRegistersCsme18) bool {
 	return false
 }
 
+// checkHostSecurityIntelBootGuardCSME18 checks the BootGuard configuration CSME versions 18 onwards.
 func checkHostSecurityIntelBootGuardCSME18(regs hfstsRegistersCsme18) error {
 	// These checks are based on the HSI checks performed in the pci-mei
 	// plugin in fwupd.

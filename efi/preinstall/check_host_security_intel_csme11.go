@@ -123,6 +123,7 @@ func isInManufacturingModeCSME11(vers meVersion, regs hfstsRegistersCsme11) bool
 	return false
 }
 
+// checkHostSecurityIntelBootGuardCSME11 checks the BootGuard configuration CSME versions 11 to 17.
 func checkHostSecurityIntelBootGuardCSME11(vers meVersion, regs hfstsRegistersCsme11) error {
 	// These checks are based on the HSI checks performed in the pci-mei
 	// plugin in fwupd.
