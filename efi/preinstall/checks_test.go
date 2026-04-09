@@ -4247,7 +4247,7 @@ C7E003CB
 	c.Check(errors.Is(errs[0], ErrPreOSSecureBootAuthByEnrolledDigests), testutil.IsTrue)
 }
 
-func (s *runChecksSuite) TestRunChecksBadEFIVariableAccessErrorBootOptionSupport(c *C) {
+func (s *runChecksSuite) TestRunChecksBadEFIVariableAccessError(c *C) {
 	meiAttrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -4279,9 +4279,7 @@ C7E003CB
 			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0xc80: 0x40000000, 0x13a: (3 << 1)}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Err: efi.ErrVarDeviceError},
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Err: efi.ErrVarDeviceError},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -4307,7 +4305,7 @@ C7E003CB
 		},
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
-	c.Check(err, ErrorMatches, `cannot access EFI variable: cannot obtain boot option support: variable access failed because of a hardware error`)
+	c.Check(err, ErrorMatches, `cannot access EFI variable: cannot compute secure boot mode: cannot read AuditMode variable: variable access failed because of a hardware error`)
 
 	var e *EFIVariableAccessError
 	c.Assert(errors.As(err, &e), testutil.IsTrue)
