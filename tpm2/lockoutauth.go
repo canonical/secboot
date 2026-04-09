@@ -115,6 +115,12 @@ func (p *lockoutAuthParams) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// authorizeLockout authorizes the use of the lockout hierarchy using the supplied parameters for the
+// specified command code. On success, a session is returned that can be used to authorize the specified
+// command. The session is either a newly created policy session or the HMAC session returned from
+// Connection.HmacSession.
+//
+// After using the authorization, the caller must execute the returned callback.
 func (t *Connection) authorizeLockout(authParams *lockoutAuthParams, command tpm2.CommandCode) (session tpm2.SessionContext, lockoutAuthSet bool, done func(), err error) {
 	if len(authParams.NewAuthValue) > 0 || authParams.NewAuthPolicy != nil {
 		return nil, false, nil, errors.New("lockout hierarchy auth value change not supported yet")
