@@ -106,6 +106,7 @@ func (s *tpmSuitePlatform) TestConnectionLockoutAuthSet(c *C) {
 	// FullProvising of the TPM puts it in DA lockout mode
 	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthValue(nil), WithProvisionNewLockoutAuthValue([]byte("1234"))), IsNil)
 	s.AddCleanup(func() {
+		s.TPM().LockoutHandleContext().SetAuthValue([]byte("1234"))
 		c.Check(s.TPM().HierarchyChangeAuth(s.TPM().LockoutHandleContext(), nil, nil), IsNil)
 	})
 	c.Check(s.TPM().LockoutAuthSet(), testutil.IsTrue)
