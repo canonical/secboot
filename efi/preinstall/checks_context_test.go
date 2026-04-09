@@ -3843,21 +3843,18 @@ C7E003CB
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(_ int) {
-			// Set an authorization value for the endorsement hierarchy and
-			// an authorization policy for the storage hierarchy.
+			// Set an authorization value for the endorsement hierarchy
 			s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
-			c.Check(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
 		},
 		actions: []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: one or more of the TPM hierarchies is already owned:
 - TPM_RH_ENDORSEMENT has an authorization value
-- TPM_RH_OWNER has an authorization policy
 `)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
-		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
+		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}},
 		[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
@@ -3925,11 +3922,9 @@ C7E003CB
 		prepare: func(i int) {
 			switch i {
 			case 0:
-				// Set an authorization value for the endorsement hierarchy and
-				// an authorization policy for the storage hierarchy on the
+				// Set an authorization value for the endorsement hierarchy on the
 				// first iteration.
 				s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
-				c.Check(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
 			}
 		},
 		actions: []actionAndArgs{
@@ -3942,7 +3937,7 @@ C7E003CB
 				c.Assert(errs, HasLen, 1)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
-					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
+					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}},
 					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
@@ -4018,11 +4013,8 @@ C7E003CB
 		prepare: func(i int) {
 			switch i {
 			case 0:
-				// Set an authorization value for the endorsement hierarchy and
-				// an authorization policy for the storage hierarchy on the
-				// first iteration.
+				// Set an authorization value for the endorsement hierarchy on the first iteration.
 				s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
-				c.Check(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
 			}
 		},
 		actions: []actionAndArgs{
@@ -4035,7 +4027,7 @@ C7E003CB
 				c.Assert(errs, HasLen, 1)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
-					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
+					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}},
 					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
@@ -6680,21 +6672,18 @@ C7E003CB
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(_ int) {
-			// Set an authorization value for the endorsement hierarchy and
-			// an authorization policy for the storage hierarchy.
+			// Set an authorization value for the endorsement hierarchy
 			s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
-			c.Check(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
 		},
 		actions: []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: one or more of the TPM hierarchies is already owned:
 - TPM_RH_ENDORSEMENT has an authorization value
-- TPM_RH_OWNER has an authorization policy
 `)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
-		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
+		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}},
 		[]Action{ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
