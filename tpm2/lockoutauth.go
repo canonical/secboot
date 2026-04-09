@@ -115,46 +115,78 @@ func (p *lockoutAuthParams) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (t *Connection) resetDictionaryAttackLockImpl(params *lockoutAuthParams) error {
-	if len(params.NewAuthValue) > 0 || params.NewAuthPolicy != nil {
-		return errors.New("lockout hierarchy auth value change not supported yet")
+// authorizeLockout authorizes the use of the lockout hierarchy using the supplied parameters for the
+// specified command code. On success, a session is returned that can be used to authorize the specified
+// command. The session is either a newly created policy session or the HMAC session returned from
+// Connection.HmacSession.
+//
+// After using the authorization, the caller must execute the returned callback.
+func (t *Connection) authorizeLockout(authParams *lockoutAuthParams, command tpm2.CommandCode) (session tpm2.SessionContext, lockoutAuthSet bool, done func(), err error) {
+	if len(authParams.NewAuthValue) > 0 || authParams.NewAuthPolicy != nil {
+		return nil, false, nil, errors.New("lockout hierarchy auth value change not supported yet")
 	}
 
 	var authValue []byte
 
 	val, err := t.GetCapabilityTPMProperty(tpm2.PropertyPermanent)
 	if err != nil {
-		return fmt.Errorf("cannot obtain value of TPM_PT_PERMANENT: %w", err)
+		return nil, false, nil, fmt.Errorf("cannot obtain value of TPM_PT_PERMANENT: %w", err)
 	}
-	lockoutAuthSet := tpm2.PermanentAttributes(val)&tpm2.AttrLockoutAuthSet > 0
+	lockoutAuthSet = tpm2.PermanentAttributes(val)&tpm2.AttrLockoutAuthSet > 0
 	if lockoutAuthSet {
-		authValue = params.AuthValue
+		authValue = authParams.AuthValue
 	}
 
-	var session tpm2.SessionContext
 	switch {
-	case params.AuthPolicy == nil:
+	case authParams.AuthPolicy == nil:
 		session = t.HmacSession()
 	default:
 		session, err = t.StartAuthSession(nil, nil, tpm2.SessionTypePolicy, nil, defaultSessionHashAlgorithm)
 		if err != nil {
-			return fmt.Errorf("cannot start policy session: %w", err)
+			return nil, false, nil, fmt.Errorf("cannot start policy session: %w", err)
 		}
-		defer t.FlushContext(session)
+		sessionInternal := session
+		defer func() {
+			if err == nil {
+				return
+			}
+			t.FlushContext(sessionInternal)
+		}()
 
 		// Execute policy session, constraining the use to the TPM2_DictionaryAttackLockReset command so
 		// that the correct branch executes.
-		_, err := params.AuthPolicy.Execute(
+		_, err := authParams.AuthPolicy.Execute(
 			policyutil.NewPolicyExecuteSession(t.TPMContext, session),
-			policyutil.WithSessionUsageCommandConstraint(tpm2.CommandDictionaryAttackLockReset, []policyutil.NamedHandle{t.LockoutHandleContext()}),
+			policyutil.WithSessionUsageCommandCodeConstraint(command),
 		)
 		if err != nil {
-			return ErrInvalidLockoutAuthPolicy
+			return nil, false, nil, ErrInvalidLockoutAuthPolicy
 		}
 	}
 
+	origAuthValue := t.LockoutHandleContext().AuthValue()
 	t.LockoutHandleContext().SetAuthValue(authValue)
-	defer t.LockoutHandleContext().SetAuthValue(nil)
+	defer func() {
+		if err == nil {
+			return
+		}
+		t.LockoutHandleContext().SetAuthValue(origAuthValue)
+	}()
+
+	return session, lockoutAuthSet, func() {
+		if authParams.AuthPolicy != nil {
+			t.FlushContext(session)
+		}
+		t.LockoutHandleContext().SetAuthValue(origAuthValue)
+	}, nil
+}
+
+func (t *Connection) resetDictionaryAttackLockImpl(params *lockoutAuthParams) error {
+	session, lockoutAuthSet, done, err := t.authorizeLockout(params, tpm2.CommandDictionaryAttackLockReset)
+	if err != nil {
+		return err
+	}
+	defer done()
 
 	switch err := t.DictionaryAttackLockReset(t.LockoutHandleContext(), session); {
 	case isAuthFailError(err, tpm2.CommandDictionaryAttackLockReset, 1):

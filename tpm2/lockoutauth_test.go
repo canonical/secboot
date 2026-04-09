@@ -56,6 +56,12 @@ func (*lockoutauthSuiteMixin) newDefaultLockoutAuthPolicy(c *C, alg tpm2.HashAlg
 				n.AddBranch("", func(b *policyutil.PolicyBuilderBranch) {
 					b.PolicyCommandCode(tpm2.CommandClear)
 				})
+
+				// XXX: This is here temporarily to make provisioningSuite.TestProvisionWithLockoutAuthData
+				// pass and will be removed in the next PR.
+				n.AddBranch("", func(b *policyutil.PolicyBuilderBranch) {
+					b.PolicyCommandCode(tpm2.CommandHierarchyChangeAuth)
+				})
 			})
 			b.PolicyAuthValue()
 		})
@@ -103,6 +109,20 @@ func (*lockoutauthSuiteMixin) newRotateAuthValueLockoutAuthPolicy(c *C, alg tpm2
 	return digest, policy
 }
 
+func (*lockoutauthSuiteMixin) makeLockoutAuthData(c *C, params *LockoutAuthParams) []byte {
+	data, err := json.Marshal(params)
+	c.Assert(err, IsNil)
+	return data
+}
+
+func (m *lockoutauthSuiteMixin) makeDefaultLockoutAuthData(c *C, alg tpm2.HashAlgorithmId, val []byte) (tpm2.Digest, []byte) {
+	digest, policy := m.newDefaultLockoutAuthPolicy(c, alg)
+	return digest, m.makeLockoutAuthData(c, &LockoutAuthParams{
+		AuthValue:  val,
+		AuthPolicy: policy,
+	})
+}
+
 type lockoutauthSuiteNoTPM struct {
 	lockoutauthSuiteMixin
 }
@@ -135,12 +155,6 @@ func (s *lockoutauthSuite) SetUpTest(c *C) {
 	c.Assert(s.TPM().DictionaryAttackParameters(s.TPM().LockoutHandleContext(), 32, 7200, 86400, nil), IsNil)
 }
 
-func (s *lockoutauthSuite) makeLockoutAuthData(c *C, params *LockoutAuthParams) []byte {
-	data, err := json.Marshal(params)
-	c.Assert(err, IsNil)
-	return data
-}
-
 var _ = Suite(&lockoutauthSuiteNoTPM{})
 var _ = Suite(&lockoutauthSuite{})
 
@@ -152,7 +166,7 @@ func (s *lockoutauthSuiteNoTPM) TestLockoutAuthParamsMarshalJSON(c *C) {
 
 	data, err := json.Marshal(params)
 	c.Check(err, IsNil)
-	c.Check(data, DeepEquals, []byte(`{"auth-value":"x9oO1va6Pz6nQeeGOgoXSBOLbsyw4IQTKwSpyXbw0LE=","auth-policy":"AAAAAAAAAAEAC5xRENPNjPxvymnylptEkkmB67kMJSALrpC4PA2joYWCAAAAAAAAAAEgAQFxAAAAAQAAAAAAAQAL+21OPQovgBAFA+/1biwvpZu8ItTlnZBiGL/DKXTgoIIAAAACIAEBcQAAAAQAAAAAAAEAC7bFwF5YGQnN6n33pfkcDy7tN/128VUi7uW1X4lvLVY/AAAAAQAAAWwAAAE5AAAAAAABAAscaCd8nWVk3YG8z35Wuj7cqziPxgzpWzpEK9JyWPYN/AAAAAEAAAFsAAABOgAAAAAAAQALlAz7Qhe7Htz3+0GTfKl0qmjmmKt4uBJLBwET4hH9RvwAAAABAAABbAAAAScAAAAAAAEAC8Tfq87ajeg2yVZhlSiSsd73IDr7Rv7+xD/8/JO+VAcwAAAAAQAAAWwAAAEmAAABaw=="}`))
+	c.Check(data, DeepEquals, []byte(`{"auth-value":"x9oO1va6Pz6nQeeGOgoXSBOLbsyw4IQTKwSpyXbw0LE=","auth-policy":"AAAAAAAAAAEAC/cbf1/nUkzaClt4ysmVL5cqWE67D7Brmd7cgdwi7ztVAAAAAAAAAAEgAQFxAAAAAQAAAAAAAQALufUnMhfDMA5sLu0OUIPoKx2NNK4laaj7SfVnqdZFDjYAAAACIAEBcQAAAAUAAAAAAAEAC7bFwF5YGQnN6n33pfkcDy7tN/128VUi7uW1X4lvLVY/AAAAAQAAAWwAAAE5AAAAAAABAAscaCd8nWVk3YG8z35Wuj7cqziPxgzpWzpEK9JyWPYN/AAAAAEAAAFsAAABOgAAAAAAAQALlAz7Qhe7Htz3+0GTfKl0qmjmmKt4uBJLBwET4hH9RvwAAAABAAABbAAAAScAAAAAAAEAC8Tfq87ajeg2yVZhlSiSsd73IDr7Rv7+xD/8/JO+VAcwAAAAAQAAAWwAAAEmAAAAAAABAAu+aY2L0UknzX7Xvdk75B8n/yYmvS2KFUDi+URfLuWrLgAAAAEAAAFsAAABKQAAAWs="}`))
 }
 
 func (s *lockoutauthSuiteNoTPM) TestLockoutAuthParamsMarshalJSONNoPolicy(c *C) {
@@ -176,12 +190,11 @@ func (s *lockoutauthSuiteNoTPM) TestLockoutAuthParamsMarshalJSONForChangeAuth(c 
 
 	data, err := json.Marshal(params)
 	c.Check(err, IsNil)
-	c.Check(data, DeepEquals, []byte(`{"auth-value":"x9oO1va6Pz6nQeeGOgoXSBOLbsyw4IQTKwSpyXbw0LE=","auth-policy":"AAAAAAAAAAEAC5xRENPNjPxvymnylptEkkmB67kMJSALrpC4PA2joYWCAAAAAAAAAAEgAQFxAAAAAQAAAAAAAQAL+21OPQovgBAFA+/1biwvpZu8ItTlnZBiGL/DKXTgoIIAAAACIAEBcQAAAAQAAAAAAAEAC7bFwF5YGQnN6n33pfkcDy7tN/128VUi7uW1X4lvLVY/AAAAAQAAAWwAAAE5AAAAAAABAAscaCd8nWVk3YG8z35Wuj7cqziPxgzpWzpEK9JyWPYN/AAAAAEAAAFsAAABOgAAAAAAAQALlAz7Qhe7Htz3+0GTfKl0qmjmmKt4uBJLBwET4hH9RvwAAAABAAABbAAAAScAAAAAAAEAC8Tfq87ajeg2yVZhlSiSsd73IDr7Rv7+xD/8/JO+VAcwAAAAAQAAAWwAAAEmAAABaw==","new-auth-value":"24LL69EOvYMbSP+K5ydaIwKQdLpiLAQW2XzTTdONgYY=","new-auth-policy":"AAAAAAAAAAEAC8iuOzJsfCEvz5HdnLSO98fhopBFpLgo9fX7/1TF/6KqAAAAAAAAAAEgAQFxAAAAAgAAAAAAAQAL+21OPQovgBAFA+/1biwvpZu8ItTlnZBiGL/DKXTgoIIAAAACIAEBcQAAAAQAAAAAAAEAC7bFwF5YGQnN6n33pfkcDy7tN/128VUi7uW1X4lvLVY/AAAAAQAAAWwAAAE5AAAAAAABAAscaCd8nWVk3YG8z35Wuj7cqziPxgzpWzpEK9JyWPYN/AAAAAEAAAFsAAABOgAAAAAAAQALlAz7Qhe7Htz3+0GTfKl0qmjmmKt4uBJLBwET4hH9RvwAAAABAAABbAAAAScAAAAAAAEAC8Tfq87ajeg2yVZhlSiSsd73IDr7Rv7+xD/8/JO+VAcwAAAAAQAAAWwAAAEmAAABawAAAAAAAQALDDnMvDFtHshfTn3M6F3KHOta8q5u4GWsqsqB8JnLJCYAAAACAAABbAAAASkAAAFgACMACwAEAAAAAAAQABAAAwAQACC2BaF5zNUOUWsO9Vxdw5PNDslawcvHjS3x54a1VHxZfAAgaOCKN2rpEFpajypuc/XSGSr0LnK/e8W9IyZMM8DufpUAC0NIQU5HRS1BVVRIAAAAAAAA"}`))
+	c.Check(data, DeepEquals, []byte(`{"auth-value":"x9oO1va6Pz6nQeeGOgoXSBOLbsyw4IQTKwSpyXbw0LE=","auth-policy":"AAAAAAAAAAEAC/cbf1/nUkzaClt4ysmVL5cqWE67D7Brmd7cgdwi7ztVAAAAAAAAAAEgAQFxAAAAAQAAAAAAAQALufUnMhfDMA5sLu0OUIPoKx2NNK4laaj7SfVnqdZFDjYAAAACIAEBcQAAAAUAAAAAAAEAC7bFwF5YGQnN6n33pfkcDy7tN/128VUi7uW1X4lvLVY/AAAAAQAAAWwAAAE5AAAAAAABAAscaCd8nWVk3YG8z35Wuj7cqziPxgzpWzpEK9JyWPYN/AAAAAEAAAFsAAABOgAAAAAAAQALlAz7Qhe7Htz3+0GTfKl0qmjmmKt4uBJLBwET4hH9RvwAAAABAAABbAAAAScAAAAAAAEAC8Tfq87ajeg2yVZhlSiSsd73IDr7Rv7+xD/8/JO+VAcwAAAAAQAAAWwAAAEmAAAAAAABAAu+aY2L0UknzX7Xvdk75B8n/yYmvS2KFUDi+URfLuWrLgAAAAEAAAFsAAABKQAAAWs=","new-auth-value":"24LL69EOvYMbSP+K5ydaIwKQdLpiLAQW2XzTTdONgYY=","new-auth-policy":"AAAAAAAAAAEAC8iuOzJsfCEvz5HdnLSO98fhopBFpLgo9fX7/1TF/6KqAAAAAAAAAAEgAQFxAAAAAgAAAAAAAQAL+21OPQovgBAFA+/1biwvpZu8ItTlnZBiGL/DKXTgoIIAAAACIAEBcQAAAAQAAAAAAAEAC7bFwF5YGQnN6n33pfkcDy7tN/128VUi7uW1X4lvLVY/AAAAAQAAAWwAAAE5AAAAAAABAAscaCd8nWVk3YG8z35Wuj7cqziPxgzpWzpEK9JyWPYN/AAAAAEAAAFsAAABOgAAAAAAAQALlAz7Qhe7Htz3+0GTfKl0qmjmmKt4uBJLBwET4hH9RvwAAAABAAABbAAAAScAAAAAAAEAC8Tfq87ajeg2yVZhlSiSsd73IDr7Rv7+xD/8/JO+VAcwAAAAAQAAAWwAAAEmAAABawAAAAAAAQALDDnMvDFtHshfTn3M6F3KHOta8q5u4GWsqsqB8JnLJCYAAAACAAABbAAAASkAAAFgACMACwAEAAAAAAAQABAAAwAQACC2BaF5zNUOUWsO9Vxdw5PNDslawcvHjS3x54a1VHxZfAAgaOCKN2rpEFpajypuc/XSGSr0LnK/e8W9IyZMM8DufpUAC0NIQU5HRS1BVVRIAAAAAAAA"}`))
 }
 
 func (s *lockoutauthSuiteNoTPM) TestLockoutAuthParamsUnmarshalJSON(c *C) {
-	data := []byte(`{"auth-value":"x9oO1va6Pz6nQeeGOgoXSBOLbsyw4IQTKwSpyXbw0LE=","auth-policy":"AAAAAAAAAAEAC5xRENPNjPxvymnylptEkkmB67kMJSALrpC4PA2joYWCAAAAAAAAAAEgAQFxAAAAAQAAAAAAAQAL+21OPQovgBAFA+/1biwvpZu8ItTlnZBiGL/DKXTgoIIAAAACIAEBcQAAAAQAAAAAAAEAC7bFwF5YGQnN6n33pfkcDy7tN/128VUi7uW1X4lvLVY/AAAAAQAAAWwAAAE5AAAAAAABAAscaCd8nWVk3YG8z35Wuj7cqziPxgzpWzpEK9JyWPYN/AAAAAEAAAFsAAABOgAAAAAAAQALlAz7Qhe7Htz3+0GTfKl0qmjmmKt4uBJLBwET4hH9RvwAAAABAAABbAAAAScAAAAAAAEAC8Tfq87ajeg2yVZhlSiSsd73IDr7Rv7+xD/8/JO+VAcwAAAAAQAAAWwAAAEmAAABaw=="}`)
-
+	data := []byte(`{"auth-value":"x9oO1va6Pz6nQeeGOgoXSBOLbsyw4IQTKwSpyXbw0LE=","auth-policy":"AAAAAAAAAAEAC/cbf1/nUkzaClt4ysmVL5cqWE67D7Brmd7cgdwi7ztVAAAAAAAAAAEgAQFxAAAAAQAAAAAAAQALufUnMhfDMA5sLu0OUIPoKx2NNK4laaj7SfVnqdZFDjYAAAACIAEBcQAAAAUAAAAAAAEAC7bFwF5YGQnN6n33pfkcDy7tN/128VUi7uW1X4lvLVY/AAAAAQAAAWwAAAE5AAAAAAABAAscaCd8nWVk3YG8z35Wuj7cqziPxgzpWzpEK9JyWPYN/AAAAAEAAAFsAAABOgAAAAAAAQALlAz7Qhe7Htz3+0GTfKl0qmjmmKt4uBJLBwET4hH9RvwAAAABAAABbAAAAScAAAAAAAEAC8Tfq87ajeg2yVZhlSiSsd73IDr7Rv7+xD/8/JO+VAcwAAAAAQAAAWwAAAEmAAAAAAABAAu+aY2L0UknzX7Xvdk75B8n/yYmvS2KFUDi+URfLuWrLgAAAAEAAAFsAAABKQAAAWs="}`)
 	expected := &LockoutAuthParams{
 		AuthValue:  testutil.DecodeHexString(c, "c7da0ed6f6ba3f3ea741e7863a0a1748138b6eccb0e084132b04a9c976f0d0b1"),
 		AuthPolicy: s.newDefaultLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256),
@@ -193,7 +206,7 @@ func (s *lockoutauthSuiteNoTPM) TestLockoutAuthParamsUnmarshalJSON(c *C) {
 }
 
 func (s *lockoutauthSuiteNoTPM) TestLockoutAuthParamsUnmarshalJSONForChangeAuth(c *C) {
-	data := []byte(`{"auth-value":"x9oO1va6Pz6nQeeGOgoXSBOLbsyw4IQTKwSpyXbw0LE=","auth-policy":"AAAAAAAAAAEAC5xRENPNjPxvymnylptEkkmB67kMJSALrpC4PA2joYWCAAAAAAAAAAEgAQFxAAAAAQAAAAAAAQAL+21OPQovgBAFA+/1biwvpZu8ItTlnZBiGL/DKXTgoIIAAAACIAEBcQAAAAQAAAAAAAEAC7bFwF5YGQnN6n33pfkcDy7tN/128VUi7uW1X4lvLVY/AAAAAQAAAWwAAAE5AAAAAAABAAscaCd8nWVk3YG8z35Wuj7cqziPxgzpWzpEK9JyWPYN/AAAAAEAAAFsAAABOgAAAAAAAQALlAz7Qhe7Htz3+0GTfKl0qmjmmKt4uBJLBwET4hH9RvwAAAABAAABbAAAAScAAAAAAAEAC8Tfq87ajeg2yVZhlSiSsd73IDr7Rv7+xD/8/JO+VAcwAAAAAQAAAWwAAAEmAAABaw==","new-auth-value":"24LL69EOvYMbSP+K5ydaIwKQdLpiLAQW2XzTTdONgYY=","new-auth-policy":"AAAAAAAAAAEAC8iuOzJsfCEvz5HdnLSO98fhopBFpLgo9fX7/1TF/6KqAAAAAAAAAAEgAQFxAAAAAgAAAAAAAQAL+21OPQovgBAFA+/1biwvpZu8ItTlnZBiGL/DKXTgoIIAAAACIAEBcQAAAAQAAAAAAAEAC7bFwF5YGQnN6n33pfkcDy7tN/128VUi7uW1X4lvLVY/AAAAAQAAAWwAAAE5AAAAAAABAAscaCd8nWVk3YG8z35Wuj7cqziPxgzpWzpEK9JyWPYN/AAAAAEAAAFsAAABOgAAAAAAAQALlAz7Qhe7Htz3+0GTfKl0qmjmmKt4uBJLBwET4hH9RvwAAAABAAABbAAAAScAAAAAAAEAC8Tfq87ajeg2yVZhlSiSsd73IDr7Rv7+xD/8/JO+VAcwAAAAAQAAAWwAAAEmAAABawAAAAAAAQALDDnMvDFtHshfTn3M6F3KHOta8q5u4GWsqsqB8JnLJCYAAAACAAABbAAAASkAAAFgACMACwAEAAAAAAAQABAAAwAQACC2BaF5zNUOUWsO9Vxdw5PNDslawcvHjS3x54a1VHxZfAAgaOCKN2rpEFpajypuc/XSGSr0LnK/e8W9IyZMM8DufpUAC0NIQU5HRS1BVVRIAAAAAAAA"}`)
+	data := []byte(`{"auth-value":"x9oO1va6Pz6nQeeGOgoXSBOLbsyw4IQTKwSpyXbw0LE=","auth-policy":"AAAAAAAAAAEAC/cbf1/nUkzaClt4ysmVL5cqWE67D7Brmd7cgdwi7ztVAAAAAAAAAAEgAQFxAAAAAQAAAAAAAQALufUnMhfDMA5sLu0OUIPoKx2NNK4laaj7SfVnqdZFDjYAAAACIAEBcQAAAAUAAAAAAAEAC7bFwF5YGQnN6n33pfkcDy7tN/128VUi7uW1X4lvLVY/AAAAAQAAAWwAAAE5AAAAAAABAAscaCd8nWVk3YG8z35Wuj7cqziPxgzpWzpEK9JyWPYN/AAAAAEAAAFsAAABOgAAAAAAAQALlAz7Qhe7Htz3+0GTfKl0qmjmmKt4uBJLBwET4hH9RvwAAAABAAABbAAAAScAAAAAAAEAC8Tfq87ajeg2yVZhlSiSsd73IDr7Rv7+xD/8/JO+VAcwAAAAAQAAAWwAAAEmAAAAAAABAAu+aY2L0UknzX7Xvdk75B8n/yYmvS2KFUDi+URfLuWrLgAAAAEAAAFsAAABKQAAAWs=","new-auth-value":"24LL69EOvYMbSP+K5ydaIwKQdLpiLAQW2XzTTdONgYY=","new-auth-policy":"AAAAAAAAAAEAC8iuOzJsfCEvz5HdnLSO98fhopBFpLgo9fX7/1TF/6KqAAAAAAAAAAEgAQFxAAAAAgAAAAAAAQAL+21OPQovgBAFA+/1biwvpZu8ItTlnZBiGL/DKXTgoIIAAAACIAEBcQAAAAQAAAAAAAEAC7bFwF5YGQnN6n33pfkcDy7tN/128VUi7uW1X4lvLVY/AAAAAQAAAWwAAAE5AAAAAAABAAscaCd8nWVk3YG8z35Wuj7cqziPxgzpWzpEK9JyWPYN/AAAAAEAAAFsAAABOgAAAAAAAQALlAz7Qhe7Htz3+0GTfKl0qmjmmKt4uBJLBwET4hH9RvwAAAABAAABbAAAAScAAAAAAAEAC8Tfq87ajeg2yVZhlSiSsd73IDr7Rv7+xD/8/JO+VAcwAAAAAQAAAWwAAAEmAAABawAAAAAAAQALDDnMvDFtHshfTn3M6F3KHOta8q5u4GWsqsqB8JnLJCYAAAACAAABbAAAASkAAAFgACMACwAEAAAAAAAQABAAAwAQACC2BaF5zNUOUWsO9Vxdw5PNDslawcvHjS3x54a1VHxZfAAgaOCKN2rpEFpajypuc/XSGSr0LnK/e8W9IyZMM8DufpUAC0NIQU5HRS1BVVRIAAAAAAAA"}`)
 
 	authValue := testutil.DecodeHexString(c, "c7da0ed6f6ba3f3ea741e7863a0a1748138b6eccb0e084132b04a9c976f0d0b1")
 	expected := &LockoutAuthParams{
@@ -348,6 +361,9 @@ func (s *lockoutauthSuite) TestResetDictionaryAttackLockWithAuthValue(c *C) {
 	c.Check(s.TPM().LockoutHandleContext().AuthValue(), DeepEquals, []byte(nil))
 
 	cmds := s.CommandLog()
+	for _, cmd := range cmds {
+		c.Logf("%v", cmd.CmdCode)
+	}
 	c.Assert(len(cmds) > 1, testutil.IsTrue)
 	cmd := cmds[len(cmds)-2]
 	c.Check(cmd.CmdCode, Equals, tpm2.CommandDictionaryAttackLockReset)
