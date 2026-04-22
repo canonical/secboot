@@ -20,6 +20,7 @@
 package tpm2
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -195,6 +196,9 @@ func removeStoredSrkTemplate(tpm *tpm2.TPMContext, session tpm2.SessionContext) 
 }
 
 type ensureProvisionedParams struct {
+	lockoutAuthParams    *lockoutAuthParams
+	lockoutAuthParamsErr error
+
 	mode                   provisionMode
 	newLockoutAuthValue    []byte
 	srkTemplate            *tpm2.Public
@@ -203,19 +207,36 @@ type ensureProvisionedParams struct {
 
 type EnsureProvisionedOption func(*ensureProvisionedParams)
 
-// ProvisionModeWithoutLockout tells [Connection.EnsureProvisioned] to not perform any actions
-// that require use of the TPM's lockout hierarchy. If the TPM indicates that use of the lockout
-// hierarchy is required to fully provision the TPM (eg, to disable owner clear, set the lockout
-// hierarchy authorization value or configure the DA lockout parameters), then a
-// [ErrTPMProvisioningRequiresLockout] error will be returned. In this scenario,
-// [Connection.EnsureProvisioned] will complete all operations that can be completed without using
-// the lockout hierarchy, but it should be called again without this option.
-func ProvisionWithoutLockout() EnsureProvisionedOption {
+// WithLockoutAuthValue tells [Connection.EnsureProvisioned] that it can use the TPM's lockout hierarchy
+// with the supplied authorization value. This option is for systems that were configured with an older
+// version of [Connection.EnsureProvisioned] (XXX: not yet) where an authorization value was chosen and
+// supplied by the caller.
+//
+// If the wrong value is supplied, the lockout hierarchy will become unavailable for the pre-programmed
+// recovery time.
+func WithLockoutAuthValue(authValue []byte) EnsureProvisionedOption {
 	return func(p *ensureProvisionedParams) {
-		if p.mode == provisionModeClear {
-			panic("ProvisionWithoutLockout conflicts with WithClearBeforeProvision")
+		if p.lockoutAuthParams != nil || p.lockoutAuthParamsErr != nil {
+			panic("WithLockoutAuthValue incompatible with WithLockoutAuthData")
 		}
-		p.mode = provisionModeWithoutLockout
+		p.lockoutAuthParams = &lockoutAuthParams{
+			AuthValue: authValue,
+		}
+	}
+}
+
+// WithLockoutAuthData tells [Connection.EnsureProvisioned] that it can use the TPM's lockout hierarchy
+// with the supplied authorization data. The authorization data will have been supplied by a previous call
+// to [Connection.EnsureProvisioned] (XXX: in a future PR).
+//
+// If the data contains the wrong authorization value, the lockout hierarchy will become unavailable for
+// the pre-programmed recovery time.
+func WithLockoutAuthData(data []byte) EnsureProvisionedOption {
+	return func(p *ensureProvisionedParams) {
+		if p.lockoutAuthParams != nil {
+			panic("WithLockoutAuthData incompatible with WithLockoutAuthValue")
+		}
+		p.lockoutAuthParamsErr = json.Unmarshal(data, &p.lockoutAuthParams)
 	}
 }
 
@@ -273,21 +294,18 @@ func WithCustomSRKTemplate(template *tpm2.Public) EnsureProvisionedOption {
 // only way to recover from this is to clear the TPM either by calling this function with the [WithClearBeforeProvision]
 // option (and providing the correct authorization value for the lockout hierarchy), or by using the physical presence interface.
 //
-// If the [ProvisionWithoutLockout] option is not supplied, then owner clear will be disabled, and the parameters of the TPM's
-// dictionary attack logic will be configured to appropriate values. The authorization value for the lockout hierarchy will
-// be set to the value supplied to [WithProvisionNewLockoutAuthValue], or the empty value if not supplied.
+// If the [WithLockoutAuthValue] or [WithLockoutAuthData] option is supplied, then owner clear will be disabled, and the
+// parameters of the TPM's dictionary attack logic will be configured to appropriate values. The authorization value for the
+// lockout hierarchy will be set to the value supplied to [WithProvisionNewLockoutAuthValue], or the empty value if not supplied.
 //
-// If the [ProvisionWithoutLockout] option is not supplied, this function performs operations that require the use of the lockout
-// hierarchy (detailed above), and knowledge of the lockout hierarchy's authorization value. This must be provided by calling
-// Connection.LockoutHandleContext().SetAuthValue() prior to this call. If the wrong lockout hierarchy authorization value is
-// provided, then a [AuthFailError] error will be returned. If this happens, the TPM will have entered dictionary attack lockout
-// mode for the lockout hierarchy. Further calls will result in a [ErrTPMLockout] error being returned. The only way to recover
-// from this is to either wait for the pre-programmed recovery time to expire, or to clear the TPM via the physical presence
-// interface by calling [RequestTPMClearUsingPPI]. If the lockout hierarchy authorization value is not known then the
-// [ProvisionWithoutLockout] option should be supplied, with the caveat that this mode cannot fully provision the TPM.
+// If the [WithLockoutAuthValue] or [WithLockoutAuthData] option is supplied with the wrong value, then a [AuthFailError] error
+// may be returned. If this happens, the TPM will have entered dictionary attack lockout mode for the lockout hierarchy. Further
+// calls will result in a [ErrTPMLockout] error being returned. The only way to recover from this is to either wait for the
+// pre-programmed recovery time to expire, or to clear the TPM via the physical presence interface by calling
+// [RequestTPMClearUsingPPI].
 //
 // If [WithClearBeforeProvision] is not supplied, this function will not affect the ability to recover sealed keys that
-// can currently be recovered.
+// can currently be recovered. If it is supplied, then one of [WithLockoutAuthValue] or [WithLockoutAuthData] must be supplied.
 func (t *Connection) EnsureProvisioned(options ...EnsureProvisionedOption) error {
 	params := &ensureProvisionedParams{
 		mode:                   provisionModeFull,
@@ -296,8 +314,36 @@ func (t *Connection) EnsureProvisioned(options ...EnsureProvisionedOption) error
 	for _, opt := range options {
 		opt(params)
 	}
-	if params.srkTemplate != nil && !params.srkTemplate.IsStorageParent() {
+	switch {
+	case params.srkTemplate != nil && !params.srkTemplate.IsStorageParent():
 		return errors.New("supplied SRK template is not valid for a parent key")
+	case params.lockoutAuthParamsErr != nil:
+		return &InvalidLockoutAuthDataError{err: params.lockoutAuthParamsErr}
+	case params.mode == provisionModeClear && params.lockoutAuthParams == nil:
+		return errors.New("WithClearBeforeProvision requires WithLockoutAuthParams or WithLockoutAuthData")
+	case params.lockoutAuthParams == nil:
+		params.mode = provisionModeWithoutLockout
+	}
+
+	authorizeAndUseLockoutHierarchy := func(command tpm2.CommandCode, fn func(tpm2.SessionContext) error, msg string) error {
+		session, _, done, err := t.authorizeLockout(params.lockoutAuthParams, command)
+		if err != nil {
+			return err
+		}
+		defer done()
+
+		switch err := fn(session); {
+		case isAuthFailError(err, command, 1):
+			return AuthFailError{tpm2.HandleLockout}
+		case tpm2.IsTPMWarning(err, tpm2.WarningLockout, command):
+			return ErrTPMLockout
+		case tpm2.IsTPMSessionError(err, tpm2.ErrorPolicyFail, command, 1):
+			return ErrInvalidLockoutAuthPolicy
+		case err != nil:
+			return fmt.Errorf("%s: %w", msg, err)
+		}
+
+		return nil
 	}
 
 	session := t.HmacSession()
@@ -306,20 +352,16 @@ func (t *Connection) EnsureProvisioned(options ...EnsureProvisionedOption) error
 	if err != nil {
 		return fmt.Errorf("cannot fetch permanent properties: %w", err)
 	}
+
 	if params.mode == provisionModeClear {
 		if tpm2.PermanentAttributes(val)&tpm2.AttrDisableClear > 0 {
 			return ErrTPMClearRequiresPPI
 		}
 
-		// Use HMAC session to authenticate with lockout hierarchy.
-		if err := t.Clear(t.LockoutHandleContext(), session); err != nil {
-			switch {
-			case isAuthFailError(err, tpm2.CommandClear, 1):
-				return AuthFailError{tpm2.HandleLockout}
-			case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandClear):
-				return ErrTPMLockout
-			}
-			return fmt.Errorf("cannot clear the TPM: %w", err)
+		if err := authorizeAndUseLockoutHierarchy(tpm2.CommandClear, func(session tpm2.SessionContext) error {
+			return t.Clear(t.LockoutHandleContext(), session)
+		}, "cannot clear the TPM"); err != nil {
+			return err
 		}
 	}
 
@@ -396,46 +438,47 @@ func (t *Connection) EnsureProvisioned(options ...EnsureProvisionedOption) error
 
 	// Perform actions that require the lockout hierarchy authorization.
 
-	// Set the DA parameters. Pass the HMAC session here so we don't supply the cleartext auth
-	// value for the lockout hierarchy.
-	if err := t.DictionaryAttackParameters(t.LockoutHandleContext(), maxTries, recoveryTime, lockoutRecovery, session); err != nil {
-		switch {
-		case isAuthFailError(err, tpm2.CommandDictionaryAttackParameters, 1):
-			return AuthFailError{tpm2.HandleLockout}
-		case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandDictionaryAttackParameters):
-			return ErrTPMLockout
-		}
-		return fmt.Errorf("cannot configure dictionary attack parameters: %w", err)
+	// Set the DA parameters.
+	if err := authorizeAndUseLockoutHierarchy(tpm2.CommandDictionaryAttackParameters, func(session tpm2.SessionContext) error {
+		return t.DictionaryAttackParameters(t.LockoutHandleContext(), maxTries, recoveryTime, lockoutRecovery, session)
+	}, "cannot configure dictionary attack parameters"); err != nil {
+		return err
 	}
 
 	// Clear any lockout if there is one. This has to happen after setting the DA parameters
 	// because we can't clear a lockout if maxTries is 0.
-	if err := t.DictionaryAttackLockReset(t.LockoutHandleContext(), session); err != nil {
-		switch {
-		case isAuthFailError(err, tpm2.CommandDictionaryAttackLockReset, 1):
-			return AuthFailError{tpm2.HandleLockout}
-		case tpm2.IsTPMWarning(err, tpm2.WarningLockout, tpm2.CommandDictionaryAttackLockReset):
-			return ErrTPMLockout
-		}
-		return fmt.Errorf("cannot reset dictionary attack protection: %w", err)
+	if err := authorizeAndUseLockoutHierarchy(tpm2.CommandDictionaryAttackLockReset, func(session tpm2.SessionContext) error {
+		return t.DictionaryAttackLockReset(t.LockoutHandleContext(), session)
+	}, "cannot reset dictionary attack protection"); err != nil {
+		return err
 	}
 
-	// Disable owner clear. Pass the HMAC session here so we don't supply the cleartext auth
-	// value for the lockout hierarchy.
-	if err := t.ClearControl(t.LockoutHandleContext(), true, session); err != nil {
-		// Lockout auth failure or lockout mode would have been caught by DictionaryAttackParameters
-		return fmt.Errorf("cannot disable owner clear: %w", err)
+	// Disable owner clear.
+	if err := authorizeAndUseLockoutHierarchy(tpm2.CommandClearControl, func(session tpm2.SessionContext) error {
+		return t.ClearControl(t.LockoutHandleContext(), true, session)
+	}, "cannot disable owner clear"); err != nil {
+		return err
 	}
 
-	// Set the lockout hierarchy authorization. Use command parameter encryption here for the new value.
-	// Note that this only offers protections against passive interposers.
 	// XXX: Clear any policy for the lockout hierarchy first. A future PR will initialize this to something
 	//  sensible.
-	if err := t.SetPrimaryPolicy(t.LockoutHandleContext(), nil, tpm2.HashAlgorithmNull, session); err != nil {
-		return fmt.Errorf("cannot clear the lockout hierarchy authorization policy: %w", err)
+	if err := authorizeAndUseLockoutHierarchy(tpm2.CommandSetPrimaryPolicy, func(session tpm2.SessionContext) error {
+		return t.SetPrimaryPolicy(t.LockoutHandleContext(), nil, tpm2.HashAlgorithmNull, session)
+	}, "cannot clear the lockout hierarchy authorization policy"); err != nil {
+		return err
 	}
-	if err := t.HierarchyChangeAuth(t.LockoutHandleContext(), params.newLockoutAuthValue, session.IncludeAttrs(tpm2.AttrCommandEncrypt)); err != nil {
-		return xerrors.Errorf("cannot set the lockout hierarchy authorization value: %w", err)
+	if err := authorizeAndUseLockoutHierarchy(tpm2.CommandHierarchyChangeAuth, func(authSession tpm2.SessionContext) error {
+		switch {
+		case authSession.Handle().Type() == tpm2.HandleTypePolicySession:
+			// We're using policy auth so need to supply the HMAC session as an extra
+			// session for parameter encryption.
+			return t.HierarchyChangeAuth(t.LockoutHandleContext(), params.newLockoutAuthValue, authSession, session.IncludeAttrs(tpm2.AttrCommandEncrypt))
+		default:
+			// We're using HMAC auth
+			return t.HierarchyChangeAuth(t.LockoutHandleContext(), params.newLockoutAuthValue, authSession.IncludeAttrs(tpm2.AttrCommandEncrypt))
+		}
+	}, "cannot set the lockout hierarchy authorization value"); err != nil {
+		return err
 	}
 
 	return nil

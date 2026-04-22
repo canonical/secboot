@@ -51,7 +51,7 @@ func (s *compatTestV1Suite) TestUnseal2(c *C) {
 
 func (s *compatTestV1Suite) TestUnsealAfterReprovision(c *C) {
 	// This should still work because the primary key doesn't change.
-	c.Assert(s.TPM().EnsureProvisioned(secboot_tpm2.ProvisionWithoutLockout()), IsNil)
+	c.Assert(s.TPM().EnsureProvisioned(), IsNil)
 	s.testUnseal(c, s.absPath("pcrSequence.1"))
 }
 

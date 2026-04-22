@@ -48,8 +48,7 @@ func (s *unsealSuite) SetUpSuite(c *C) {
 
 func (s *unsealSuite) SetUpTest(c *C) {
 	s.TPMTest.SetUpTest(c)
-	c.Assert(s.TPM().EnsureProvisioned(ProvisionWithoutLockout()),
-		testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
+	c.Assert(s.TPM().EnsureProvisioned(), testutil.InSlice(Equals), []error{ErrTPMProvisioningRequiresLockout, nil})
 }
 
 var _ = Suite(&unsealSuite{})

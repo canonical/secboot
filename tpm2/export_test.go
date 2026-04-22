@@ -150,16 +150,21 @@ func NewPcrPolicyData_v3(v2 *PcrPolicyData_v2) *PcrPolicyData_v3 {
 
 type PlatformKeyDataHandler = platformKeyDataHandler
 
+// TODO: Remove this and ProvisionMode.Option in favour of just updating the tests
+// to use the correct options instead.
 type ProvisionMode = provisionMode
 
-func (m ProvisionMode) Option() EnsureProvisionedOption {
+func (m ProvisionMode) Option(lockoutAuthValue []byte) EnsureProvisionedOption {
 	switch m {
 	case provisionModeWithoutLockout:
-		return ProvisionWithoutLockout()
-	case provisionModeClear:
-		return WithClearBeforeProvision()
-	default:
 		return func(_ *ensureProvisionedParams) {}
+	case provisionModeClear:
+		return func(p *ensureProvisionedParams) {
+			WithLockoutAuthValue(lockoutAuthValue)(p)
+			WithClearBeforeProvision()(p)
+		}
+	default:
+		return WithLockoutAuthValue(lockoutAuthValue)
 	}
 }
 
