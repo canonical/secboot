@@ -460,8 +460,13 @@ func (t *Connection) EnsureProvisioned(options ...EnsureProvisionedOption) error
 		return err
 	}
 
-	// Set the lockout hierarchy authorization. Use command parameter encryption here for the new value.
-	// Note that this only offers protections against passive interposers.
+	// XXX: Clear any policy for the lockout hierarchy first. A future PR will initialize this to something
+	//  sensible.
+	if err := authorizeAndUseLockoutHierarchy(tpm2.CommandSetPrimaryPolicy, func(session tpm2.SessionContext) error {
+		return t.SetPrimaryPolicy(t.LockoutHandleContext(), nil, tpm2.HashAlgorithmNull, session)
+	}, "cannot clear the lockout hierarchy authorization policy"); err != nil {
+		return err
+	}
 	if err := authorizeAndUseLockoutHierarchy(tpm2.CommandHierarchyChangeAuth, func(authSession tpm2.SessionContext) error {
 		switch {
 		case authSession.Handle().Type() == tpm2.HandleTypePolicySession:

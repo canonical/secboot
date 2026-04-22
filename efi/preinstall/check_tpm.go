@@ -404,6 +404,26 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		// Make sure the lockout hierarchy auth value is not set.
 		if tpm2.PermanentAttributes(perm)&tpm2.AttrLockoutAuthSet > 0 {
 			ownedErr.addAuthValue(tpm2.HandleLockout)
+
+			// Check if the lockout hierarchy has an authorization policy set. We only check this
+			// if there is an authorization value because tpm2.Connection.EnsureProvisioned will set
+			// it accordingly if there is no authorization value. The presence of an authorization
+			// policy is indicated as additional information to the original error.
+			//
+			// We don't check this for other hierarchies because we don't take ownership of those,
+			// and so the presence of a policy when the authorization value is unset is not worth
+			// indicating. XXX(chrisccoulson): Perhaps this should be presented as a warning in the
+			// public API eventually.
+			switch ta, err := tpm.GetCapabilityAuthPolicy(tpm2.HandleLockout); {
+			case tpm2.IsTPMParameterError(err, tpm2.ErrorValue, tpm2.CommandGetCapability, 1):
+				// TPM implements a version of the reference library spec that is older than
+				// v1.38. Never mind - we'll ensure that the policy for TPM_RH_LOCKOUT is
+				// initialized appropriately in tpm2.Connection.EnsureProvisioned.
+			case err != nil:
+				return nil, fmt.Errorf("cannot determine if %v hierarchy has an authorization policy: %w", tpm2.HandleLockout, err)
+			case ta.HashAlg != tpm2.HashAlgorithmNull:
+				ownedErr.addAuthPolicy(tpm2.HandleLockout)
+			}
 		}
 
 		// Make sure the owner hierarchy authorization value is not set.
@@ -414,17 +434,6 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		// Make sure the endorsement hierarchy authorization value is not set.
 		if tpm2.PermanentAttributes(perm)&(tpm2.AttrEndorsementAuthSet) > 0 {
 			ownedErr.addAuthValue(tpm2.HandleEndorsement)
-		}
-
-		// Make sure that none of the hierarchies have an authorization policy.
-		for _, handle := range []tpm2.Handle{tpm2.HandleLockout, tpm2.HandleOwner, tpm2.HandleEndorsement} {
-			ta, err := tpm.GetCapabilityAuthPolicy(handle)
-			if err != nil {
-				return nil, fmt.Errorf("cannot determine if %v hierarchy has an authorization policy: %w", handle, err)
-			}
-			if ta.HashAlg != tpm2.HashAlgorithmNull {
-				ownedErr.addAuthPolicy(handle)
-			}
 		}
 
 		if !ownedErr.isEmpty() {

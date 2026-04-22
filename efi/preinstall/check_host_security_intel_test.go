@@ -378,6 +378,41 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVMECSME
 	c.Check(err, IsNil)
 }
 
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardNoMEDevice1(c *C) {
+	// Test the case where there are no mei devices, but we can
+	// fallback to using the bootguard status MSR.
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 4, map[uint32]uint64{0x13a: 0x000000030000007d}),
+	)
+	c.Check(CheckHostSecurityIntelBootGuard(env), IsNil)
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardMEDevice2(c *C) {
+	// Test the case where the only mei device is not the required one.
+	device := efitest.NewMockSysfsDevice("/sys/devices/platform/intel_vsc/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
+		"/sys/devices/platform", map[string]string{"DRIVER": "intel_vsc"}, "platform", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(device),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 4, map[uint32]uint64{0x13a: 0x000000030000007d}),
+	)
+	c.Check(CheckHostSecurityIntelBootGuard(env), IsNil)
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardNoMEDevice3(c *C) {
+	// Test the case where there is a PCI mei device that isn't bound to the mei_me
+	// module. This probably isn't a realistic test case.
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", nil, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(device),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 4, map[uint32]uint64{0x13a: 0x000000030000007d}),
+	)
+	c.Check(CheckHostSecurityIntelBootGuard(env), IsNil)
+}
+
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoDevices(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts()
 	err := CheckHostSecurityIntelBootGuard(env)
@@ -393,34 +428,23 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEModul
 	c.Check(err, Equals, MissingKernelModuleError("mei_me"))
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevice1(c *C) {
-	// Test the case where there are no mei devices.
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices())
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardNoMEDeviceAndNoMSRModule(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 4, nil),
+	)
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device`)
-	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
+	c.Check(err, ErrorMatches, `the kernel module "msr" must be loaded`)
+	c.Check(err, Equals, MissingKernelModuleError("msr"))
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevice2(c *C) {
-	// Test the case where the only mei device is not the required one.
-	device := efitest.NewMockSysfsDevice("/sys/devices/platform/intel_vsc/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
-		"/sys/devices/platform", map[string]string{"DRIVER": "intel_vsc"}, "platform", nil, nil,
-	))
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardNoMEDeviceAndNoBtgMSR(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 4, map[uint32]uint64{}),
+	)
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device`)
-	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
-}
-
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevice3(c *C) {
-	// Test the case where there is a PCI mei device that isn't bound to the mei_me
-	// module. This probably isn't a realistic test case.
-	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
-		"/sys/devices/pci0000:00:16:0", nil, "pci", nil, nil,
-	))
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
-	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device`)
+	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device or BootGuard status MSR`)
 	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
 }
 

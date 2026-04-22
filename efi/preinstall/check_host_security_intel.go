@@ -279,9 +279,23 @@ func checkHostSecurityIntelBootGuard(env internal_efi.HostEnvironment) error {
 			return fmt.Errorf("cannot enumerate PCI devices with MEI class: %w", err)
 		}
 		if len(devices) == 0 {
-			// We didn't find the PCI device, so indicate that this platform
-			// isn't supported.
-			return &UnsupportedPlatformError{errors.New("no MEI PCI device")}
+			// We didn't find the PCI device. This could be an Intel platform that
+			// is configured in High Assurance mode, so try this fallback using the
+			// BootGuard status MSR instead.
+			amd64Env, err := env.AMD64()
+			if err != nil {
+				return err
+			}
+			status, err := readIntelBootGuardStatus(amd64Env)
+			switch {
+			case errors.Is(err, internal_efi.ErrNoKernelMSRSupport):
+				return MissingKernelModuleError("msr")
+			case errors.Is(err, internal_efi.ErrNoMSRSupport):
+				return &UnsupportedPlatformError{errors.New("no MEI PCI device or BootGuard status MSR")}
+			case err != nil:
+				return fmt.Errorf("cannot read BootGuard status MSR: %w", err)
+			}
+			return checkHostSecurityIntelBootGuardMSR(status)
 		}
 
 		// We did find the PCI device, so indicate that we need the mei_me module

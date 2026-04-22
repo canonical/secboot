@@ -86,8 +86,6 @@ var (
 	MatchLaunchToLoadOption                               = matchLaunchToLoadOption
 	NewX509CertificateID                                  = newX509CertificateID
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
-	ReadCurrentBootLoadOptionFromLog                      = readCurrentBootLoadOptionFromLog
-	ReadLoadOptionFromLog                                 = readLoadOptionFromLog
 	ReadOrderedLoadOptionVariables                        = readOrderedLoadOptionVariables
 	RestrictedTPMLocalitiesIntel                          = restrictedTPMLocalitiesIntel
 	RunPPIAction                                          = runPPIAction

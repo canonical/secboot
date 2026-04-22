@@ -206,7 +206,7 @@ func handleVariableAuthorityEvent(pcrAlg tpm2.HashAlgorithmId, db efi.SignatureD
 	data, ok := ev.Data.(*tcglog.EFIVariableData)
 	if !ok {
 		// if decoding failed, the resulting data is guaranteed to implement error.
-		return efi.GUID{}, nil, fmt.Errorf("event has wong data format: %w", ev.Data.(error))
+		return efi.GUID{}, nil, fmt.Errorf("event has wrong data format: %w", ev.Data.(error))
 	}
 
 	// As we're only checking events up to the launch of the IBL, we don't expect
@@ -313,24 +313,14 @@ type secureBootPolicyResult struct {
 // This ensures that secure boot is enabled, else an error is returned, as WithSecureBootPolicyProfile
 // only generates profiles compatible with secure boot being enabled.
 //
-// If the version of UEFI is >= 2.5, it also makes sure that the secure boot mode is "deployed mode".
-// If the secure boot mode is "user mode", then the "AuditMode" and "DeployedMode" values are measured to PCR7,
-// something that WithSecureBootPolicyProfile doesn't support today. Support for "user mode" will be added
-// in the future, although the public RunChecks API will probably require a flag to opt in to supporting user
-// mode, as it is the less secure mode of the 2 (see the documentation for SecureBootMode in
-// github.com/canonical/go-efilib).
+// If the version of UEFI is >= 2.5, it also makes sure that the secure boot mode is "deployed mode". If
+// not, then the result will indicate that the system is in user mode.
 //
 // It also reads the "OsIndicationsSupported" variable to test for features that are not supported by
 // WithSecureBootPolicyProfile. These are timestamp revocation (which requires an extra signature database -
 // "dbt") and OS recovery (which requires an extra signature database -"dbr", used to control access to
 // OsRecoveryOrder and OsRecover#### variables). Of the 2, it's likely that we might need to add support for
 // timestamp revocation at some point in the future.
-//
-// It reads the "BootCurrent" EFI variable and matches this to the EFI_LOAD_OPTION associated with the current
-// boot from the TCG log - it uses the log as "BootXXXX" EFI variables can be updated at runtime and
-// might be out of data when this code runs. It uses this to detect the launch of the initial boot loader,
-// which might not necessarily be the first EV_EFI_BOOT_SERVICES_APPLICATION event in the OS-present
-// environment in PCR4 (eg, if Absolute is active).
 //
 // After these checks, it iterates over the secure boot configuration in the log, making sure that the
 // configuration is measured in the correct order, that the event data is valid, and that the measured digest
@@ -426,13 +416,6 @@ func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, 
 	// TODO(chrisccoulson): Not sure if there's any indication that we might get SPDM related measurements,
 	// which our profile generation for PCR7 currently doesn't support.
 
-	// Obtain the load option for the current boot. We need this so that we can identify the launch of
-	// the initial boot loader later on.
-	bootOpt, err := readCurrentBootLoadOptionFromLog(varCtx, log)
-	if err != nil {
-		return nil, err
-	}
-
 	// Make sure that the secure boot config in the log is measured in the
 	// expected order, else WithSecureBootPolicyProfile() will generate an invalid policy,
 	// because we hard code the order. The order here is what we expect to see.
@@ -446,10 +429,9 @@ func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, 
 	}
 
 	var (
-		db                        efi.SignatureDatabase // The authorized signature database from the TCG log.
-		measuredSignatures        tpm2.DigestList       // The verification event digests measured by the firmware
-		seenOSPresentVerification bool                  // Whether we've seen a verification event in the OS-present phase
-		seenIBLLoadEvent          bool                  // Whether we've seen the launch event for the OS initial boot loader
+		db                 efi.SignatureDatabase // The authorized signature database from the TCG log.
+		measuredSignatures tpm2.DigestList       // The verification event digests measured by the firmware
+		seenIBLLoadEvent   bool                  // Whether we've seen the launch event for the OS initial boot loader
 	)
 
 	phaseTracker := newTcgLogPhaseTracker()
@@ -671,28 +653,41 @@ NextEvent:
 				// and we haven't seen the event for the IBL yet. We stop once we see this
 				// because at this point, the rest of the measurements in this PCR are under
 				// the control of the OS.
-				yes, err := isLaunchedFromLoadOption(ev, bootOpt)
-				if err != nil {
-					return nil, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for is associated with the current boot load option: %w", err)
-				}
-				if !yes {
-					// This is not the launch event for the initial boot loader - ignore it.
-					if seenOSPresentVerification {
-						// The way we build profiles for PCR7 requires that any verification
-						// events in PCR7 during OS-present to be associated with the OS. If
-						// we've seen a verification event and we're in OS-present, then the
-						// next expected event is the load event for the initial boot loader.
-						// If we get verification events for Absolute (which is loaded from
-						// Flash and is normally verified earlier on with the verification of
-						// other Flash volumes), then we'll generate a potentially invalid
-						// profile for PCR7, because we don't copy events from the log once
-						// we're in OS-present.
-						return nil, fmt.Errorf("unexpected EV_EFI_BOOT_SERVICES_APPLICATION event for %v after already seeing a verification event during the OS-present environment. "+
-							"This event should be for the initial boot loader", ev.Data.(*tcglog.EFIImageLoadEvent).DevicePath)
-					}
-					continue NextEvent
+				data, ok := ev.Data.(*tcglog.EFIImageLoadEvent)
+				if !ok {
+					// The data resulting from decode errors are guaranteed to implement the error interface
+					return nil, fmt.Errorf("invalid event data for EV_EFI_BOOT_SERVICES_APPLICATION event: %w", ev.Data.(error))
 				}
 
+				switch isAbsolute, err := internal_efi.IsAbsoluteAgentLaunch(ev); {
+				case err != nil:
+					return nil, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with Absolute: %w", data.DevicePath, err)
+				case isAbsolute:
+					// skip this one
+					continue NextEvent
+				default:
+					isIBLLoadEvent, err := func() (bool, error) {
+						r, err := iblImage.Open()
+						if err != nil {
+							return false, fmt.Errorf("cannot open initial boot loader image: %w", err)
+						}
+						defer r.Close()
+
+						digest, err := efiComputePeImageDigest(pcrAlg.GetHash(), r, r.Size())
+						if err != nil {
+							return false, fmt.Errorf("cannot compute Authenticode digest of initial boot loader image: %w", err)
+						}
+						return bytes.Equal(digest, ev.Digests[pcrAlg]), nil
+					}()
+					switch {
+					case err != nil:
+						return nil, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with the initial boot loader image: %w", data.DevicePath, err)
+					case !isIBLLoadEvent:
+						return nil, fmt.Errorf("OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is not associated with the initial boot loader image", data.DevicePath)
+					}
+				}
+
+				// We assume this is the IBL for the OS. Obtain signatures from binary
 				// This is the IBL for the OS. Obtain signatures from binary
 				seenIBLLoadEvent = true
 				signer, err := extractSignerWithTrustAnchorFromImage(result.UsedAuthorities, iblImage)
@@ -703,7 +698,7 @@ NextEvent:
 					return nil, fmt.Errorf("cannot determine if OS initial boot loader was verified by any X.509 certificate measured by any EV_EFI_VARIABLE_AUTHORITY event: %w", err)
 				}
 
-				ok, err := checkX509CertificatePublicKeyStrength(signer)
+				ok, err = checkX509CertificatePublicKeyStrength(signer)
 				if err != nil {
 					return nil, fmt.Errorf("cannot determine public key strength of initial OS boot loader signer: %w", err)
 				}
@@ -734,7 +729,6 @@ NextEvent:
 				}
 
 				measuredSignatures = append(measuredSignatures, ev.Digests[pcrAlg])
-				seenOSPresentVerification = true
 				ok, err := checkSignatureDataStrength(eslType, esdData)
 				if err != nil {
 					return nil, fmt.Errorf("cannot check strength of EFI_SIGNATURE_DATA associated with EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: %w", err)
