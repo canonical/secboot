@@ -417,16 +417,9 @@ func (m *lockoutAuthValueUpdateStateMachine) setNewAuthValue(policyAlg tpm2.Hash
 	defer done()
 
 	// We use command parameter encryption here to protect the new authorization value.
-	switch {
-	case session.Handle().Type() == tpm2.HandleTypePolicySession:
-		// We're using policy auth so need to supply the HMAC session as an extra
-		// session for parameter encryption.
-		err = m.tpm.HierarchyChangeAuth(m.tpm.LockoutHandleContext(), m.authParams.NewAuthValue, session, m.tpm.HmacSession().IncludeAttrs(tpm2.AttrCommandEncrypt))
-	default:
-		// We're using HMAC auth
-		err = m.tpm.HierarchyChangeAuth(m.tpm.LockoutHandleContext(), m.authParams.NewAuthValue, session.IncludeAttrs(tpm2.AttrCommandEncrypt))
-	}
-	if err != nil {
+	// We're using policy auth so need to supply the HMAC session as an extra
+	// session for parameter encryption.
+	if err := m.tpm.HierarchyChangeAuth(m.tpm.LockoutHandleContext(), m.authParams.NewAuthValue, session, m.tpm.HmacSession().IncludeAttrs(tpm2.AttrCommandEncrypt)); err != nil {
 		return nil, fmt.Errorf("cannot set new auth value: %w", err)
 	}
 
