@@ -503,8 +503,8 @@ func (s *provisioningSuite) TestProvisionAfterInterruptedNewLockoutAuthValue2(c 
 	})
 
 	err := s.TPM().EnsureProvisioned(WithLockoutAuthData(data))
-	c.Check(err, Equals, ErrLockoutAuthUpdateInterrupted)
-	c.Check(err, ErrorMatches, `a previous attempt to update the authorization parameters for the lockout hierarchy was interrupted`)
+	c.Check(err, Equals, ErrLockoutAuthInvalid)
+	c.Check(err, ErrorMatches, `the authorization parameters for the lockout hierarchy are invalid`)
 }
 
 func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue3(c *C) {
@@ -588,8 +588,8 @@ func (s *provisioningSuite) TestProvisionAfterInterruptedNewLockoutAuthValue3(c 
 	})
 
 	err := s.TPM().EnsureProvisioned(WithLockoutAuthData(data))
-	c.Check(err, Equals, ErrLockoutAuthUpdateInterrupted)
-	c.Check(err, ErrorMatches, `a previous attempt to update the authorization parameters for the lockout hierarchy was interrupted`)
+	c.Check(err, Equals, ErrLockoutAuthInvalid)
+	c.Check(err, ErrorMatches, `the authorization parameters for the lockout hierarchy are invalid`)
 }
 
 func (s *provisioningSuite) TestProvisionWithUnconfiguredLockoutAuthIfTPMAlreadyConfigured(c *C) {

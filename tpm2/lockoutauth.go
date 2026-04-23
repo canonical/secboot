@@ -39,28 +39,23 @@ import (
 )
 
 var (
-	// ErrInvalidLockoutAuthPolicy is returned from [Connection.ResetDictionaryAttackLock] or
-	// [Connection.EnsureProvisioned] if the authorization policy for the lockout hierarchy is
-	// not consistent with the supplied data. [Connection.EnsureProvisioned] should be called
-	// with the [WithProvisionNewLockoutAuthData] option in order to fix this.
-	ErrInvalidLockoutAuthPolicy = errors.New("the authorization policy for the lockout hierarchy is inconsistent with the supplied data")
-
 	// ErrLockoutAuthInitialized is returned from [Connection.EnsureProvisioned] when called with
 	// the [WithUnconfiguredLockoutAuth] option if the authorization parameters for the lockout
 	// hierarchy have already been configured.
 	ErrLockoutAuthInitialized = errors.New("the authorization parameters for the lockout hierarchy are already initialized")
+
+	// ErrLockoutAuthInvalid is returned from [Connection.ResetDictionaryAttackLock] or
+	// [Connection.EnsureProvisioned] if the authorization parameters for the lockout hierarchy
+	// are invalid for the required use or not consistent with the supplied data.
+	// [Connection.EnsureProvisioned] should be called with the [WithProvisionNewLockoutAuthData]
+	// option in order to fix this.
+	ErrLockoutAuthInvalid = errors.New("the authorization parameters for the lockout hierarchy are invalid")
 
 	// ErrLockoutAuthNotInitialized is returned from [Connection.ResetDictionaryAttackLock] if
 	// the authorization parameters for the lockout hierarchy need to be initialized.
 	// [Connection.EnsureProvisioned] should be called with the [WithProvisionNewLockoutAuthData]
 	// option in order to fix this.
 	ErrLockoutAuthNotInitialized = errors.New("the authorization parameters for the lockout hierarchy are not fully initialized")
-
-	// ErrLockoutAuthUpdateInterrupted is returned from [Connection.ResetDictionaryAttackLock] or
-	// [Connection.EnsureProvisioned] if a previous update to the authorization value for the lockout
-	// hierarchy was interrupted. [Connection.EnsureProvisioned] should be called with the
-	// [WithProvisionNewLockoutAuthData] option in order to fix this.
-	ErrLockoutAuthUpdateInterrupted = errors.New("a previous attempt to update the authorization parameters for the lockout hierarchy was interrupted")
 
 	// ErrLockoutAuthUpdateUnsupported is returned from [Connection.EnsureProvisioned] when called
 	// with the [WithProvisionNewLockoutAuthData] option if the authorization value for the
@@ -535,7 +530,7 @@ func (t *Connection) authorizeLockout(authParams *lockoutAuthParams, allowFallba
 				}
 			}
 			if policy == nil && !allowFallbackToHMACSession {
-				return nil, nil, ErrInvalidLockoutAuthPolicy
+				return nil, nil, ErrLockoutAuthInvalid
 			}
 		}
 	}
@@ -586,7 +581,7 @@ func (t *Connection) authorizeLockout(authParams *lockoutAuthParams, allowFallba
 		switch {
 		case errors.As(err, &pe):
 			// If a path cannot be selected, assume that a previous update was interrutped.
-			return nil, nil, ErrLockoutAuthUpdateInterrupted
+			return nil, nil, ErrLockoutAuthInvalid
 		case err != nil:
 			// Treat any other error as invalid auth data.
 			return nil, nil, &InvalidLockoutAuthDataError{err: fmt.Errorf("cannot execute policy: %w", err)}
@@ -678,10 +673,10 @@ func (t *Connection) resetDictionaryAttackLockImpl(params *lockoutAuthParams) er
 // [ErrTPMLockout] error will be returned.
 //
 // If the authorization policy for the TPM's lockout hierarchy is invalid, an
-// [ErrInvalidLockoutAuthPolicy] error will be returned.
+// [ErrLockoutAuthInvalid] error will be returned.
 //
 // If a previous call to [Connection.EnsureProvisioned] with the [WithProvisionNewLockoutAuthData]
-// option was interrupted, this may return a [ErrLockoutAuthUpdateInterrupted] error. In this case,
+// option was interrupted, this may return a [ErrLockoutAuthInvalid] error. In this case,
 // Connection.EnsureProvisioned] should be called again with the [WithProvisionNewLockoutAuthData]
 // option in order to complete the previous operation.
 func (t *Connection) ResetDictionaryAttackLock(lockoutAuthData []byte) error {

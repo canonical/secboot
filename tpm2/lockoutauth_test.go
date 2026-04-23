@@ -703,8 +703,8 @@ func (s *lockoutauthSuite) TestResetDictionaryAttackLockInterruptedAuthValueRota
 			NewAuthValue: testutil.DecodeHexString(c, "db82cbebd10ebd831b48ff8ae7275a23029074ba622c0416d97cd34dd38d8186"),
 		}),
 	})
-	c.Check(err, ErrorMatches, `a previous attempt to update the authorization parameters for the lockout hierarchy was interrupted`)
-	c.Check(err, Equals, ErrLockoutAuthUpdateInterrupted)
+	c.Check(err, ErrorMatches, `the authorization parameters for the lockout hierarchy are invalid`)
+	c.Check(err, Equals, ErrLockoutAuthInvalid)
 }
 
 func (s *lockoutauthSuite) TestResetDictionaryAttackLockInterruptedAuthValueRotation2(c *C) {
@@ -722,8 +722,8 @@ func (s *lockoutauthSuite) TestResetDictionaryAttackLockInterruptedAuthValueRota
 			NewAuthPolicy: policy2,
 		}),
 	})
-	c.Check(err, ErrorMatches, `a previous attempt to update the authorization parameters for the lockout hierarchy was interrupted`)
-	c.Check(err, Equals, ErrLockoutAuthUpdateInterrupted)
+	c.Check(err, ErrorMatches, `the authorization parameters for the lockout hierarchy are invalid`)
+	c.Check(err, Equals, ErrLockoutAuthInvalid)
 }
 
 func (s *lockoutauthSuite) TestResetDictionaryAttackLockAuthFail(c *C) {
@@ -780,6 +780,6 @@ func (s *lockoutauthSuite) TestResetDictionaryAttackLockInvalidPolicy(c *C) {
 			AuthPolicy: policy,
 		}),
 	})
-	c.Check(err, ErrorMatches, `the authorization policy for the lockout hierarchy is inconsistent with the supplied data`)
-	c.Check(err, Equals, ErrInvalidLockoutAuthPolicy)
+	c.Check(err, ErrorMatches, `the authorization parameters for the lockout hierarchy are invalid`)
+	c.Check(err, Equals, ErrLockoutAuthInvalid)
 }

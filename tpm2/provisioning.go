@@ -217,7 +217,7 @@ func WithUnconfiguredLockoutAuth() EnsureProvisionedOption {
 		if p.lockoutAuthParams != nil || p.lockoutAuthParamsErr != nil {
 			panic("WithLockoutAuthValue incompatible with WithLockoutAuthData and WithUnconfiguredLockoutAuth")
 		}
-		p.lockoutAuthParams = &LockoutAuthParams{
+		p.lockoutAuthParams = &lockoutAuthParams{
 			noAuthValue: true,
 		}
 	}
