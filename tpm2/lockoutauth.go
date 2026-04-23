@@ -45,6 +45,11 @@ var (
 	// with the [WithProvisionNewLockoutAuthData] option in order to fix this.
 	ErrInvalidLockoutAuthPolicy = errors.New("the authorization policy for the lockout hierarchy is inconsistent with the supplied data")
 
+	// ErrLockoutAuthInitialized is returned from [Connection.EnsureProvisioned] when called with
+	// the [WithUnconfiguredLockoutAuth] option if the authorization parameters for the lockout
+	// hierarchy have already been configured.
+	ErrLockoutAuthInitialized = errors.New("the authorization parameters for the lockout hierarchy are already initialized")
+
 	// ErrLockoutAuthNotInitialized is returned from [Connection.ResetDictionaryAttackLock] if
 	// the authorization parameters for the lockout hierarchy need to be initialized.
 	// [Connection.EnsureProvisioned] should be called with the [WithProvisionNewLockoutAuthData]
@@ -531,8 +536,10 @@ func (t *Connection) authorizeLockout(authParams *lockoutAuthParams, allowFallba
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot obtain value of TPM_PT_PERMANENT: %w", err)
 	}
-	lockoutAuthSet := tpm2.PermanentAttributes(val)&tpm2.AttrLockoutAuthSet > 0
-	if lockoutAuthSet {
+	switch tpm2.PermanentAttributes(val)&tpm2.AttrLockoutAuthSet > 0 {
+	case true && len(authParams.AuthValue) == 0:
+		return nil, nil, ErrLockoutAuthInitialized
+	case true:
 		authValue = authParams.AuthValue
 	}
 

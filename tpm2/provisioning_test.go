@@ -124,7 +124,7 @@ func (s *provisioningSimulatorSuite) testProvisionNewTPM(c *C, data *testProvisi
 		return nil
 	}
 
-	opts := []EnsureProvisionedOption{WithLockoutAuthValue(nil), WithProvisionNewLockoutAuthData(bytes.NewReader(data.lockoutAuthBytes), syncLockoutAuthData)}
+	opts := []EnsureProvisionedOption{WithUnconfiguredLockoutAuth(), WithProvisionNewLockoutAuthData(bytes.NewReader(data.lockoutAuthBytes), syncLockoutAuthData)}
 	if data.clear {
 		opts = append(opts, WithClearBeforeProvision())
 	}
@@ -593,6 +593,14 @@ func (s *provisioningSuite) TestProvisionAfterInterruptedNewLockoutAuthValue3(c 
 	c.Check(err, ErrorMatches, `a previous attempt to update the authorization parameters for the lockout hierarchy was interrupted`)
 }
 
+func (s *provisioningSuite) TestProvisionWithUnconfiguredLockoutAuthIfTPMAlreadyConfigured(c *C) {
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+
+	err := s.TPM().EnsureProvisioned(WithUnconfiguredLockoutAuth())
+	c.Check(err, Equals, ErrLockoutAuthInitialized)
+	c.Check(err, ErrorMatches, `the authorization parameters for the lockout hierarchy are already initialized`)
+}
+
 func (s *provisioningSimulatorSuite) TestProvisionTPMInLockout(c *C) {
 	// Trip the DA logic by triggering an auth failure with a DA protected
 	// resource.
@@ -629,9 +637,9 @@ func (s *provisioningSimulatorSuite) testProvisionErrorHandling(c *C, mode Provi
 	var opts []EnsureProvisionedOption
 	switch mode {
 	case ProvisionModeFull:
-		opts = append(opts, WithLockoutAuthValue(nil))
+		opts = append(opts, WithUnconfiguredLockoutAuth())
 	case ProvisionModeClear:
-		opts = append(opts, WithLockoutAuthValue(nil), WithClearBeforeProvision())
+		opts = append(opts, WithUnconfiguredLockoutAuth(), WithClearBeforeProvision())
 	}
 	return s.TPM().EnsureProvisioned(opts...)
 }
@@ -646,9 +654,9 @@ func (s *provisioningSuite) testProvisionErrorHandling(c *C, mode ProvisionMode)
 	var opts []EnsureProvisionedOption
 	switch mode {
 	case ProvisionModeFull:
-		opts = append(opts, WithLockoutAuthValue(nil))
+		opts = append(opts, WithUnconfiguredLockoutAuth())
 	case ProvisionModeClear:
-		opts = append(opts, WithLockoutAuthValue(nil), WithClearBeforeProvision())
+		opts = append(opts, WithUnconfiguredLockoutAuth(), WithClearBeforeProvision())
 	}
 	return s.TPM().EnsureProvisioned(opts...)
 }
@@ -772,7 +780,7 @@ func (s *provisioningSuite) testProvisionRecreateEK(c *C, full bool) {
 	var lockoutAuthData []byte
 
 	c.Check(s.TPM().EnsureProvisioned(
-		WithLockoutAuthValue(nil),
+		WithUnconfiguredLockoutAuth(),
 		WithProvisionNewLockoutAuthData(bytes.NewReader(lockoutAuthBytes), func(data []byte) error {
 			lockoutAuthData = data
 			return nil
@@ -820,7 +828,7 @@ func (s *provisioningSuite) testProvisionRecreateSRK(c *C, full bool) {
 	var lockoutAuthData []byte
 
 	c.Check(s.TPM().EnsureProvisioned(
-		WithLockoutAuthValue(nil),
+		WithUnconfiguredLockoutAuth(),
 		WithProvisionNewLockoutAuthData(bytes.NewReader(lockoutAuthBytes), func(data []byte) error {
 			lockoutAuthData = data
 			return nil
@@ -895,7 +903,7 @@ func (s *provisioningSuite) testProvisionWithCustomSRKTemplate(c *C, clear bool)
 				KeyBits:  2048,
 				Exponent: 0}}}
 
-	opts := []EnsureProvisionedOption{WithLockoutAuthValue(nil), WithCustomSRKTemplate(&template)}
+	opts := []EnsureProvisionedOption{WithUnconfiguredLockoutAuth(), WithCustomSRKTemplate(&template)}
 	if clear {
 		opts = append(opts, WithClearBeforeProvision())
 	}
@@ -962,7 +970,7 @@ func (s *provisioningSuite) testProvisionDefaultPreservesCustomSRKTemplate(c *C,
 				Exponent: 0}}}
 
 	c.Check(s.TPM().EnsureProvisioned(
-		WithLockoutAuthValue(nil),
+		WithUnconfiguredLockoutAuth(),
 		WithProvisionNewLockoutAuthData(bytes.NewReader(lockoutAuthBytes), func(data []byte) error {
 			lockoutAuthData = data
 			return nil
@@ -1016,7 +1024,7 @@ func (s *provisioningSuite) TestProvisionDefaultClearRemovesCustomSRKTemplate(c 
 	c.Check(s.TPM().EnsureProvisioned(WithCustomSRKTemplate(&template)), Equals, ErrTPMProvisioningRequiresLockout)
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template)
 
-	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthValue(nil), WithClearBeforeProvision()), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(WithUnconfiguredLockoutAuth(), WithClearBeforeProvision()), IsNil)
 	s.validateSRK(c)
 }
 

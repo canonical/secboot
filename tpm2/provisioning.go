@@ -210,6 +210,17 @@ type ensureProvisionedParams struct {
 
 type EnsureProvisionedOption func(*ensureProvisionedParams)
 
+// WithUnconfiguredLockoutAuth tells [Connection.EnsureProvisioned] that it can use the TPM's lockout
+// hierarchy before the authorization parameters for the lockout hierarchy are configured.
+func WithUnconfiguredLockoutAuth() EnsureProvisionedOption {
+	return func(p *ensureProvisionedParams) {
+		if p.lockoutAuthParams != nil || p.lockoutAuthParamsErr != nil {
+			panic("WithLockoutAuthValue incompatible with WithLockoutAuthData and WithUnconfiguredLockoutAuth")
+		}
+		p.lockoutAuthParams = new(lockoutAuthParams)
+	}
+}
+
 // WithLockoutAuthValue tells [Connection.EnsureProvisioned] that it can use the TPM's lockout hierarchy
 // with the supplied authorization value. This option is for systems that were configured with an older
 // version of [Connection.EnsureProvisioned] where an authorization value was chosen and supplied by the
@@ -220,7 +231,7 @@ type EnsureProvisionedOption func(*ensureProvisionedParams)
 func WithLockoutAuthValue(authValue []byte) EnsureProvisionedOption {
 	return func(p *ensureProvisionedParams) {
 		if p.lockoutAuthParams != nil || p.lockoutAuthParamsErr != nil {
-			panic("WithLockoutAuthValue incompatible with WithLockoutAuthData")
+			panic("WithLockoutAuthValue incompatible with WithLockoutAuthData and WithUnconfiguredLockoutAuth")
 		}
 		p.lockoutAuthParams = &lockoutAuthParams{
 			AuthValue: authValue,
@@ -237,7 +248,7 @@ func WithLockoutAuthValue(authValue []byte) EnsureProvisionedOption {
 func WithLockoutAuthData(data []byte) EnsureProvisionedOption {
 	return func(p *ensureProvisionedParams) {
 		if p.lockoutAuthParams != nil {
-			panic("WithLockoutAuthData incompatible with WithLockoutAuthValue")
+			panic("WithLockoutAuthData incompatible with WithLockoutAuthValue and WithUnconfiguredLockoutAuth")
 		}
 		p.lockoutAuthParamsErr = json.Unmarshal(data, &p.lockoutAuthParams)
 	}
@@ -299,18 +310,20 @@ func WithCustomSRKTemplate(template *tpm2.Public) EnsureProvisionedOption {
 // only way to recover from this is to clear the TPM either by calling this function with the [WithClearBeforeProvision]
 // option (and providing the correct authorization value for the lockout hierarchy), or by using the physical presence interface.
 //
-// If the [WithLockoutAuthValue] or [WithLockoutAuthData] option is supplied, then owner clear will be disabled, and the
-// parameters of the TPM's dictionary attack logic will be configured to appropriate values. The authorization value for the
-// lockout hierarchy will be set or updated if the [WithProvisionNewLockoutAuthData] option is supplied.
+// If the [WithLockoutAuthValue], [WithLockoutAuthData] or [WithUnconfiguredLockoutAuth] option is supplied, then owner clear
+// will be disabled, and the parameters of the TPM's dictionary attack logic will be configured to appropriate values. The
+// authorization value for the lockout hierarchy will be set or updated if the [WithProvisionNewLockoutAuthData] option is
+// supplied.
 //
-// If the [WithLockoutAuthValue] or [WithLockoutAuthData] option is supplied with the wrong value, then a [AuthFailError] error
+// If the [WithLockoutAuthValue], [WithLockoutAuthData] option is supplied with the wrong value, then a [AuthFailError] error
 // may be returned. If this happens, the TPM will have entered dictionary attack lockout mode for the lockout hierarchy. Further
 // calls will result in a [ErrTPMLockout] error being returned. The only way to recover from this is to either wait for the
 // pre-programmed recovery time to expire, or to clear the TPM via the physical presence interface by calling
 // [RequestTPMClearUsingPPI].
 //
 // If [WithClearBeforeProvision] is not supplied, this function will not affect the ability to recover sealed keys that
-// can currently be recovered. If it is supplied, then one of [WithLockoutAuthValue] or [WithLockoutAuthData] must be supplied.
+// can currently be recovered. If it is supplied, then one of [WithLockoutAuthValue], [WithLockoutAuthData] or
+// [WithUnconfiguredLockoutAuth] must be supplied.
 func (t *Connection) EnsureProvisioned(options ...EnsureProvisionedOption) error {
 	params := &ensureProvisionedParams{
 		mode:                   provisionModeFull,
@@ -325,9 +338,9 @@ func (t *Connection) EnsureProvisioned(options ...EnsureProvisionedOption) error
 	case params.lockoutAuthParamsErr != nil:
 		return &InvalidLockoutAuthDataError{err: params.lockoutAuthParamsErr}
 	case params.mode == provisionModeClear && params.lockoutAuthParams == nil:
-		return errors.New("WithClearBeforeProvision requires WithLockoutAuthParams or WithLockoutAuthData")
+		return errors.New("WithClearBeforeProvision requires WithLockoutAuthParams, WithLockoutAuthData, or WithUnconfiguredLockoutAuth")
 	case params.lockoutAuthParams == nil && params.newLockoutAuthValue:
-		return errors.New("WithProvisionNewLockoutAuthData requires WithLockoutAuthParams or WithLockoutAuthData")
+		return errors.New("WithProvisionNewLockoutAuthData requires WithLockoutAuthParams, WithLockoutAuthData, or WithUnconfiguredLockoutAuth")
 	case params.lockoutAuthParams == nil:
 		params.mode = provisionModeWithoutLockout
 	}
