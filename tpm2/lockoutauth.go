@@ -96,6 +96,12 @@ type lockoutAuthParams struct {
 	AuthPolicy    *policyutil.Policy
 	NewAuthValue  tpm2.Auth
 	NewAuthPolicy *policyutil.Policy
+
+	// noAuthValue is a special value only set by WithUnconfiguredLockoutAuth so
+	// that we can return an appropriate error rather than triggering a lockout
+	// if the option is supplied when the lockout hierarchy already has an
+	// authorization value.
+	noAuthValue bool
 }
 
 func (p *lockoutAuthParams) MarshalJSON() ([]byte, error) {
@@ -302,6 +308,10 @@ func newLockoutAuthValueUpdateStateMachine(rand io.Reader, tpm *Connection, auth
 	return m, nil
 }
 
+func (m *lockoutAuthValueUpdateStateMachine) authorizeLockout(allowFallbackToHMACSession bool, command tpm2.CommandCode) (session tpm2.SessionContext, done func(), err error) {
+	return m.tpm.authorizeLockout(m.authParams, allowFallbackToHMACSession, command, m.signedAuthorizer)
+}
+
 func (m *lockoutAuthValueUpdateStateMachine) signedAuthorizer(sessionAlg tpm2.HashAlgorithmId, sessionNonce tpm2.Nonce, authKey tpm2.Name, policyRef tpm2.Nonce) (*policyutil.PolicySignedAuthorization, error) {
 	params := &policyutil.PolicySignedParams{
 		HashAlg:  sessionAlg,
@@ -353,7 +363,7 @@ func (m *lockoutAuthValueUpdateStateMachine) prepare() (lockoutAuthValueUpdateSt
 // temporary policy to update it's authorization value to a specific value, and to update it's policy
 // using it's authorization value. Note that it is not safe to use the authorization value yet though.
 func (m *lockoutAuthValueUpdateStateMachine) setNewAuthValuePolicy(policyAlg tpm2.HashAlgorithmId, policyDigest tpm2.Digest) (lockoutAuthValueUpdateStateMachineState, error) {
-	session, done, err := m.tpm.authorizeLockout(m.authParams, true, tpm2.CommandSetPrimaryPolicy, m.signedAuthorizer)
+	session, done, err := m.authorizeLockout(true, tpm2.CommandSetPrimaryPolicy)
 	switch {
 	case errors.Is(err, errLockoutAuthPolicyNotSupported):
 		return m.setAuthValueWithoutPolicy, nil
@@ -378,7 +388,7 @@ func (m *lockoutAuthValueUpdateStateMachine) setAuthValueWithoutPolicy() (lockou
 	m.authParams.AuthPolicy = nil
 	m.authParams.NewAuthPolicy = nil
 
-	session, done, err := m.tpm.authorizeLockout(m.authParams, false, tpm2.CommandHierarchyChangeAuth, m.signedAuthorizer)
+	session, done, err := m.authorizeLockout(false, tpm2.CommandHierarchyChangeAuth)
 	if err != nil {
 		return nil, err
 	}
@@ -395,6 +405,7 @@ func (m *lockoutAuthValueUpdateStateMachine) setAuthValueWithoutPolicy() (lockou
 
 	m.authParams.AuthValue = m.authParams.NewAuthValue
 	m.authParams.NewAuthValue = nil
+	m.authParams.noAuthValue = false
 
 	return nil, nil
 }
@@ -404,7 +415,7 @@ func (m *lockoutAuthValueUpdateStateMachine) setAuthValueWithoutPolicy() (lockou
 // On completion, the updated state can only be used to authorize the lockout hierarchy using the
 // temporary policy to set a new policy using an authorization value.
 func (m *lockoutAuthValueUpdateStateMachine) setNewAuthValue(policyAlg tpm2.HashAlgorithmId) (lockoutAuthValueUpdateStateMachineState, error) {
-	session, done, err := m.tpm.authorizeLockout(m.authParams, false, tpm2.CommandHierarchyChangeAuth, m.signedAuthorizer)
+	session, done, err := m.authorizeLockout(false, tpm2.CommandHierarchyChangeAuth)
 	if err != nil {
 		return nil, err
 	}
@@ -426,6 +437,7 @@ func (m *lockoutAuthValueUpdateStateMachine) setNewAuthValue(policyAlg tpm2.Hash
 
 	m.authParams.AuthValue = m.authParams.NewAuthValue
 	m.authParams.NewAuthValue = nil
+	m.authParams.noAuthValue = false
 
 	var newPolicyDigest tpm2.Digest
 	newPolicyDigest, m.authParams.NewAuthPolicy, err = newDefaultLockoutAuthPolicy(policyAlg)
@@ -440,7 +452,7 @@ func (m *lockoutAuthValueUpdateStateMachine) setNewAuthValue(policyAlg tpm2.Hash
 
 // setDefaultPolicy sets the authorization policy for the lockout hierarchy to the default policy.
 func (m *lockoutAuthValueUpdateStateMachine) setDefaultPolicy(policyAlg tpm2.HashAlgorithmId, policyDigest tpm2.Digest) (lockoutAuthValueUpdateStateMachineState, error) {
-	session, done, err := m.tpm.authorizeLockout(m.authParams, false, tpm2.CommandSetPrimaryPolicy, m.signedAuthorizer)
+	session, done, err := m.authorizeLockout(false, tpm2.CommandSetPrimaryPolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -536,10 +548,10 @@ func (t *Connection) authorizeLockout(authParams *lockoutAuthParams, allowFallba
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot obtain value of TPM_PT_PERMANENT: %w", err)
 	}
-	switch tpm2.PermanentAttributes(val)&tpm2.AttrLockoutAuthSet > 0 {
-	case true && len(authParams.AuthValue) == 0:
+	switch lockoutAuthSet := tpm2.PermanentAttributes(val)&tpm2.AttrLockoutAuthSet > 0; {
+	case lockoutAuthSet && authParams.noAuthValue:
 		return nil, nil, ErrLockoutAuthInitialized
-	case true:
+	case lockoutAuthSet:
 		authValue = authParams.AuthValue
 	}
 

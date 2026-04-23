@@ -217,7 +217,9 @@ func WithUnconfiguredLockoutAuth() EnsureProvisionedOption {
 		if p.lockoutAuthParams != nil || p.lockoutAuthParamsErr != nil {
 			panic("WithLockoutAuthValue incompatible with WithLockoutAuthData and WithUnconfiguredLockoutAuth")
 		}
-		p.lockoutAuthParams = new(lockoutAuthParams)
+		p.lockoutAuthParams = &LockoutAuthParams{
+			noAuthValue: true,
+		}
 	}
 }
 
@@ -337,7 +339,7 @@ func (t *Connection) EnsureProvisioned(options ...EnsureProvisionedOption) error
 		return errors.New("supplied SRK template is not valid for a parent key")
 	case params.lockoutAuthParamsErr != nil:
 		return &InvalidLockoutAuthDataError{err: params.lockoutAuthParamsErr}
-	case params.mode == provisionModeClear && params.lockoutAuthParams == nil:
+	case params.lockoutAuthParams == nil && params.mode == provisionModeClear:
 		return errors.New("WithClearBeforeProvision requires WithLockoutAuthParams, WithLockoutAuthData, or WithUnconfiguredLockoutAuth")
 	case params.lockoutAuthParams == nil && params.newLockoutAuthValue:
 		return errors.New("WithProvisionNewLockoutAuthData requires WithLockoutAuthParams, WithLockoutAuthData, or WithUnconfiguredLockoutAuth")

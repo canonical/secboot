@@ -116,7 +116,6 @@ func (s *provisioningSimulatorSuite) testProvisionNewTPM(c *C, data *testProvisi
 
 	expectedLockoutAuthData := data.expectedLockoutAuthData
 	syncLockoutAuthData := func(data []byte) error {
-		c.Logf("%s", string(data))
 		c.Assert(expectedLockoutAuthData, Not(HasLen), 0)
 		expected := expectedLockoutAuthData[0]
 		expectedLockoutAuthData = expectedLockoutAuthData[1:]
@@ -637,9 +636,9 @@ func (s *provisioningSimulatorSuite) testProvisionErrorHandling(c *C, mode Provi
 	var opts []EnsureProvisionedOption
 	switch mode {
 	case ProvisionModeFull:
-		opts = append(opts, WithUnconfiguredLockoutAuth())
+		opts = append(opts, WithLockoutAuthValue(nil))
 	case ProvisionModeClear:
-		opts = append(opts, WithUnconfiguredLockoutAuth(), WithClearBeforeProvision())
+		opts = append(opts, WithLockoutAuthValue(nil), WithClearBeforeProvision())
 	}
 	return s.TPM().EnsureProvisioned(opts...)
 }
@@ -654,9 +653,9 @@ func (s *provisioningSuite) testProvisionErrorHandling(c *C, mode ProvisionMode)
 	var opts []EnsureProvisionedOption
 	switch mode {
 	case ProvisionModeFull:
-		opts = append(opts, WithUnconfiguredLockoutAuth())
+		opts = append(opts, WithLockoutAuthValue(nil))
 	case ProvisionModeClear:
-		opts = append(opts, WithUnconfiguredLockoutAuth(), WithClearBeforeProvision())
+		opts = append(opts, WithLockoutAuthValue(nil), WithClearBeforeProvision())
 	}
 	return s.TPM().EnsureProvisioned(opts...)
 }
