@@ -124,7 +124,7 @@ func (s *provisioningSimulatorSuite) testProvisionNewTPM(c *C, data *testProvisi
 		return nil
 	}
 
-	opts := []EnsureProvisionedOption{WithLockoutAuthValue(nil), WithProvisionNewLockoutAuthValue(bytes.NewReader(data.lockoutAuthBytes), syncLockoutAuthData)}
+	opts := []EnsureProvisionedOption{WithLockoutAuthValue(nil), WithProvisionNewLockoutAuthData(bytes.NewReader(data.lockoutAuthBytes), syncLockoutAuthData)}
 	if data.clear {
 		opts = append(opts, WithClearBeforeProvision())
 	}
@@ -355,7 +355,7 @@ func (s *provisioningSuite) TestProvisionWithLockoutAuthDataNoAuthPolicies(c *C)
 }
 
 func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue1(c *C) {
-	// Test resuming with WithProvisionNewLockoutAuthValue after a previous attempt was interrupted
+	// Test resuming with WithProvisionNewLockoutAuthData after a previous attempt was interrupted
 	// after prepare
 	origValue := []byte("1234")
 	policyDigest, policy1 := s.newDefaultLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256)
@@ -385,7 +385,7 @@ func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue1(c *C) {
 		return nil
 	}
 
-	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthValue(bytes.NewReader(nil), syncLockoutAuthData)), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthData(bytes.NewReader(nil), syncLockoutAuthData)), IsNil)
 	s.AddCleanup(func() {
 		// github.com/canonical/go-tpm2/testutil cannot restore this because
 		// EnsureProvisioned uses command parameter encryption. We have to do
@@ -423,7 +423,7 @@ func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue1(c *C) {
 }
 
 func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue2(c *C) {
-	// Test resuming with WithProvisionNewLockoutAuthValue after a previous attempt was interrupted
+	// Test resuming with WithProvisionNewLockoutAuthData after a previous attempt was interrupted
 	// after setNewAuthValuePolicy
 	origValue := []byte("1234")
 	policyDigest, policy := s.newUpdateAuthValueLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256, origValue)
@@ -450,7 +450,7 @@ func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue2(c *C) {
 		return nil
 	}
 
-	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthValue(bytes.NewReader(nil), syncLockoutAuthData)), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthData(bytes.NewReader(nil), syncLockoutAuthData)), IsNil)
 	s.AddCleanup(func() {
 		// github.com/canonical/go-tpm2/testutil cannot restore this because
 		// EnsureProvisioned uses command parameter encryption. We have to do
@@ -488,7 +488,7 @@ func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue2(c *C) {
 }
 
 func (s *provisioningSuite) TestProvisionAfterInterruptedNewLockoutAuthValue2(c *C) {
-	// Test that we get an appropriate error if a previous call with WithProvisionNewLockoutAuthValue
+	// Test that we get an appropriate error if a previous call with WithProvisionNewLockoutAuthData
 	// was interrupted after setNewAuthValuePolicy.
 	origValue := []byte("1234")
 	policyDigest, policy := s.newUpdateAuthValueLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256, origValue)
@@ -509,7 +509,7 @@ func (s *provisioningSuite) TestProvisionAfterInterruptedNewLockoutAuthValue2(c 
 }
 
 func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue3(c *C) {
-	// Test resuming with WithProvisionNewLockoutAuthValue after a previous attempt was interrupted
+	// Test resuming with WithProvisionNewLockoutAuthData after a previous attempt was interrupted
 	// after setNewAuthValue
 	lockoutAuthBytes := testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c")
 
@@ -535,7 +535,7 @@ func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue3(c *C) {
 		return nil
 	}
 
-	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthValue(bytes.NewReader(nil), syncLockoutAuthData)), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthData(bytes.NewReader(nil), syncLockoutAuthData)), IsNil)
 	s.AddCleanup(func() {
 		// github.com/canonical/go-tpm2/testutil cannot restore this because
 		// EnsureProvisioned uses command parameter encryption. We have to do
@@ -573,7 +573,7 @@ func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue3(c *C) {
 }
 
 func (s *provisioningSuite) TestProvisionAfterInterruptedNewLockoutAuthValue3(c *C) {
-	// Test that we get an appropriate error if a previous call with WithProvisionNewLockoutAuthValue
+	// Test that we get an appropriate error if a previous call with WithProvisionNewLockoutAuthData
 	// was interrupted after setNewAuthValue.
 	lockoutAuthBytes := testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c")
 
@@ -773,7 +773,7 @@ func (s *provisioningSuite) testProvisionRecreateEK(c *C, full bool) {
 
 	c.Check(s.TPM().EnsureProvisioned(
 		WithLockoutAuthValue(nil),
-		WithProvisionNewLockoutAuthValue(bytes.NewReader(lockoutAuthBytes), func(data []byte) error {
+		WithProvisionNewLockoutAuthData(bytes.NewReader(lockoutAuthBytes), func(data []byte) error {
 			lockoutAuthData = data
 			return nil
 		}),
@@ -821,7 +821,7 @@ func (s *provisioningSuite) testProvisionRecreateSRK(c *C, full bool) {
 
 	c.Check(s.TPM().EnsureProvisioned(
 		WithLockoutAuthValue(nil),
-		WithProvisionNewLockoutAuthValue(bytes.NewReader(lockoutAuthBytes), func(data []byte) error {
+		WithProvisionNewLockoutAuthData(bytes.NewReader(lockoutAuthBytes), func(data []byte) error {
 			lockoutAuthData = data
 			return nil
 		}),
@@ -963,7 +963,7 @@ func (s *provisioningSuite) testProvisionDefaultPreservesCustomSRKTemplate(c *C,
 
 	c.Check(s.TPM().EnsureProvisioned(
 		WithLockoutAuthValue(nil),
-		WithProvisionNewLockoutAuthValue(bytes.NewReader(lockoutAuthBytes), func(data []byte) error {
+		WithProvisionNewLockoutAuthData(bytes.NewReader(lockoutAuthBytes), func(data []byte) error {
 			lockoutAuthData = data
 			return nil
 		}),
@@ -1095,7 +1095,7 @@ func (s *provisioningSuite) TestProvisionNewLockoutAuthValueWithoutPolicySupport
 	})
 	s.HierarchyChangeAuth(c, tpm2.HandleLockout, origValue)
 
-	err := s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthValue(rand.Reader, func(_ []byte) error { return nil }))
+	err := s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthData(rand.Reader, func(_ []byte) error { return nil }))
 	c.Check(err, ErrorMatches, `cannot set new lockout hierarchy authorization value: updating the authorization parameters for the lockout hierarchy is not supported`)
 	c.Check(errors.Is(err, ErrLockoutAuthUpdateUnsupported), testutil.IsTrue)
 }

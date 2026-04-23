@@ -42,23 +42,23 @@ var (
 	// ErrInvalidLockoutAuthPolicy is returned from [Connection.ResetDictionaryAttackLock] or
 	// [Connection.EnsureProvisioned] if the authorization policy for the lockout hierarchy is
 	// not consistent with the supplied data. [Connection.EnsureProvisioned] should be called
-	// with the [WithProvisionNewLockoutAuthValue] option in order to fix this.
+	// with the [WithProvisionNewLockoutAuthData] option in order to fix this.
 	ErrInvalidLockoutAuthPolicy = errors.New("the authorization policy for the lockout hierarchy is inconsistent with the supplied data")
 
 	// ErrLockoutAuthNotInitialized is returned from [Connection.ResetDictionaryAttackLock] if
 	// the authorization parameters for the lockout hierarchy need to be initialized.
-	// [Connection.EnsureProvisioned] should be called with the [WithProvisionNewLockoutAuthValue]
+	// [Connection.EnsureProvisioned] should be called with the [WithProvisionNewLockoutAuthData]
 	// option in order to fix this.
 	ErrLockoutAuthNotInitialized = errors.New("the authorization parameters for the lockout hierarchy are not fully initialized")
 
 	// ErrLockoutAuthUpdateInterrupted is returned from [Connection.ResetDictionaryAttackLock] or
 	// [Connection.EnsureProvisioned] if a previous update to the authorization value for the lockout
 	// hierarchy was interrupted. [Connection.EnsureProvisioned] should be called with the
-	// [WithProvisionNewLockoutAuthValue] option in order to fix this.
+	// [WithProvisionNewLockoutAuthData] option in order to fix this.
 	ErrLockoutAuthUpdateInterrupted = errors.New("a previous attempt to update the authorization parameters for the lockout hierarchy was interrupted")
 
 	// ErrLockoutAuthUpdateUnsupported is returned from [Connection.EnsureProvisioned] when called
-	// with the [WithProvisionNewLockoutAuthValue] option if the authorization value for the
+	// with the [WithProvisionNewLockoutAuthData] option if the authorization value for the
 	// lockout hierarchy is already set and the system does not support updating it.
 	ErrLockoutAuthUpdateUnsupported = errors.New("updating the authorization parameters for the lockout hierarchy is not supported")
 
@@ -643,7 +643,7 @@ func (t *Connection) resetDictionaryAttackLockImpl(params *lockoutAuthParams) er
 // ResetDictionaryAttackLock resets the TPM's dictionary attack counter using the
 // TPM2_DictionaryAttackLockReset command. The caller supplies authorization data for the TPM's
 // lockout hierarchy which will have been supplied by a previous call to
-// [Connection.EnsureProvisioned] with the [WithProvisionNewLockoutAuthValue] option.
+// [Connection.EnsureProvisioned] with the [WithProvisionNewLockoutAuthData] option.
 //
 // If the supplied authorization data is invalid, a *[InvalidLockoutAuthDataError] error will
 // be returned.
@@ -661,9 +661,9 @@ func (t *Connection) resetDictionaryAttackLockImpl(params *lockoutAuthParams) er
 // If the authorization policy for the TPM's lockout hierarchy is invalid, an
 // [ErrInvalidLockoutAuthPolicy] error will be returned.
 //
-// If a previous call to [Connection.EnsureProvisioned] with the [WithProvisionNewLockoutAuthValue]
+// If a previous call to [Connection.EnsureProvisioned] with the [WithProvisionNewLockoutAuthData]
 // option was interrupted, this may return a [ErrLockoutAuthUpdateInterrupted] error. In this case,
-// Connection.EnsureProvisioned] should be called again with the [WithProvisionNewLockoutAuthValue]
+// Connection.EnsureProvisioned] should be called again with the [WithProvisionNewLockoutAuthData]
 // option in order to complete the previous operation.
 func (t *Connection) ResetDictionaryAttackLock(lockoutAuthData []byte) error {
 	var params *lockoutAuthParams

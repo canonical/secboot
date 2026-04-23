@@ -167,7 +167,7 @@ func run() int {
 	}
 	defer tpm.Close()
 
-	if err := tpm.EnsureProvisioned(secboot_tpm2.WithProvisionNewLockoutAuthValue(rand.Reader, func(_ []byte) error { return nil })); err != nil {
+	if err := tpm.EnsureProvisioned(secboot_tpm2.WithProvisionNewLockoutAuthData(rand.Reader, func(_ []byte) error { return nil })); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot provision TPM: %v\n", err)
 		return 1
 	}
