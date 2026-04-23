@@ -598,6 +598,7 @@ func (s *lockoutauthSuite) TestResetDictionaryAttackLockAuthPolicyUnset(c *C) {
 	_, policy := s.newDefaultLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256)
 
 	err := s.testResetDictionaryAttackLock(c, &testResetDictionaryAttackLockParams{
+		authValue: authValue,
 		policyAlg: tpm2.HashAlgorithmNull,
 		data: s.makeLockoutAuthData(c, &LockoutAuthParams{
 			AuthValue:  authValue,
