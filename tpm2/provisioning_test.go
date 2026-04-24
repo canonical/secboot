@@ -20,7 +20,9 @@
 package tpm2_test
 
 import (
+	"bytes"
 	"crypto/rand"
+	"errors"
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/mu"
@@ -95,21 +97,46 @@ func (s *provisioningSimulatorSuite) SetUpTest(c *C) {
 var _ = Suite(&provisioningSuite{})
 var _ = Suite(&provisioningSimulatorSuite{})
 
+func lockoutAuthValue(c *C, tpm *Connection, data []byte) []byte {
+	val, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyContextHash)
+	c.Assert(err, IsNil)
+	contextHash := tpm2.HashAlgorithmId(val)
+	c.Assert(contextHash.IsValid(), testutil.IsTrue)
+	return data[:contextHash.Size()]
+}
+
 type testProvisionNewTPMData struct {
-	mode        ProvisionMode
-	lockoutAuth []byte
+	clear                   bool
+	lockoutAuthBytes        []byte
+	expectedLockoutAuthData [][]byte
 }
 
 func (s *provisioningSimulatorSuite) testProvisionNewTPM(c *C, data *testProvisionNewTPMData) {
 	origHmacSession := s.TPM().HmacSession()
 
-	c.Check(s.TPM().EnsureProvisioned(data.mode.Option(data.lockoutAuth), WithProvisionNewLockoutAuthValue(data.lockoutAuth)), IsNil)
+	expectedLockoutAuthData := data.expectedLockoutAuthData
+	syncLockoutAuthData := func(data []byte) error {
+		c.Assert(expectedLockoutAuthData, Not(HasLen), 0)
+		expected := expectedLockoutAuthData[0]
+		expectedLockoutAuthData = expectedLockoutAuthData[1:]
+		c.Check(data, DeepEquals, expected)
+		return nil
+	}
+
+	opts := []EnsureProvisionedOption{WithUnconfiguredLockoutAuth(), WithProvisionNewLockoutAuthData(bytes.NewReader(data.lockoutAuthBytes), syncLockoutAuthData)}
+	if data.clear {
+		opts = append(opts, WithClearBeforeProvision())
+	}
+	c.Check(s.TPM().EnsureProvisioned(opts...), IsNil)
 	s.AddCleanup(func() {
 		// github.com/canonical/go-tpm2/testutil cannot restore this because
 		// EnsureProvisioned uses command parameter encryption. We have to do
 		// this manually else the test fixture fails the test.
+		s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuthValue(c, s.TPM(), data.lockoutAuthBytes))
 		c.Check(s.TPM().HierarchyChangeAuth(s.TPM().LockoutHandleContext(), nil, nil), IsNil)
 	})
+
+	c.Check(expectedLockoutAuthData, HasLen, 0)
 
 	s.validateEK(c)
 	s.validateSRK(c)
@@ -136,7 +163,7 @@ func (s *provisioningSimulatorSuite) testProvisionNewTPM(c *C, data *testProvisi
 	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrInLockout, Equals, tpm2.PermanentAttributes(0))
 
 	// Test the lockout hierarchy auth
-	s.TPM().LockoutHandleContext().SetAuthValue(data.lockoutAuth)
+	s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuthValue(c, s.TPM(), data.lockoutAuthBytes))
 	c.Check(s.TPM().DictionaryAttackLockReset(s.TPM().LockoutHandleContext(), nil), IsNil)
 
 	c.Check(s.TPM().HmacSession(), NotNil)
@@ -155,35 +182,81 @@ func (s *provisioningSimulatorSuite) testProvisionNewTPM(c *C, data *testProvisi
 
 func (s *provisioningSimulatorSuite) TestProvisionNewTPMClear(c *C) {
 	s.testProvisionNewTPM(c, &testProvisionNewTPMData{
-		mode:        ProvisionModeClear,
-		lockoutAuth: []byte("1234")})
+		clear:            true,
+		lockoutAuthBytes: testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c"),
+		expectedLockoutAuthData: [][]byte{
+			[]byte(`{"auth-value":null,"new-auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","new-auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA="}`),
+			[]byte(`{"auth-value":null,"auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA=","new-auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF"}`),
+			[]byte(`{"auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA=","new-auth-policy":"AAAAAAAAAAEADHqZCU8TuxgO7/elTguGw5So3SieBY2dRYOphhKVmu/mfi0NZyjHZFs+bMdtqZ284AAAAAAAAAACIAEBcQAAAAUAAAAAAAEADDuidKgJLPOC+/XOxwcOj4kEPzOZ/Z1YUWk9Coew5Aw15qxGHJWewJDjXAceJJnPkAAAAAEAAAFsAAABOQAAAAAAAQAML2Gkl0eOgfHT9Y1kGXkkE3jVI90qXY6wBtT2Ygksi3HgeTdQwD5WkH4QRDBsnYACAAAAAQAAAWwAAAE6AAAAAAABAAwutwj6joYO8lx+lgwraBTEMW6r5tQ2E+4QIxx/oEZ9ypxOerrTVEjGvnpGCmH/ym8AAAABAAABbAAAAScAAAAAAAEADFWgOLNA+yd26JBC+OGmP0ddbtEpzhpdo1wtbJIlwSui4lkkKncZB7rSyqFuZuALsAAAAAEAAAFsAAABJgAAAAAAAQAMladi5DAnH2ss5iXXhVU2rjlbDNmYkSGb4C7ZBqD+eDxKyQEruFSI6WY5/Lb4ppZNAAAAAQAAAWwAAAEuAAABaw=="}`),
+			[]byte(`{"auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","auth-policy":"AAAAAAAAAAEADHqZCU8TuxgO7/elTguGw5So3SieBY2dRYOphhKVmu/mfi0NZyjHZFs+bMdtqZ284AAAAAAAAAACIAEBcQAAAAUAAAAAAAEADDuidKgJLPOC+/XOxwcOj4kEPzOZ/Z1YUWk9Coew5Aw15qxGHJWewJDjXAceJJnPkAAAAAEAAAFsAAABOQAAAAAAAQAML2Gkl0eOgfHT9Y1kGXkkE3jVI90qXY6wBtT2Ygksi3HgeTdQwD5WkH4QRDBsnYACAAAAAQAAAWwAAAE6AAAAAAABAAwutwj6joYO8lx+lgwraBTEMW6r5tQ2E+4QIxx/oEZ9ypxOerrTVEjGvnpGCmH/ym8AAAABAAABbAAAAScAAAAAAAEADFWgOLNA+yd26JBC+OGmP0ddbtEpzhpdo1wtbJIlwSui4lkkKncZB7rSyqFuZuALsAAAAAEAAAFsAAABJgAAAAAAAQAMladi5DAnH2ss5iXXhVU2rjlbDNmYkSGb4C7ZBqD+eDxKyQEruFSI6WY5/Lb4ppZNAAAAAQAAAWwAAAEuAAABaw=="}`),
+		},
+	})
 }
 
 func (s *provisioningSimulatorSuite) TestProvisionNewTPMFull(c *C) {
 	s.testProvisionNewTPM(c, &testProvisionNewTPMData{
-		mode:        ProvisionModeFull,
-		lockoutAuth: []byte("1234")})
+		clear:            false,
+		lockoutAuthBytes: testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c"),
+		expectedLockoutAuthData: [][]byte{
+			[]byte(`{"auth-value":null,"new-auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","new-auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA="}`),
+			[]byte(`{"auth-value":null,"auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA=","new-auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF"}`),
+			[]byte(`{"auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA=","new-auth-policy":"AAAAAAAAAAEADHqZCU8TuxgO7/elTguGw5So3SieBY2dRYOphhKVmu/mfi0NZyjHZFs+bMdtqZ284AAAAAAAAAACIAEBcQAAAAUAAAAAAAEADDuidKgJLPOC+/XOxwcOj4kEPzOZ/Z1YUWk9Coew5Aw15qxGHJWewJDjXAceJJnPkAAAAAEAAAFsAAABOQAAAAAAAQAML2Gkl0eOgfHT9Y1kGXkkE3jVI90qXY6wBtT2Ygksi3HgeTdQwD5WkH4QRDBsnYACAAAAAQAAAWwAAAE6AAAAAAABAAwutwj6joYO8lx+lgwraBTEMW6r5tQ2E+4QIxx/oEZ9ypxOerrTVEjGvnpGCmH/ym8AAAABAAABbAAAAScAAAAAAAEADFWgOLNA+yd26JBC+OGmP0ddbtEpzhpdo1wtbJIlwSui4lkkKncZB7rSyqFuZuALsAAAAAEAAAFsAAABJgAAAAAAAQAMladi5DAnH2ss5iXXhVU2rjlbDNmYkSGb4C7ZBqD+eDxKyQEruFSI6WY5/Lb4ppZNAAAAAQAAAWwAAAEuAAABaw=="}`),
+			[]byte(`{"auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","auth-policy":"AAAAAAAAAAEADHqZCU8TuxgO7/elTguGw5So3SieBY2dRYOphhKVmu/mfi0NZyjHZFs+bMdtqZ284AAAAAAAAAACIAEBcQAAAAUAAAAAAAEADDuidKgJLPOC+/XOxwcOj4kEPzOZ/Z1YUWk9Coew5Aw15qxGHJWewJDjXAceJJnPkAAAAAEAAAFsAAABOQAAAAAAAQAML2Gkl0eOgfHT9Y1kGXkkE3jVI90qXY6wBtT2Ygksi3HgeTdQwD5WkH4QRDBsnYACAAAAAQAAAWwAAAE6AAAAAAABAAwutwj6joYO8lx+lgwraBTEMW6r5tQ2E+4QIxx/oEZ9ypxOerrTVEjGvnpGCmH/ym8AAAABAAABbAAAAScAAAAAAAEADFWgOLNA+yd26JBC+OGmP0ddbtEpzhpdo1wtbJIlwSui4lkkKncZB7rSyqFuZuALsAAAAAEAAAFsAAABJgAAAAAAAQAMladi5DAnH2ss5iXXhVU2rjlbDNmYkSGb4C7ZBqD+eDxKyQEruFSI6WY5/Lb4ppZNAAAAAQAAAWwAAAEuAAABaw=="}`),
+		},
+	})
 }
 
 func (s *provisioningSimulatorSuite) TestProvisionNewTPMDifferentLockoutAuth(c *C) {
 	s.testProvisionNewTPM(c, &testProvisionNewTPMData{
-		mode:        ProvisionModeClear,
-		lockoutAuth: []byte("foo")})
+		clear:            true,
+		lockoutAuthBytes: testutil.DecodeHexString(c, "f10fa81ad01d6912916951039ed6a06c33f6995a5b6cd307f246d2dd6551edce865b7d2793cf6f2577730e4c6318b8189c5659b86bfa15703825b09359dc9cf9"),
+		expectedLockoutAuthData: [][]byte{
+			[]byte(`{"auth-value":null,"new-auth-value":"8Q+oGtAdaRKRaVEDntagbDP2mVpbbNMH8kbS3WVR7c6GW30nk89vJXdzDkxjGLgY","new-auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA="}`),
+			[]byte(`{"auth-value":null,"auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA=","new-auth-value":"8Q+oGtAdaRKRaVEDntagbDP2mVpbbNMH8kbS3WVR7c6GW30nk89vJXdzDkxjGLgY"}`),
+			[]byte(`{"auth-value":"8Q+oGtAdaRKRaVEDntagbDP2mVpbbNMH8kbS3WVR7c6GW30nk89vJXdzDkxjGLgY","auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA=","new-auth-policy":"AAAAAAAAAAEADHqZCU8TuxgO7/elTguGw5So3SieBY2dRYOphhKVmu/mfi0NZyjHZFs+bMdtqZ284AAAAAAAAAACIAEBcQAAAAUAAAAAAAEADDuidKgJLPOC+/XOxwcOj4kEPzOZ/Z1YUWk9Coew5Aw15qxGHJWewJDjXAceJJnPkAAAAAEAAAFsAAABOQAAAAAAAQAML2Gkl0eOgfHT9Y1kGXkkE3jVI90qXY6wBtT2Ygksi3HgeTdQwD5WkH4QRDBsnYACAAAAAQAAAWwAAAE6AAAAAAABAAwutwj6joYO8lx+lgwraBTEMW6r5tQ2E+4QIxx/oEZ9ypxOerrTVEjGvnpGCmH/ym8AAAABAAABbAAAAScAAAAAAAEADFWgOLNA+yd26JBC+OGmP0ddbtEpzhpdo1wtbJIlwSui4lkkKncZB7rSyqFuZuALsAAAAAEAAAFsAAABJgAAAAAAAQAMladi5DAnH2ss5iXXhVU2rjlbDNmYkSGb4C7ZBqD+eDxKyQEruFSI6WY5/Lb4ppZNAAAAAQAAAWwAAAEuAAABaw=="}`),
+			[]byte(`{"auth-value":"8Q+oGtAdaRKRaVEDntagbDP2mVpbbNMH8kbS3WVR7c6GW30nk89vJXdzDkxjGLgY","auth-policy":"AAAAAAAAAAEADHqZCU8TuxgO7/elTguGw5So3SieBY2dRYOphhKVmu/mfi0NZyjHZFs+bMdtqZ284AAAAAAAAAACIAEBcQAAAAUAAAAAAAEADDuidKgJLPOC+/XOxwcOj4kEPzOZ/Z1YUWk9Coew5Aw15qxGHJWewJDjXAceJJnPkAAAAAEAAAFsAAABOQAAAAAAAQAML2Gkl0eOgfHT9Y1kGXkkE3jVI90qXY6wBtT2Ygksi3HgeTdQwD5WkH4QRDBsnYACAAAAAQAAAWwAAAE6AAAAAAABAAwutwj6joYO8lx+lgwraBTEMW6r5tQ2E+4QIxx/oEZ9ypxOerrTVEjGvnpGCmH/ym8AAAABAAABbAAAAScAAAAAAAEADFWgOLNA+yd26JBC+OGmP0ddbtEpzhpdo1wtbJIlwSui4lkkKncZB7rSyqFuZuALsAAAAAEAAAFsAAABJgAAAAAAAQAMladi5DAnH2ss5iXXhVU2rjlbDNmYkSGb4C7ZBqD+eDxKyQEruFSI6WY5/Lb4ppZNAAAAAQAAAWwAAAEuAAABaw=="}`),
+		},
+	})
+}
+
+func (s *provisioningSimulatorSuite) TestProvisionNewTPMNoLockoutAuthPolicies(c *C) {
+	// Test with a TPM that doesn't support TPM_CAP_AUTH_POLICIES
+	s.TPMTest.Transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandle tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+		if cmdCode != tpm2.CommandGetCapability {
+			return
+		}
+
+		// Unpack the command parameters
+		var capability tpm2.Capability
+		var property uint32
+		var propertyCount uint32
+		_, err := mu.UnmarshalFromBytes(cpBytes, &capability, &property, &propertyCount)
+		c.Assert(err, IsNil)
+		if capability != tpm2.CapabilityAuthPolicies {
+			return
+		}
+
+		// Return a TPM_RC_VALUE + TPM_RC_P + TPM_RC_1 error
+		rsp.Reset()
+		c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseValue+tpm2.ResponseP+tpm2.ResponseIndex1, nil, nil, nil), IsNil)
+	}
+
+	s.testProvisionNewTPM(c, &testProvisionNewTPMData{
+		clear:            false,
+		lockoutAuthBytes: testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c"),
+		expectedLockoutAuthData: [][]byte{
+			[]byte(`{"auth-value":null,"new-auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","new-auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA="}`),
+			[]byte(`{"auth-value":null,"new-auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","new-auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA="}`),
+			[]byte(`{"auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF"}`),
+		},
+	})
 }
 
 func (s *provisioningSuite) TestProvisionWithLockoutAuthValue(c *C) {
-	origValue := []byte("1234")
-	newValue := []byte("5678")
-	s.HierarchyChangeAuth(c, tpm2.HandleLockout, origValue)
+	authValue := []byte("1234")
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, authValue)
 
-	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthValue(origValue), WithProvisionNewLockoutAuthValue(newValue)), IsNil)
-	s.AddCleanup(func() {
-		// github.com/canonical/go-tpm2/testutil cannot restore this because
-		// EnsureProvisioned uses command parameter encryption. We have to do
-		// this manually else the test fixture fails the test.
-		s.TPM().LockoutHandleContext().SetAuthValue(newValue)
-		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
-	})
+	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthValue(authValue)), IsNil)
 
 	// Validate the DA parameters
 	value, err := s.TPM().GetCapabilityTPMProperty(tpm2.PropertyMaxAuthFail)
@@ -207,53 +280,325 @@ func (s *provisioningSuite) TestProvisionWithLockoutAuthValue(c *C) {
 	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrInLockout, Equals, tpm2.PermanentAttributes(0))
 
 	// Test the lockout hierarchy auth
-	s.TPM().LockoutHandleContext().SetAuthValue(newValue)
+	s.TPM().LockoutHandleContext().SetAuthValue(authValue)
 	c.Check(s.TPM().DictionaryAttackLockReset(s.TPM().LockoutHandleContext(), nil), IsNil)
 }
 
-// XXX: This is temporarily disabled because EnsureProvisioned clears the policy
-//func (s *provisioningSuite) TestProvisionWithLockoutAuthData(c *C) {
-//	origValue := []byte("1234")
-//	newValue := []byte("5678")
-//
-//	policyDigest, data := s.makeDefaultLockoutAuthData(c, tpm2.HashAlgorithmSHA256, origValue)
-//	s.HierarchyChangeAuth(c, tpm2.HandleLockout, origValue)
-//	c.Assert(s.TPM().SetPrimaryPolicy(s.TPM().LockoutHandleContext(), policyDigest, tpm2.HashAlgorithmSHA256, nil), IsNil)
-//
-//	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthValue(newValue)), IsNil)
-//	s.AddCleanup(func() {
-//		// github.com/canonical/go-tpm2/testutil cannot restore this because
-//		// EnsureProvisioned uses command parameter encryption. We have to do
-//		// this manually else the test fixture fails the test.
-//		s.TPM().LockoutHandleContext().SetAuthValue(newValue)
-//		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
-//	})
-//
-//	// Validate the DA parameters
-//	value, err := s.TPM().GetCapabilityTPMProperty(tpm2.PropertyMaxAuthFail)
-//	c.Check(err, IsNil)
-//	c.Check(value, Equals, uint32(32))
-//	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutInterval)
-//	c.Check(err, IsNil)
-//	c.Check(value, Equals, uint32(7200))
-//	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutRecovery)
-//	c.Check(err, IsNil)
-//	c.Check(value, Equals, uint32(86400))
-//
-//	// Verify that owner control is disabled, that the lockout hierarchy auth is set, no
-//	// other hierarchy auth is set, and there is no lockout.
-//	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyPermanent)
-//	c.Check(err, IsNil)
-//	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrLockoutAuthSet, Equals, tpm2.AttrLockoutAuthSet)
-//	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrDisableClear, Equals, tpm2.AttrDisableClear)
-//	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrOwnerAuthSet, Equals, tpm2.PermanentAttributes(0))
-//	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrEndorsementAuthSet, Equals, tpm2.PermanentAttributes(0))
-//	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrInLockout, Equals, tpm2.PermanentAttributes(0))
-//
-//	// Test the lockout hierarchy auth
-//	s.TPM().LockoutHandleContext().SetAuthValue(newValue)
-//	c.Check(s.TPM().DictionaryAttackLockReset(s.TPM().LockoutHandleContext(), nil), IsNil)
-//}
+func (s *provisioningSuite) TestProvisionWithLockoutAuthData(c *C) {
+	authValue := []byte("1234")
+	policyDigest, data := s.makeDefaultLockoutAuthData(c, tpm2.HashAlgorithmSHA256, authValue)
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, authValue)
+	c.Assert(s.TPM().SetPrimaryPolicy(s.TPM().LockoutHandleContext(), policyDigest, tpm2.HashAlgorithmSHA256, nil), IsNil)
+
+	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthData(data)), IsNil)
+
+	// Validate the DA parameters
+	value, err := s.TPM().GetCapabilityTPMProperty(tpm2.PropertyMaxAuthFail)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(32))
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutInterval)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(7200))
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutRecovery)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(86400))
+
+	// Verify that owner control is disabled, that the lockout hierarchy auth is set, no
+	// other hierarchy auth is set, and there is no lockout.
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+	c.Check(err, IsNil)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrLockoutAuthSet, Equals, tpm2.AttrLockoutAuthSet)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrDisableClear, Equals, tpm2.AttrDisableClear)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrOwnerAuthSet, Equals, tpm2.PermanentAttributes(0))
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrEndorsementAuthSet, Equals, tpm2.PermanentAttributes(0))
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrInLockout, Equals, tpm2.PermanentAttributes(0))
+
+	// Test the lockout hierarchy auth
+	s.TPM().LockoutHandleContext().SetAuthValue(authValue)
+	c.Check(s.TPM().DictionaryAttackLockReset(s.TPM().LockoutHandleContext(), nil), IsNil)
+}
+
+func (s *provisioningSuite) TestProvisionWithLockoutAuthDataNoAuthPolicies(c *C) {
+	authValue := []byte("1234")
+	data := s.makeLockoutAuthData(c, &LockoutAuthParams{
+		AuthValue: authValue,
+	})
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, authValue)
+
+	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthData(data)), IsNil)
+
+	// Validate the DA parameters
+	value, err := s.TPM().GetCapabilityTPMProperty(tpm2.PropertyMaxAuthFail)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(32))
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutInterval)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(7200))
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutRecovery)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(86400))
+
+	// Verify that owner control is disabled, that the lockout hierarchy auth is set, no
+	// other hierarchy auth is set, and there is no lockout.
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+	c.Check(err, IsNil)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrLockoutAuthSet, Equals, tpm2.AttrLockoutAuthSet)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrDisableClear, Equals, tpm2.AttrDisableClear)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrOwnerAuthSet, Equals, tpm2.PermanentAttributes(0))
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrEndorsementAuthSet, Equals, tpm2.PermanentAttributes(0))
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrInLockout, Equals, tpm2.PermanentAttributes(0))
+
+	// Test the lockout hierarchy auth
+	s.TPM().LockoutHandleContext().SetAuthValue(authValue)
+	c.Check(s.TPM().DictionaryAttackLockReset(s.TPM().LockoutHandleContext(), nil), IsNil)
+}
+
+func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue1(c *C) {
+	// Test resuming with WithProvisionNewLockoutAuthData after a previous attempt was interrupted
+	// after prepare
+	origValue := []byte("1234")
+	policyDigest, policy1 := s.newDefaultLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256)
+	_, policy2 := s.newUpdateAuthValueLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256, origValue)
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, origValue)
+	c.Assert(s.TPM().SetPrimaryPolicy(s.TPM().LockoutHandleContext(), policyDigest, tpm2.HashAlgorithmSHA256, nil), IsNil)
+
+	lockoutAuthBytes := testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c")
+
+	data := s.makeLockoutAuthData(c, &LockoutAuthParams{
+		AuthValue:     origValue,
+		AuthPolicy:    policy1,
+		NewAuthValue:  lockoutAuthValue(c, s.TPM(), lockoutAuthBytes),
+		NewAuthPolicy: policy2,
+	})
+
+	expectedLockoutAuthData := [][]byte{
+		[]byte(`{"auth-value":"MTIzNA==","auth-policy":"AAAAAAAAAAEAC3I61USvx7CvOmM61pIa40NXvY6AqinRzDx16Py3QDnvAAAAAAAAAAEgAQFxAAAAAgAAAAAAAQAL/g0OavvRqALD6F4sJD+kB1TWHYxCvdViNHPYjqSJqbIAAAACAAABbAAAAS4AAAFrAAAAAAABAAvbx93A0uFXIca/EFHCBbGmUYmB95xoVE6ZYxLqI5of2gAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIBwf0eeWXYZJ+PFN0xQ+9xaG+03+fD2SC1aOweJmzl9xACDWXojHU30aQKHFCkSWvhdsU1U0q+qTVp7hcjLvddqrLwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA=","new-auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF"}`),
+		[]byte(`{"auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","auth-policy":"AAAAAAAAAAEAC3I61USvx7CvOmM61pIa40NXvY6AqinRzDx16Py3QDnvAAAAAAAAAAEgAQFxAAAAAgAAAAAAAQAL/g0OavvRqALD6F4sJD+kB1TWHYxCvdViNHPYjqSJqbIAAAACAAABbAAAAS4AAAFrAAAAAAABAAvbx93A0uFXIca/EFHCBbGmUYmB95xoVE6ZYxLqI5of2gAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIBwf0eeWXYZJ+PFN0xQ+9xaG+03+fD2SC1aOweJmzl9xACDWXojHU30aQKHFCkSWvhdsU1U0q+qTVp7hcjLvddqrLwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA=","new-auth-policy":"AAAAAAAAAAEAC8fpxFXFnW/i+VVUXTr6s3kopn5+LbHkhqxSYqdusGu/AAAAAAAAAAIgAQFxAAAABQAAAAAAAQALtsXAXlgZCc3qffel+RwPLu03/XbxVSLu5bVfiW8tVj8AAAABAAABbAAAATkAAAAAAAEACxxoJ3ydZWTdgbzPfla6PtyrOI/GDOlbOkQr0nJY9g38AAAAAQAAAWwAAAE6AAAAAAABAAuUDPtCF7se3Pf7QZN8qXSqaOaYq3i4EksHARPiEf1G/AAAAAEAAAFsAAABJwAAAAAAAQALxN+rztqN6DbJVmGVKJKx3vcgOvtG/v7EP/z8k75UBzAAAAABAAABbAAAASYAAAAAAAEAC3G+h1vfkVM3lejs6YjXVDuULEStbQE7L3xfQ4MLi6IXAAAAAQAAAWwAAAEuAAABaw=="}`),
+		[]byte(`{"auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","auth-policy":"AAAAAAAAAAEAC8fpxFXFnW/i+VVUXTr6s3kopn5+LbHkhqxSYqdusGu/AAAAAAAAAAIgAQFxAAAABQAAAAAAAQALtsXAXlgZCc3qffel+RwPLu03/XbxVSLu5bVfiW8tVj8AAAABAAABbAAAATkAAAAAAAEACxxoJ3ydZWTdgbzPfla6PtyrOI/GDOlbOkQr0nJY9g38AAAAAQAAAWwAAAE6AAAAAAABAAuUDPtCF7se3Pf7QZN8qXSqaOaYq3i4EksHARPiEf1G/AAAAAEAAAFsAAABJwAAAAAAAQALxN+rztqN6DbJVmGVKJKx3vcgOvtG/v7EP/z8k75UBzAAAAABAAABbAAAASYAAAAAAAEAC3G+h1vfkVM3lejs6YjXVDuULEStbQE7L3xfQ4MLi6IXAAAAAQAAAWwAAAEuAAABaw=="}`),
+	}
+	syncLockoutAuthData := func(data []byte) error {
+		c.Assert(expectedLockoutAuthData, Not(HasLen), 0)
+		expected := expectedLockoutAuthData[0]
+		expectedLockoutAuthData = expectedLockoutAuthData[1:]
+		c.Check(data, DeepEquals, expected)
+		return nil
+	}
+
+	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthData(bytes.NewReader(nil), syncLockoutAuthData)), IsNil)
+	s.AddCleanup(func() {
+		// github.com/canonical/go-tpm2/testutil cannot restore this because
+		// EnsureProvisioned uses command parameter encryption. We have to do
+		// this manually else the test fixture fails the test.
+		s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuthValue(c, s.TPM(), lockoutAuthBytes))
+		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
+	})
+
+	c.Check(expectedLockoutAuthData, HasLen, 0)
+
+	// Validate the DA parameters
+	value, err := s.TPM().GetCapabilityTPMProperty(tpm2.PropertyMaxAuthFail)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(32))
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutInterval)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(7200))
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutRecovery)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(86400))
+
+	// Verify that owner control is disabled, that the lockout hierarchy auth is set, no
+	// other hierarchy auth is set, and there is no lockout.
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+	c.Check(err, IsNil)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrLockoutAuthSet, Equals, tpm2.AttrLockoutAuthSet)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrDisableClear, Equals, tpm2.AttrDisableClear)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrOwnerAuthSet, Equals, tpm2.PermanentAttributes(0))
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrEndorsementAuthSet, Equals, tpm2.PermanentAttributes(0))
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrInLockout, Equals, tpm2.PermanentAttributes(0))
+
+	// Test the lockout hierarchy auth
+	s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuthValue(c, s.TPM(), lockoutAuthBytes))
+	c.Check(s.TPM().DictionaryAttackLockReset(s.TPM().LockoutHandleContext(), nil), IsNil)
+}
+
+func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue2(c *C) {
+	// Test resuming with WithProvisionNewLockoutAuthData after a previous attempt was interrupted
+	// after setNewAuthValuePolicy
+	origValue := []byte("1234")
+	policyDigest, policy := s.newUpdateAuthValueLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256, origValue)
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, origValue)
+	c.Assert(s.TPM().SetPrimaryPolicy(s.TPM().LockoutHandleContext(), policyDigest, tpm2.HashAlgorithmSHA256, nil), IsNil)
+
+	lockoutAuthBytes := testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c")
+
+	data := s.makeLockoutAuthData(c, &LockoutAuthParams{
+		AuthValue:    origValue,
+		AuthPolicy:   policy,
+		NewAuthValue: lockoutAuthValue(c, s.TPM(), lockoutAuthBytes),
+	})
+
+	expectedLockoutAuthData := [][]byte{
+		[]byte(`{"auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","auth-policy":"AAAAAAAAAAEAC3I61USvx7CvOmM61pIa40NXvY6AqinRzDx16Py3QDnvAAAAAAAAAAEgAQFxAAAAAgAAAAAAAQAL/g0OavvRqALD6F4sJD+kB1TWHYxCvdViNHPYjqSJqbIAAAACAAABbAAAAS4AAAFrAAAAAAABAAvbx93A0uFXIca/EFHCBbGmUYmB95xoVE6ZYxLqI5of2gAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIBwf0eeWXYZJ+PFN0xQ+9xaG+03+fD2SC1aOweJmzl9xACDWXojHU30aQKHFCkSWvhdsU1U0q+qTVp7hcjLvddqrLwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA=","new-auth-policy":"AAAAAAAAAAEAC8fpxFXFnW/i+VVUXTr6s3kopn5+LbHkhqxSYqdusGu/AAAAAAAAAAIgAQFxAAAABQAAAAAAAQALtsXAXlgZCc3qffel+RwPLu03/XbxVSLu5bVfiW8tVj8AAAABAAABbAAAATkAAAAAAAEACxxoJ3ydZWTdgbzPfla6PtyrOI/GDOlbOkQr0nJY9g38AAAAAQAAAWwAAAE6AAAAAAABAAuUDPtCF7se3Pf7QZN8qXSqaOaYq3i4EksHARPiEf1G/AAAAAEAAAFsAAABJwAAAAAAAQALxN+rztqN6DbJVmGVKJKx3vcgOvtG/v7EP/z8k75UBzAAAAABAAABbAAAASYAAAAAAAEAC3G+h1vfkVM3lejs6YjXVDuULEStbQE7L3xfQ4MLi6IXAAAAAQAAAWwAAAEuAAABaw=="}`),
+		[]byte(`{"auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","auth-policy":"AAAAAAAAAAEAC8fpxFXFnW/i+VVUXTr6s3kopn5+LbHkhqxSYqdusGu/AAAAAAAAAAIgAQFxAAAABQAAAAAAAQALtsXAXlgZCc3qffel+RwPLu03/XbxVSLu5bVfiW8tVj8AAAABAAABbAAAATkAAAAAAAEACxxoJ3ydZWTdgbzPfla6PtyrOI/GDOlbOkQr0nJY9g38AAAAAQAAAWwAAAE6AAAAAAABAAuUDPtCF7se3Pf7QZN8qXSqaOaYq3i4EksHARPiEf1G/AAAAAEAAAFsAAABJwAAAAAAAQALxN+rztqN6DbJVmGVKJKx3vcgOvtG/v7EP/z8k75UBzAAAAABAAABbAAAASYAAAAAAAEAC3G+h1vfkVM3lejs6YjXVDuULEStbQE7L3xfQ4MLi6IXAAAAAQAAAWwAAAEuAAABaw=="}`),
+	}
+	syncLockoutAuthData := func(data []byte) error {
+		c.Assert(expectedLockoutAuthData, Not(HasLen), 0)
+		expected := expectedLockoutAuthData[0]
+		expectedLockoutAuthData = expectedLockoutAuthData[1:]
+		c.Check(data, DeepEquals, expected)
+		return nil
+	}
+
+	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthData(bytes.NewReader(nil), syncLockoutAuthData)), IsNil)
+	s.AddCleanup(func() {
+		// github.com/canonical/go-tpm2/testutil cannot restore this because
+		// EnsureProvisioned uses command parameter encryption. We have to do
+		// this manually else the test fixture fails the test.
+		s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuthValue(c, s.TPM(), lockoutAuthBytes))
+		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
+	})
+
+	c.Check(expectedLockoutAuthData, HasLen, 0)
+
+	// Validate the DA parameters
+	value, err := s.TPM().GetCapabilityTPMProperty(tpm2.PropertyMaxAuthFail)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(32))
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutInterval)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(7200))
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutRecovery)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(86400))
+
+	// Verify that owner control is disabled, that the lockout hierarchy auth is set, no
+	// other hierarchy auth is set, and there is no lockout.
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+	c.Check(err, IsNil)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrLockoutAuthSet, Equals, tpm2.AttrLockoutAuthSet)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrDisableClear, Equals, tpm2.AttrDisableClear)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrOwnerAuthSet, Equals, tpm2.PermanentAttributes(0))
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrEndorsementAuthSet, Equals, tpm2.PermanentAttributes(0))
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrInLockout, Equals, tpm2.PermanentAttributes(0))
+
+	// Test the lockout hierarchy auth
+	s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuthValue(c, s.TPM(), lockoutAuthBytes))
+	c.Check(s.TPM().DictionaryAttackLockReset(s.TPM().LockoutHandleContext(), nil), IsNil)
+}
+
+func (s *provisioningSuite) TestProvisionAfterInterruptedNewLockoutAuthValue2(c *C) {
+	// Test that we get an appropriate error if a previous call with WithProvisionNewLockoutAuthData
+	// was interrupted after setNewAuthValuePolicy.
+	origValue := []byte("1234")
+	policyDigest, policy := s.newUpdateAuthValueLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256, origValue)
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, origValue)
+	c.Assert(s.TPM().SetPrimaryPolicy(s.TPM().LockoutHandleContext(), policyDigest, tpm2.HashAlgorithmSHA256, nil), IsNil)
+
+	lockoutAuthBytes := testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c")
+
+	data := s.makeLockoutAuthData(c, &LockoutAuthParams{
+		AuthValue:    origValue,
+		AuthPolicy:   policy,
+		NewAuthValue: lockoutAuthValue(c, s.TPM(), lockoutAuthBytes),
+	})
+
+	err := s.TPM().EnsureProvisioned(WithLockoutAuthData(data))
+	c.Check(err, Equals, ErrLockoutAuthInvalid)
+	c.Check(err, ErrorMatches, `the authorization parameters for the lockout hierarchy are invalid`)
+}
+
+func (s *provisioningSuite) TestProvisionResumeNewLockoutAuthValue3(c *C) {
+	// Test resuming with WithProvisionNewLockoutAuthData after a previous attempt was interrupted
+	// after setNewAuthValue
+	lockoutAuthBytes := testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c")
+
+	policyDigest, policy1 := s.newUpdateAuthValueLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256, []byte("1234"))
+	_, policy2 := s.newDefaultLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256)
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, lockoutAuthValue(c, s.TPM(), lockoutAuthBytes))
+	c.Assert(s.TPM().SetPrimaryPolicy(s.TPM().LockoutHandleContext(), policyDigest, tpm2.HashAlgorithmSHA256, nil), IsNil)
+
+	data := s.makeLockoutAuthData(c, &LockoutAuthParams{
+		AuthValue:     lockoutAuthValue(c, s.TPM(), lockoutAuthBytes),
+		AuthPolicy:    policy1,
+		NewAuthPolicy: policy2,
+	})
+
+	expectedLockoutAuthData := [][]byte{
+		[]byte(`{"auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","auth-policy":"AAAAAAAAAAEAC8fpxFXFnW/i+VVUXTr6s3kopn5+LbHkhqxSYqdusGu/AAAAAAAAAAIgAQFxAAAABQAAAAAAAQALtsXAXlgZCc3qffel+RwPLu03/XbxVSLu5bVfiW8tVj8AAAABAAABbAAAATkAAAAAAAEACxxoJ3ydZWTdgbzPfla6PtyrOI/GDOlbOkQr0nJY9g38AAAAAQAAAWwAAAE6AAAAAAABAAuUDPtCF7se3Pf7QZN8qXSqaOaYq3i4EksHARPiEf1G/AAAAAEAAAFsAAABJwAAAAAAAQALxN+rztqN6DbJVmGVKJKx3vcgOvtG/v7EP/z8k75UBzAAAAABAAABbAAAASYAAAAAAAEAC3G+h1vfkVM3lejs6YjXVDuULEStbQE7L3xfQ4MLi6IXAAAAAQAAAWwAAAEuAAABaw=="}`),
+	}
+	syncLockoutAuthData := func(data []byte) error {
+		c.Assert(expectedLockoutAuthData, Not(HasLen), 0)
+		expected := expectedLockoutAuthData[0]
+		expectedLockoutAuthData = expectedLockoutAuthData[1:]
+		c.Check(data, DeepEquals, expected)
+		return nil
+	}
+
+	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthData(bytes.NewReader(nil), syncLockoutAuthData)), IsNil)
+	s.AddCleanup(func() {
+		// github.com/canonical/go-tpm2/testutil cannot restore this because
+		// EnsureProvisioned uses command parameter encryption. We have to do
+		// this manually else the test fixture fails the test.
+		s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuthValue(c, s.TPM(), lockoutAuthBytes))
+		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
+	})
+
+	c.Check(expectedLockoutAuthData, HasLen, 0)
+
+	// Validate the DA parameters
+	value, err := s.TPM().GetCapabilityTPMProperty(tpm2.PropertyMaxAuthFail)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(32))
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutInterval)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(7200))
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyLockoutRecovery)
+	c.Check(err, IsNil)
+	c.Check(value, Equals, uint32(86400))
+
+	// Verify that owner control is disabled, that the lockout hierarchy auth is set, no
+	// other hierarchy auth is set, and there is no lockout.
+	value, err = s.TPM().GetCapabilityTPMProperty(tpm2.PropertyPermanent)
+	c.Check(err, IsNil)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrLockoutAuthSet, Equals, tpm2.AttrLockoutAuthSet)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrDisableClear, Equals, tpm2.AttrDisableClear)
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrOwnerAuthSet, Equals, tpm2.PermanentAttributes(0))
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrEndorsementAuthSet, Equals, tpm2.PermanentAttributes(0))
+	c.Check(tpm2.PermanentAttributes(value)&tpm2.AttrInLockout, Equals, tpm2.PermanentAttributes(0))
+
+	// Test the lockout hierarchy auth
+	s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuthValue(c, s.TPM(), lockoutAuthBytes))
+	c.Check(s.TPM().DictionaryAttackLockReset(s.TPM().LockoutHandleContext(), nil), IsNil)
+}
+
+func (s *provisioningSuite) TestProvisionAfterInterruptedNewLockoutAuthValue3(c *C) {
+	// Test that we get an appropriate error if a previous call with WithProvisionNewLockoutAuthData
+	// was interrupted after setNewAuthValue.
+	lockoutAuthBytes := testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c")
+
+	policyDigest, policy1 := s.newUpdateAuthValueLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256, []byte("1234"))
+	_, policy2 := s.newDefaultLockoutAuthPolicy(c, tpm2.HashAlgorithmSHA256)
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, lockoutAuthValue(c, s.TPM(), lockoutAuthBytes))
+	c.Assert(s.TPM().SetPrimaryPolicy(s.TPM().LockoutHandleContext(), policyDigest, tpm2.HashAlgorithmSHA256, nil), IsNil)
+
+	data := s.makeLockoutAuthData(c, &LockoutAuthParams{
+		AuthValue:     lockoutAuthValue(c, s.TPM(), lockoutAuthBytes),
+		AuthPolicy:    policy1,
+		NewAuthPolicy: policy2,
+	})
+
+	err := s.TPM().EnsureProvisioned(WithLockoutAuthData(data))
+	c.Check(err, Equals, ErrLockoutAuthInvalid)
+	c.Check(err, ErrorMatches, `the authorization parameters for the lockout hierarchy are invalid`)
+}
+
+func (s *provisioningSuite) TestProvisionWithUnconfiguredLockoutAuthIfTPMAlreadyConfigured(c *C) {
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
+
+	err := s.TPM().EnsureProvisioned(WithUnconfiguredLockoutAuth())
+	c.Check(err, Equals, ErrLockoutAuthInitialized)
+	c.Check(err, ErrorMatches, `the authorization parameters for the lockout hierarchy are already initialized`)
+}
 
 func (s *provisioningSimulatorSuite) TestProvisionTPMInLockout(c *C) {
 	// Trip the DA logic by triggering an auth failure with a DA protected
@@ -270,8 +615,15 @@ func (s *provisioningSimulatorSuite) TestProvisionTPMInLockout(c *C) {
 	c.Check(s.TPM().FlushContext(key), IsNil)
 
 	s.testProvisionNewTPM(c, &testProvisionNewTPMData{
-		mode:        ProvisionModeFull,
-		lockoutAuth: []byte("1234")})
+		clear:            false,
+		lockoutAuthBytes: testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c"),
+		expectedLockoutAuthData: [][]byte{
+			[]byte(`{"auth-value":null,"new-auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","new-auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA="}`),
+			[]byte(`{"auth-value":null,"auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA=","new-auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF"}`),
+			[]byte(`{"auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","auth-policy":"AAAAAAAAAAEADPSFreqYTJyYmYLZuV9t3FD6miDHK9Bk6csiDmxMYzssvhbvXp4XFg1FTZVRuPKb1AAAAAAAAAABIAEBcQAAAAIAAAAAAAEADPCh6SbxQFvoOsy16T+o1t9ppyxh3wCCATIk2ijXiQK7tY58W/2t8FysjP0RUEOq6AAAAAIAAAFsAAABLgAAAWsAAAAAAAEADPM/YpABRQGCbrCHesmtd7NQohItlVrJ+xFdG13xqo3ZFwpeCldZirZUOfTzZmQXPwAAAAIAAAFsAAABKQAAAWAAIwALAAQAAAAAABAAEAADABAAIOsLyU/JRbgdKwtENNG1brDVsXEXRbQfOGc6oFCNFRuNACAIxXx8JXqfNxSy3h59UX4Jmd9nFeX85yMUGtGxB54+SwARVVBEQVRFLUFVVEgtVkFMVUUAAAAAAAA=","new-auth-policy":"AAAAAAAAAAEADHqZCU8TuxgO7/elTguGw5So3SieBY2dRYOphhKVmu/mfi0NZyjHZFs+bMdtqZ284AAAAAAAAAACIAEBcQAAAAUAAAAAAAEADDuidKgJLPOC+/XOxwcOj4kEPzOZ/Z1YUWk9Coew5Aw15qxGHJWewJDjXAceJJnPkAAAAAEAAAFsAAABOQAAAAAAAQAML2Gkl0eOgfHT9Y1kGXkkE3jVI90qXY6wBtT2Ygksi3HgeTdQwD5WkH4QRDBsnYACAAAAAQAAAWwAAAE6AAAAAAABAAwutwj6joYO8lx+lgwraBTEMW6r5tQ2E+4QIxx/oEZ9ypxOerrTVEjGvnpGCmH/ym8AAAABAAABbAAAAScAAAAAAAEADFWgOLNA+yd26JBC+OGmP0ddbtEpzhpdo1wtbJIlwSui4lkkKncZB7rSyqFuZuALsAAAAAEAAAFsAAABJgAAAAAAAQAMladi5DAnH2ss5iXXhVU2rjlbDNmYkSGb4C7ZBqD+eDxKyQEruFSI6WY5/Lb4ppZNAAAAAQAAAWwAAAEuAAABaw=="}`),
+			[]byte(`{"auth-value":"wExnNggDTz9v3Rsrp1La+K5fqcpdf8IbX18dvdlCfOqm81wND5jCkmoLApKW8GzF","auth-policy":"AAAAAAAAAAEADHqZCU8TuxgO7/elTguGw5So3SieBY2dRYOphhKVmu/mfi0NZyjHZFs+bMdtqZ284AAAAAAAAAACIAEBcQAAAAUAAAAAAAEADDuidKgJLPOC+/XOxwcOj4kEPzOZ/Z1YUWk9Coew5Aw15qxGHJWewJDjXAceJJnPkAAAAAEAAAFsAAABOQAAAAAAAQAML2Gkl0eOgfHT9Y1kGXkkE3jVI90qXY6wBtT2Ygksi3HgeTdQwD5WkH4QRDBsnYACAAAAAQAAAWwAAAE6AAAAAAABAAwutwj6joYO8lx+lgwraBTEMW6r5tQ2E+4QIxx/oEZ9ypxOerrTVEjGvnpGCmH/ym8AAAABAAABbAAAAScAAAAAAAEADFWgOLNA+yd26JBC+OGmP0ddbtEpzhpdo1wtbJIlwSui4lkkKncZB7rSyqFuZuALsAAAAAEAAAFsAAABJgAAAAAAAQAMladi5DAnH2ss5iXXhVU2rjlbDNmYkSGb4C7ZBqD+eDxKyQEruFSI6WY5/Lb4ppZNAAAAAQAAAWwAAAEuAAABaw=="}`),
+		},
+	})
 }
 
 func (s *provisioningSimulatorSuite) testProvisionErrorHandling(c *C, mode ProvisionMode) error {
@@ -281,7 +633,14 @@ func (s *provisioningSimulatorSuite) testProvisionErrorHandling(c *C, mode Provi
 		// else the test fixture fails the test.
 		s.ClearTPMUsingPlatformHierarchy(c)
 	}()
-	return s.TPM().EnsureProvisioned(mode.Option(nil))
+	var opts []EnsureProvisionedOption
+	switch mode {
+	case ProvisionModeFull:
+		opts = append(opts, WithLockoutAuthValue(nil))
+	case ProvisionModeClear:
+		opts = append(opts, WithLockoutAuthValue(nil), WithClearBeforeProvision())
+	}
+	return s.TPM().EnsureProvisioned(opts...)
 }
 
 func (s *provisioningSuite) testProvisionErrorHandling(c *C, mode ProvisionMode) error {
@@ -291,7 +650,14 @@ func (s *provisioningSuite) testProvisionErrorHandling(c *C, mode ProvisionMode)
 		// else the test fixture fails the test.
 		s.ClearTPMUsingPlatformHierarchy(c)
 	}()
-	return s.TPM().EnsureProvisioned(mode.Option(nil))
+	var opts []EnsureProvisionedOption
+	switch mode {
+	case ProvisionModeFull:
+		opts = append(opts, WithLockoutAuthValue(nil))
+	case ProvisionModeClear:
+		opts = append(opts, WithLockoutAuthValue(nil), WithClearBeforeProvision())
+	}
+	return s.TPM().EnsureProvisioned(opts...)
 }
 
 func (s *provisioningSuite) TestProvisionErrorHandlingClearRequiresPPI(c *C) {
@@ -303,7 +669,6 @@ func (s *provisioningSuite) TestProvisionErrorHandlingClearRequiresPPI(c *C) {
 
 func (s *provisioningSuite) TestProvisionErrorHandlingLockoutAuthFail1(c *C) {
 	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
-	s.TPM().LockoutHandleContext().SetAuthValue(nil)
 
 	err := s.testProvisionErrorHandling(c, ProvisionModeFull)
 	c.Assert(err, testutil.ConvertibleTo, AuthFailError{})
@@ -312,7 +677,6 @@ func (s *provisioningSuite) TestProvisionErrorHandlingLockoutAuthFail1(c *C) {
 
 func (s *provisioningSuite) TestProvisionErrorHandlingLockoutAuthFail2(c *C) {
 	s.HierarchyChangeAuth(c, tpm2.HandleLockout, []byte("1234"))
-	s.TPM().LockoutHandleContext().SetAuthValue(nil)
 
 	err := s.testProvisionErrorHandling(c, ProvisionModeClear)
 	c.Assert(err, testutil.ConvertibleTo, AuthFailError{})
@@ -410,15 +774,22 @@ func (s *provisioningSimulatorSuite) TestProvisionErrorHandlingRequiresLockout5(
 	c.Check(err, Equals, ErrTPMProvisioningRequiresLockout)
 }
 
-func (s *provisioningSuite) testProvisionRecreateEK(c *C, mode ProvisionMode) {
-	lockoutAuth := []byte("1234")
+func (s *provisioningSuite) testProvisionRecreateEK(c *C, full bool) {
+	lockoutAuthBytes := testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c")
+	var lockoutAuthData []byte
 
-	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthValue(nil), WithProvisionNewLockoutAuthValue(lockoutAuth)), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(
+		WithUnconfiguredLockoutAuth(),
+		WithProvisionNewLockoutAuthData(bytes.NewReader(lockoutAuthBytes), func(data []byte) error {
+			lockoutAuthData = data
+			return nil
+		}),
+	), IsNil)
 	s.AddCleanup(func() {
 		// github.com/canonical/go-tpm2/testutil cannot restore this because
 		// EnsureProvisioned uses command parameter encryption. We have to do
 		// this manually else the test fixture fails the test.
-		s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuth)
+		s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuthValue(c, s.TPM(), lockoutAuthBytes))
 		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
 	})
 
@@ -428,7 +799,11 @@ func (s *provisioningSuite) testProvisionRecreateEK(c *C, mode ProvisionMode) {
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, ek, ek.Handle())
 
-	c.Check(s.TPM().EnsureProvisioned(mode.Option(lockoutAuth), WithProvisionNewLockoutAuthValue(lockoutAuth)), IsNil)
+	var opts []EnsureProvisionedOption
+	if full {
+		opts = append(opts, WithLockoutAuthData(lockoutAuthData))
+	}
+	c.Check(s.TPM().EnsureProvisioned(opts...), IsNil)
 
 	s.validateEK(c)
 	s.validateSRK(c)
@@ -440,22 +815,29 @@ func (s *provisioningSuite) testProvisionRecreateEK(c *C, mode ProvisionMode) {
 }
 
 func (s *provisioningSuite) TestRecreateEKFull(c *C) {
-	s.testProvisionRecreateEK(c, ProvisionModeFull)
+	s.testProvisionRecreateEK(c, true)
 }
 
 func (s *provisioningSuite) TestRecreateEKWithoutLockout(c *C) {
-	s.testProvisionRecreateEK(c, ProvisionModeWithoutLockout)
+	s.testProvisionRecreateEK(c, false)
 }
 
-func (s *provisioningSuite) testProvisionRecreateSRK(c *C, mode ProvisionMode) {
-	lockoutAuth := []byte("1234")
+func (s *provisioningSuite) testProvisionRecreateSRK(c *C, full bool) {
+	lockoutAuthBytes := testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c")
+	var lockoutAuthData []byte
 
-	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthValue(lockoutAuth), WithProvisionNewLockoutAuthValue(lockoutAuth)), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(
+		WithUnconfiguredLockoutAuth(),
+		WithProvisionNewLockoutAuthData(bytes.NewReader(lockoutAuthBytes), func(data []byte) error {
+			lockoutAuthData = data
+			return nil
+		}),
+	), IsNil)
 	s.AddCleanup(func() {
 		// github.com/canonical/go-tpm2/testutil cannot restore this because
 		// EnsureProvisioned uses command parameter encryption. We have to do
 		// this manually else the test fixture fails the test.
-		s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuth)
+		s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuthValue(c, s.TPM(), lockoutAuthBytes))
 		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
 	})
 
@@ -464,7 +846,11 @@ func (s *provisioningSuite) testProvisionRecreateSRK(c *C, mode ProvisionMode) {
 	expectedName := srk.Name()
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
-	c.Check(s.TPM().EnsureProvisioned(mode.Option(lockoutAuth), WithProvisionNewLockoutAuthValue(lockoutAuth)), IsNil)
+	var opts []EnsureProvisionedOption
+	if full {
+		opts = append(opts, WithLockoutAuthData(lockoutAuthData))
+	}
+	c.Check(s.TPM().EnsureProvisioned(opts...), IsNil)
 
 	s.validateEK(c)
 	s.validateSRK(c)
@@ -475,11 +861,11 @@ func (s *provisioningSuite) testProvisionRecreateSRK(c *C, mode ProvisionMode) {
 }
 
 func (s *provisioningSuite) TestProvisionRecreateSRKFull(c *C) {
-	s.testProvisionRecreateSRK(c, ProvisionModeFull)
+	s.testProvisionRecreateSRK(c, true)
 }
 
 func (s *provisioningSuite) TestProvisionRecreateSRKWithoutLockout(c *C) {
-	s.testProvisionRecreateSRK(c, ProvisionModeWithoutLockout)
+	s.testProvisionRecreateSRK(c, false)
 }
 
 func (s *provisioningSuite) TestProvisionWithEndorsementAuth(c *C) {
@@ -500,7 +886,7 @@ func (s *provisioningSuite) TestProvisionWithOwnerAuth(c *C) {
 	s.validateSRK(c)
 }
 
-func (s *provisioningSuite) testProvisionWithCustomSRKTemplate(c *C, mode ProvisionMode) {
+func (s *provisioningSuite) testProvisionWithCustomSRKTemplate(c *C, clear bool) {
 	template := tpm2.Public{
 		Type:    tpm2.ObjectTypeRSA,
 		NameAlg: tpm2.HashAlgorithmSHA256,
@@ -515,7 +901,12 @@ func (s *provisioningSuite) testProvisionWithCustomSRKTemplate(c *C, mode Provis
 				Scheme:   tpm2.RSAScheme{Scheme: tpm2.RSASchemeNull},
 				KeyBits:  2048,
 				Exponent: 0}}}
-	c.Check(s.TPM().EnsureProvisioned(mode.Option(nil), WithCustomSRKTemplate(&template)), IsNil)
+
+	opts := []EnsureProvisionedOption{WithUnconfiguredLockoutAuth(), WithCustomSRKTemplate(&template)}
+	if clear {
+		opts = append(opts, WithClearBeforeProvision())
+	}
+	c.Check(s.TPM().EnsureProvisioned(opts...), IsNil)
 
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template)
 
@@ -532,11 +923,11 @@ func (s *provisioningSuite) testProvisionWithCustomSRKTemplate(c *C, mode Provis
 }
 
 func (s *provisioningSuite) TestProvisionWithCustomSRKTemplateClear(c *C) {
-	s.testProvisionWithCustomSRKTemplate(c, ProvisionModeClear)
+	s.testProvisionWithCustomSRKTemplate(c, true)
 }
 
 func (s *provisioningSuite) TestProvisionWithCustomSRKTemplateFull(c *C) {
-	s.testProvisionWithCustomSRKTemplate(c, ProvisionModeFull)
+	s.testProvisionWithCustomSRKTemplate(c, false)
 }
 
 func (s *provisioningSuite) TestProvisionWithInvalidCustomSRKTemplate(c *C) {
@@ -558,7 +949,10 @@ func (s *provisioningSuite) TestProvisionWithInvalidCustomSRKTemplate(c *C) {
 	c.Check(err, ErrorMatches, "supplied SRK template is not valid for a parent key")
 }
 
-func (s *provisioningSuite) testProvisionDefaultPreservesCustomSRKTemplate(c *C, mode ProvisionMode) {
+func (s *provisioningSuite) testProvisionDefaultPreservesCustomSRKTemplate(c *C, full bool) {
+	lockoutAuthBytes := testutil.DecodeHexString(c, "c04c673608034f3f6fdd1b2ba752daf8ae5fa9ca5d7fc21b5f5f1dbdd9427ceaa6f35c0d0f98c2926a0b029296f06cc5a5a368364e3d07c6d6169c9443a70c3c")
+	var lockoutAuthData []byte
+
 	template := tpm2.Public{
 		Type:    tpm2.ObjectTypeRSA,
 		NameAlg: tpm2.HashAlgorithmSHA256,
@@ -574,13 +968,19 @@ func (s *provisioningSuite) testProvisionDefaultPreservesCustomSRKTemplate(c *C,
 				KeyBits:  2048,
 				Exponent: 0}}}
 
-	lockoutAuth := []byte("1234")
-	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthValue(nil), WithProvisionNewLockoutAuthValue(lockoutAuth), WithCustomSRKTemplate(&template)), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(
+		WithUnconfiguredLockoutAuth(),
+		WithProvisionNewLockoutAuthData(bytes.NewReader(lockoutAuthBytes), func(data []byte) error {
+			lockoutAuthData = data
+			return nil
+		}),
+		WithCustomSRKTemplate(&template),
+	), IsNil)
 	s.AddCleanup(func() {
 		// github.com/canonical/go-tpm2/testutil cannot restore this because
 		// EnsureProvisioned uses command parameter encryption. We have to do
 		// this manually else the test fixture fails the test.
-		s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuth)
+		s.TPM().LockoutHandleContext().SetAuthValue(lockoutAuthValue(c, s.TPM(), lockoutAuthBytes))
 		s.HierarchyChangeAuth(c, tpm2.HandleLockout, nil)
 	})
 
@@ -588,17 +988,21 @@ func (s *provisioningSuite) testProvisionDefaultPreservesCustomSRKTemplate(c *C,
 	c.Assert(err, IsNil)
 	s.EvictControl(c, tpm2.HandleOwner, srk, srk.Handle())
 
-	c.Check(s.TPM().EnsureProvisioned(mode.Option(lockoutAuth), WithProvisionNewLockoutAuthValue(lockoutAuth)), IsNil)
+	var opts []EnsureProvisionedOption
+	if full {
+		opts = append(opts, WithLockoutAuthData(lockoutAuthData))
+	}
+	c.Check(s.TPM().EnsureProvisioned(opts...), IsNil)
 
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template)
 }
 
 func (s *provisioningSuite) TestProvisionDefaultPreservesCustomSRKTemplateFull(c *C) {
-	s.testProvisionDefaultPreservesCustomSRKTemplate(c, ProvisionModeFull)
+	s.testProvisionDefaultPreservesCustomSRKTemplate(c, true)
 }
 
 func (s *provisioningSuite) TestProvisionDefaultPreservesCustomSRKTemplateWithoutLockout(c *C) {
-	s.testProvisionDefaultPreservesCustomSRKTemplate(c, ProvisionModeWithoutLockout)
+	s.testProvisionDefaultPreservesCustomSRKTemplate(c, false)
 }
 
 func (s *provisioningSuite) TestProvisionDefaultClearRemovesCustomSRKTemplate(c *C) {
@@ -619,7 +1023,7 @@ func (s *provisioningSuite) TestProvisionDefaultClearRemovesCustomSRKTemplate(c 
 	c.Check(s.TPM().EnsureProvisioned(WithCustomSRKTemplate(&template)), Equals, ErrTPMProvisioningRequiresLockout)
 	s.validatePrimaryKeyAgainstTemplate(c, tpm2.HandleOwner, tcg.SRKHandle, &template)
 
-	c.Check(s.TPM().EnsureProvisioned(WithLockoutAuthValue(nil), WithClearBeforeProvision()), IsNil)
+	c.Check(s.TPM().EnsureProvisioned(WithUnconfiguredLockoutAuth(), WithClearBeforeProvision()), IsNil)
 	s.validateSRK(c)
 }
 
@@ -668,4 +1072,37 @@ func (s *provisioningSuite) TestProvisionWithCustomSRKTemplateOverwritesExisting
 	tmplBytes, err := s.TPM().NVRead(s.TPM().OwnerHandleContext(), nv, nvPub.Size, 0, nil)
 	c.Check(err, IsNil)
 	c.Check(tmplBytes, DeepEquals, mu.MustMarshalToBytes(&template2))
+}
+
+func (s *provisioningSuite) TestProvisionNewLockoutAuthValueWithoutPolicySupport(c *C) {
+	// Test with a TPM that doesn't support TPM_CAP_AUTH_POLICIES
+	s.TPMTest.TPMTest.Transport.ResponseIntercept = func(cmdCode tpm2.CommandCode, cmdHandle tpm2.HandleList, cmdAuthArea []tpm2.AuthCommand, cpBytes []byte, rsp *bytes.Buffer) {
+		if cmdCode != tpm2.CommandGetCapability {
+			return
+		}
+
+		// Unpack the command parameters
+		var capability tpm2.Capability
+		var property uint32
+		var propertyCount uint32
+		_, err := mu.UnmarshalFromBytes(cpBytes, &capability, &property, &propertyCount)
+		c.Assert(err, IsNil)
+		if capability != tpm2.CapabilityAuthPolicies {
+			return
+		}
+
+		// Return a TPM_RC_VALUE + TPM_RC_P + TPM_RC_1 error
+		rsp.Reset()
+		c.Check(tpm2.WriteResponsePacket(rsp, tpm2.ResponseValue+tpm2.ResponseP+tpm2.ResponseIndex1, nil, nil, nil), IsNil)
+	}
+
+	origValue := []byte("1234")
+	data := s.makeLockoutAuthData(c, &LockoutAuthParams{
+		AuthValue: origValue,
+	})
+	s.HierarchyChangeAuth(c, tpm2.HandleLockout, origValue)
+
+	err := s.TPM().EnsureProvisioned(WithLockoutAuthData(data), WithProvisionNewLockoutAuthData(rand.Reader, func(_ []byte) error { return nil }))
+	c.Check(err, ErrorMatches, `cannot set new lockout hierarchy authorization value: updating the authorization parameters for the lockout hierarchy is not supported`)
+	c.Check(errors.Is(err, ErrLockoutAuthUpdateUnsupported), testutil.IsTrue)
 }
