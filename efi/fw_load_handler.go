@@ -89,6 +89,20 @@ func (h *fwLoadHandler) measureAuthorizedSignatureDb(ctx pcrBranchContext) error
 	return nil
 }
 
+func (h *fwLoadHandler) measureSignatureDatabaseIfNotEmpty(ctx pcrBranchContext, name efi.VariableDescriptor) error {
+	switch db, _, err := efi.ReadVariable(ctx.VarContext(), name.Name, name.GUID); {
+	case errors.Is(err, efi.ErrVarNotExist):
+		return nil
+	case err != nil:
+		return fmt.Errorf("cannot read current variable: %w", err)
+	case len(db) == 0:
+		return nil
+	default:
+		ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, name.GUID, name.Name, db)
+		return nil
+	}
+}
+
 func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error {
 	// This hard-codes a profile that will only work on devices with secure boot enabled,
 	// deployed mode on (where UEFI >= 2.5), without a UEFI debugger enabled and which
@@ -202,6 +216,23 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		return xerrors.Errorf("cannot measure dbx: %w", err)
 	}
 
+	switch supported, err := efi.ReadOSIndicationsSupportedVariable(ctx.VarContext()); {
+	case errors.Is(err, efi.ErrVarNotExist):
+		// ignore
+	case err != nil:
+		return fmt.Errorf("cannot read OS indications: %w", err)
+	default:
+		if supported&efi.OSIndicationTimestampRevocation > 0 {
+			if err := h.measureSignatureDatabaseIfNotEmpty(ctx, Dbt); err != nil {
+				return fmt.Errorf("cannot measure dbt: %w", err)
+			}
+		}
+		if supported&efi.OSIndicationStartOSRecovery > 0 {
+			if err := h.measureSignatureDatabaseIfNotEmpty(ctx, Dbr); err != nil {
+				return fmt.Errorf("cannot measure dbr: %w", err)
+			}
+		}
+	}
 	// TODO: Support optional dbt/dbr database
 
 	// Include the user mode related measurements if the system is in user mode, it is
