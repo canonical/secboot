@@ -320,7 +320,8 @@ const (
 	// includeSecureBootUserModeParamKey is used to indicate that user mode related
 	// measurements should be included in the secure boot PCR profile if the system is
 	// in user mode.
-	includeSecureBootUserModeParamKey = "include_secure_boot_user_mode"
+	includeSecureBootUserModeParamKey     = "include_secure_boot_user_mode"
+	autoIncludeSecureBootUserModeParamKey = "auto_include_secure_boot_user_mode"
 )
 
 type allowSecureBootUserModeOption struct{}
@@ -343,6 +344,26 @@ func (o allowSecureBootUserModeOption) ApplyOptionTo(visitor internal_efi.PCRPro
 	return nil
 }
 
+type autoAllowSecureBootUserModeOption struct{}
+
+func (o autoAllowSecureBootUserModeOption) ApplyOptionTo(visitor internal_efi.PCRProfileOptionVisitor) error {
+	visitor.AddImageLoadParams(func(params ...loadParams) []loadParams {
+		var out []loadParams
+		for _, v := range []bool{false, true} {
+			var newParams []loadParams
+			for _, p := range params {
+				newParams = append(newParams, p.Clone())
+			}
+			for _, p := range newParams {
+				p[autoIncludeSecureBootUserModeParamKey] = v
+			}
+			out = append(out, newParams...)
+		}
+		return out
+	})
+	return nil
+}
+
 // WithAllowSecureBootUserMode can be supplied to AddPCRProfile to allow for secure boot
 // PCR profiles that support user mode to be generated on systems where user mode is
 // currently enabled. This is opt-in to ensure that a system that was originally in
@@ -354,4 +375,16 @@ func (o allowSecureBootUserModeOption) ApplyOptionTo(visitor internal_efi.PCRPro
 // the generated policy invalid. If the system is in deployed mode, this option has no effect.
 func WithAllowSecureBootUserMode() PCRProfileOption {
 	return allowSecureBootUserModeOption{}
+}
+
+// WithAutoAllowSecureBootUserMode is like WithAllowSecureBootUserMode but will
+// only expect measurements if the event log contains them.
+// The variables still need to also be defined.
+// For Ubuntu Core users there are hardware that define AuditMode/DeployedMode variables
+// and still fail to measure that in PCR7. So we need to detect that hardware from the event
+// log.
+//
+// This option should only be used by Ubuntu Core.
+func WithAutoAllowSecureBootUserMode() PCRProfileOption {
+	return autoAllowSecureBootUserModeOption{}
 }

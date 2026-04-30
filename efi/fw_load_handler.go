@@ -208,6 +208,19 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// permitted with the WithSecureBootUserMode option and they are being included in this
 	// branch.
 	includeUserMode := boolParamOrFalse(ctx.Params(), includeSecureBootUserModeParamKey)
+	autoIncludeUserMode := boolParamOrFalse(ctx.Params(), autoIncludeSecureBootUserModeParamKey)
+	if autoIncludeUserMode {
+		for _, e := range h.log.Events {
+			switch {
+			case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIVariableDriverConfig:
+				if data, ok := e.Data.(*tcglog.EFIVariableData); ok {
+					if data.VariableName == efi.GlobalVariable && data.UnicodeName == "AuditMode" {
+						includeUserMode = true
+					}
+				}
+			}
+		}
+	}
 	switch deployedMode, _, err := ctx.Vars().ReadVar("DeployedMode", efi.GlobalVariable); {
 	case errors.Is(err, efi.ErrVarNotExist):
 		// pre-2.5 UEFI system
