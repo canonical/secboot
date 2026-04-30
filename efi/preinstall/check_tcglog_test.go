@@ -1159,7 +1159,7 @@ func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankEmptyPCRBanksError(c *
 		},
 		0,
 	)
-	c.Check(err, ErrorMatches, `cannot determine whether PCR bank TPM_ALG_SHA512 is active but empty on the TPM: cannot obtain active PCRs: TPM returned a TPM_RC_BAD_TAG error whilst executing command TPM_CC_GetCapability`)
+	c.Check(err, ErrorMatches, `cannot determine whether PCR bank TPM_ALG_SHA512 is active but empty on the TPM: cannot obtain active PCRs: TPM returned an error whilst executing command TPM_CC_GetCapability: TPM_RC_BAD_TAG \(defined for compatibility with TPM 1.2\)`)
 }
 
 func (s *tcglogSuite) TestCheckFirmwareLogAndChoosePCRBankBadSHA1(c *C) {

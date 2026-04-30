@@ -191,6 +191,14 @@ func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToPlatformFirmar
 	})
 }
 
+func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionRequireLockToPlatformFirmare(c *C) {
+	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
+		usedSecureBootCAs: [][]byte{msUefiCACert},
+		flags:             RequireLockToPlatformFirmware,
+		expectedPcrs:      tpm2.HandleList{0, 2, 4, 7},
+	})
+}
+
 // XXX: Uncomment when secboot_efi.WithPlatformConfigProfile exists.
 //func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionLockToPlatformConfig(c *C) {
 //	s.testWithAutoTCGPCRProfilePCRSelection(c, &testWithAutoTCGPCRProfilePCRSelectionParams{
@@ -356,6 +364,21 @@ func (s *profileSuite) TestWithAutoTCGPCRProfilePCRSelectionNoPartialDTPMResetAt
 		opts:              PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation,
 		expectedPcrs:      tpm2.HandleList{2, 4, 7},
 	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfileNoPartialDTPMResetAttackMitigationIncompatibleWithLockToPlatformFirmware(c *C) {
+	profile := WithAutoTCGPCRProfile(new(CheckResult), PCRProfileOptionLockToPlatformFirmware|PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation)
+	c.Check(profile.ApplyOptionTo(new(mockPcrProfileOptionVisitor)), ErrorMatches,
+		`cannot select an appropriate set of TCG defined PCRs with the current options: "no-partial-dtpm-reset-attack-mitigation" option is incompatible with "lock-platform-firmware" option`)
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRProfileNoPartialDTPMResetAttackMitigationIncompatibleWithRequireLockToPlatformFirmware(c *C) {
+	result := &CheckResult{
+		Flags: RequireLockToPlatformFirmware,
+	}
+	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation)
+	c.Check(profile.ApplyOptionTo(new(mockPcrProfileOptionVisitor)), ErrorMatches,
+		`cannot select an appropriate set of TCG defined PCRs with the current options: "no-partial-dtpm-reset-attack-mitigation" option cannot be used when platform firmware profile is required`)
 }
 
 func (s *profileSuite) TestWithAutoTCGPCRProfileLockToDriversAndAppsIncompatibleWithTrustSecureBootAuthoritiesForAddonDrivers(c *C) {
@@ -542,6 +565,30 @@ func (s *profileSuite) TestWithAutoTCGPCRInsufficientDMAProtection(c *C) {
 		{
 			"allow_insufficient_dma_protection":   true,
 			"include_insufficient_dma_protection": true,
+		},
+	})
+}
+
+func (s *profileSuite) TestWithAutoTCGPCRInvalidSecureBootMode(c *C) {
+	result := &CheckResult{
+		PCRAlg:            tpm2.HashAlgorithmSHA256,
+		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		AcceptedErrors:    map[ErrorKind]json.RawMessage{ErrorKindInvalidSecureBootMode: nil},
+	}
+	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
+
+	profile = profile.Options(PCRProfileOptionsDefault)
+
+	visitor := &mockPcrProfileOptionVisitor{
+		imageLoadParams: []internal_efi.LoadParams{{}},
+	}
+	c.Check(profile.ApplyOptionTo(visitor), IsNil)
+	c.Check(visitor.imageLoadParams, DeepEquals, []internal_efi.LoadParams{
+		{
+			"include_secure_boot_user_mode": false,
+		},
+		{
+			"include_secure_boot_user_mode": true,
 		},
 	})
 }

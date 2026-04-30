@@ -429,6 +429,11 @@ func (t *Connection) EnsureProvisioned(options ...EnsureProvisionedOption) error
 
 	// Set the lockout hierarchy authorization. Use command parameter encryption here for the new value.
 	// Note that this only offers protections against passive interposers.
+	// XXX: Clear any policy for the lockout hierarchy first. A future PR will initialize this to something
+	//  sensible.
+	if err := t.SetPrimaryPolicy(t.LockoutHandleContext(), nil, tpm2.HashAlgorithmNull, session); err != nil {
+		return fmt.Errorf("cannot clear the lockout hierarchy authorization policy: %w", err)
+	}
 	if err := t.HierarchyChangeAuth(t.LockoutHandleContext(), params.newLockoutAuthValue, session.IncludeAttrs(tpm2.AttrCommandEncrypt)); err != nil {
 		return xerrors.Errorf("cannot set the lockout hierarchy authorization value: %w", err)
 	}

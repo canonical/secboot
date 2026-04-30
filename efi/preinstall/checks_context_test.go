@@ -241,12 +241,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -313,12 +311,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA384}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -384,12 +380,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA1}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -461,12 +455,10 @@ C7E003CB
 				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				DMAProtection: efitest.DMAProtectionDisabled,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -540,12 +532,10 @@ C7E003CB
 				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				DMAProtection: efitest.DMAProtectionDisabled,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -633,12 +623,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -705,12 +693,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -752,12 +738,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -827,12 +811,10 @@ C7E003CB
 			efitest.WithVirtMode("qemu", internal_efi.DetectVirtModeVM),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -902,12 +884,10 @@ C7E003CB
 			efitest.WithVirtMode("qemu", internal_efi.DetectVirtModeVM),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -996,12 +976,10 @@ C7E003CB
 				Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				StartupLocality: 3,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1072,12 +1050,10 @@ C7E003CB
 				Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				StartupLocality: 4,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1146,12 +1122,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1230,12 +1204,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1314,12 +1286,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1397,12 +1367,10 @@ C7E003CB
 				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch: true,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1478,12 +1446,10 @@ C7E003CB
 				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch: true,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1604,12 +1570,10 @@ C7E003CB
 				Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeSysPrepAppLaunch: true,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1697,12 +1661,10 @@ C7E003CB
 				Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeSysPrepAppLaunch: true,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1842,12 +1804,10 @@ C7E003CB
 				Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1920,12 +1880,10 @@ C7E003CB
 				Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -2021,12 +1979,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -2101,12 +2057,10 @@ C7E003CB
 				IncludeDriverLaunch:          true,
 				PreOSVerificationUsesDigests: crypto.SHA256,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -2151,6 +2105,174 @@ C7E003CB
 	c.Check(errs, HasLen, 0)
 }
 
+func (s *runChecksContextSuite) TestRunGoodActionProceedPermitSecureBootUserMode(c *C) {
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices...),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		iterations:   2,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts: PCRProfileOptionsDefault,
+		actions: []actionAndArgs{
+			{action: ActionNone},
+			{action: ActionProceed},
+		},
+		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
+			switch i {
+			case 0:
+				c.Assert(errs, HasLen, 1)
+
+				c.Check(errs[0], ErrorMatches, `secure boot is enabled but not in deployed mode`)
+				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+					ErrorKindInvalidSecureBootMode,
+					SecureBootModeArg{
+						Enabled: true,
+						Mode:    efi.UserMode,
+					},
+					[]Action{ActionRebootToFWSettings, ActionProceed},
+					ErrNoDeployedMode,
+				))
+			}
+		},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindInvalidSecureBootMode: nil,
+		},
+		expectedWarningsMatch: `4 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
+- secure boot is enabled but not in deployed mode
+`,
+	})
+	c.Check(errs, HasLen, 0)
+}
+
+func (s *runChecksContextSuite) TestRunGoodPermitSecureBootUserModeFromInitialFlags(c *C) {
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices...),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		initialFlags: PermitSecureBootUserMode,
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts:               PCRProfileOptionsDefault,
+		actions:                   []actionAndArgs{{action: ActionNone}},
+		expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
+		expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+		expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+		expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
+			ErrorKindInvalidSecureBootMode: nil,
+		},
+		expectedWarningsMatch: `4 errors detected:
+- error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
+- error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
+- error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
+- secure boot is enabled but not in deployed mode
+`,
+	})
+	c.Check(errs, HasLen, 0)
+}
+
 func (s *runChecksContextSuite) TestRunGoodActionProceedPermitPreOSSecureBootAuthByEnrolledDigests(c *C) {
 	// Test that ActionProceed enables the PermitPreOSSecureBootAuthByEnrolledDigests flag. As
 	// this test generates 2 errors, it also tests the case where ActionProceed can
@@ -2185,12 +2307,10 @@ C7E003CB
 				IncludeDriverLaunch:          true,
 				PreOSVerificationUsesDigests: crypto.SHA256,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -2322,12 +2442,10 @@ C7E003CB
 				IncludeDriverLaunch:          true,
 				PreOSVerificationUsesDigests: crypto.SHA1,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -2408,12 +2526,10 @@ C7E003CB
 				IncludeDriverLaunch:          true,
 				PreOSVerificationUsesDigests: crypto.SHA1,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -2555,12 +2671,10 @@ C7E003CB
 				IncludeDriverLaunch:          true,
 				PreOSVerificationUsesDigests: crypto.SHA1,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -2725,12 +2839,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -2824,12 +2936,10 @@ C7E003CB
 				nil,
 			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -2932,12 +3042,10 @@ C7E003CB
 				nil,
 			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -3041,12 +3149,10 @@ C7E003CB
 				nil,
 			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -3139,12 +3245,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -3214,12 +3318,10 @@ C7E003CB
 				Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				StartupLocality: 3,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -3373,12 +3475,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Err: efi.ErrVarDeviceError},
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Err: efi.ErrVarDeviceError},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -3406,7 +3506,7 @@ C7E003CB
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Check(errs, HasLen, 1)
-	c.Assert(errs[0], ErrorMatches, `cannot access EFI variable: cannot obtain boot option support: variable access failed because of a hardware error`)
+	c.Assert(errs[0], ErrorMatches, `cannot access EFI variable: cannot compute secure boot mode: cannot read AuditMode variable: variable access failed because of a hardware error`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindEFIVariableAccess, EFIVarDeviceError, []Action{ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -3652,12 +3752,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -3671,21 +3769,18 @@ C7E003CB
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(_ int) {
-			// Set an authorization value for the endorsement hierarchy and
-			// an authorization policy for the storage hierarchy.
+			// Set an authorization value for the endorsement hierarchy
 			s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
-			c.Check(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
 		},
 		actions: []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: one or more of the TPM hierarchies is already owned:
 - TPM_RH_ENDORSEMENT has an authorization value
-- TPM_RH_OWNER has an authorization policy
 `)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
-		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
+		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}},
 		[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
@@ -3731,12 +3826,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -3753,11 +3846,9 @@ C7E003CB
 		prepare: func(i int) {
 			switch i {
 			case 0:
-				// Set an authorization value for the endorsement hierarchy and
-				// an authorization policy for the storage hierarchy on the
+				// Set an authorization value for the endorsement hierarchy on the
 				// first iteration.
 				s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
-				c.Check(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
 			}
 		},
 		actions: []actionAndArgs{
@@ -3770,7 +3861,7 @@ C7E003CB
 				c.Assert(errs, HasLen, 1)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
-					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
+					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}},
 					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
@@ -3824,12 +3915,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -3846,11 +3935,8 @@ C7E003CB
 		prepare: func(i int) {
 			switch i {
 			case 0:
-				// Set an authorization value for the endorsement hierarchy and
-				// an authorization policy for the storage hierarchy on the
-				// first iteration.
+				// Set an authorization value for the endorsement hierarchy on the first iteration.
 				s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
-				c.Check(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
 			}
 		},
 		actions: []actionAndArgs{
@@ -3863,7 +3949,7 @@ C7E003CB
 				c.Assert(errs, HasLen, 1)
 				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 					ErrorKindTPMHierarchiesOwned,
-					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
+					&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}},
 					[]Action{ActionClearTPMViaFirmware, ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 					errs[0].Unwrap(),
 				))
@@ -3917,12 +4003,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -4007,12 +4091,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -4115,12 +4197,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -4223,12 +4303,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -4293,12 +4371,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -4373,12 +4449,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -4456,12 +4530,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -4511,7 +4583,7 @@ func (s *runChecksContextSuite) TestRunBadTCGLog(c *C) {
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 		),
 		tpmPropertyModifiers: map[tpm2.Property]uint32{
 			tpm2.PropertyNVCountersMax:     0,
@@ -4559,12 +4631,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -4633,12 +4703,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -4708,12 +4776,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -4786,7 +4852,7 @@ C7E003CB
 				Algorithms:       []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				FirmwareDebugger: true,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
@@ -4834,7 +4900,7 @@ C7E003CB
 				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				DMAProtection: efitest.DMAProtectionDisabled,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
@@ -4882,7 +4948,7 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
@@ -4944,7 +5010,7 @@ C7E003CB
 				Algorithms:      []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				StartupLocality: 3,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (2 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
@@ -4993,7 +5059,7 @@ func (s *runChecksContextSuite) TestRunBadHostSecurityErrorMissingIntelMEModule(
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
@@ -5039,7 +5105,7 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 0, nil),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 0, nil),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
@@ -5086,7 +5152,7 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
@@ -5099,7 +5165,7 @@ C7E003CB
 		actions:      []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with system security: encountered an error when checking Intel BootGuard configuration: no hardware root-of-trust properly configured: ME is in manufacturing mode`)
+	c.Check(errs[0], ErrorMatches, `error with system security: encountered an error when checking Intel BootGuard configuration: no hardware root-of-trust properly configured: system is in manufacturing mode`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindHostSecurity, nil, []Action{ActionContactOEM}, errs[0].Unwrap()))
 }
 
@@ -5132,12 +5198,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA1}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -5203,12 +5267,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -5277,12 +5339,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -5356,12 +5416,10 @@ C7E003CB
 				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch: true,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -5460,12 +5518,10 @@ C7E003CB
 				Algorithms:              []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeSysPrepAppLaunch: true,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -5583,12 +5639,10 @@ C7E003CB
 				Algorithms:                        []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeOSPresentFirmwareAppLaunch: efi.MakeGUID(0x821aca26, 0x29ea, 0x4993, 0x839f, [...]byte{0x59, 0x7f, 0xc0, 0x21, 0x70, 0x8d}),
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -5659,12 +5713,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -5693,75 +5745,6 @@ C7E003CB
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with boot manager code \(PCR4\) measurements: cannot verify correctness of EV_EFI_BOOT_SERVICES_APPLICATION event digest: not enough images supplied`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindPCRUnusable, PCRUnusableArg(4), []Action{ActionContactOEM}, errs[0].Unwrap()))
-}
-
-func (s *runChecksContextSuite) TestRunBadInvalidSecureBootMode(c *C) {
-	// Test the error case where PCR7 is mandatory with the supplied profile options,
-	// but is marked invalid because the system is not in deployed mode. Note that it is
-	// my intention to support user mode in the future.
-	meiAttrs := map[string][]byte{
-		"fw_ver": []byte(`0:16.1.27.2176
-0:16.1.27.2176
-0:16.0.15.1624
-`),
-		"fw_status": []byte(`94000245
-09F10506
-00000020
-00004000
-00041F03
-C7E003CB
-`),
-	}
-	devices := []internal_efi.SysfsDevice{
-		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
-		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
-		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
-			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
-		)),
-	}
-
-	errs := s.testRun(c, &testRunChecksContextRunParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
-				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
-			efitest.WithSysfsDevices(devices...),
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
-		),
-		tpmPropertyModifiers: map[tpm2.Property]uint32{
-			tpm2.PropertyNVCountersMax:     0,
-			tpm2.PropertyPSFamilyIndicator: 1,
-			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
-		},
-		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		loadedImages: []secboot_efi.Image{
-			&mockImage{
-				contents: []byte("mock shim executable"),
-				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
-				signatures: []*efi.WinCertificateAuthenticode{
-					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
-				},
-			},
-			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
-			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
-		},
-		profileOpts:    PCRProfileOptionsDefault,
-		actions:        []actionAndArgs{{action: ActionNone}},
-		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
-	})
-	c.Check(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `error with secure boot policy \(PCR7\) measurements: deployed mode should be enabled in order to generate secure boot profiles`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindInvalidSecureBootMode, nil, []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
 }
 
 func (s *runChecksContextSuite) TestRunBadInvalidSecureBootModeSecureBootDisabled(c *C) {
@@ -5796,12 +5779,10 @@ C7E003CB
 				Algorithms:         []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				SecureBootDisabled: true,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -5830,7 +5811,15 @@ C7E003CB
 	})
 	c.Check(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with secure boot policy \(PCR7\) measurements: secure boot should be enabled in order to generate secure boot profiles`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindInvalidSecureBootMode, nil, []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindInvalidSecureBootMode,
+		SecureBootModeArg{
+			Enabled: false,
+			Mode:    efi.UserMode,
+		},
+		[]Action{ActionRebootToFWSettings},
+		errs[0].Unwrap(),
+	))
 }
 
 func (s *runChecksContextSuite) TestRunBadInvalidSecureBootModeSecureBootDisabledAndNoSBATLevel(c *C) {
@@ -5868,12 +5857,10 @@ C7E003CB
 				SecureBootDisabled: true,
 				NoSBAT:             true,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -5902,7 +5889,15 @@ C7E003CB
 	})
 	c.Check(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with secure boot policy \(PCR7\) measurements: secure boot should be enabled in order to generate secure boot profiles`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindInvalidSecureBootMode, nil, []Action{ActionRebootToFWSettings}, errs[0].Unwrap()))
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindInvalidSecureBootMode,
+		SecureBootModeArg{
+			Enabled: false,
+			Mode:    efi.UserMode,
+		},
+		[]Action{ActionRebootToFWSettings},
+		errs[0].Unwrap(),
+	))
 }
 
 func (s *runChecksContextSuite) TestRunBadNoSecureBootPolicySupport(c *C) {
@@ -5954,12 +5949,10 @@ C7E003CB
 			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
 			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
 			efitest.WithLog(log),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -6025,12 +6018,10 @@ C7E003CB
 				IncludeDriverLaunch:          true,
 				PreOSVerificationUsesDigests: crypto.SHA1,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -6113,6 +6104,80 @@ C7E003CB
 	))
 }
 
+func (s *runChecksContextSuite) TestRunBadInvalidSecureBootModeNoDeployedMode(c *C) {
+	// Test the error case where PCR7 is mandatory with the supplied profile options,
+	// but is marked invalid because the system is not in deployed mode.
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
+	}
+
+	errs := s.testRun(c, &testRunChecksContextRunParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
+			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+			})),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithSysfsDevices(devices...),
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+		),
+		tpmPropertyModifiers: map[tpm2.Property]uint32{
+			tpm2.PropertyNVCountersMax:     0,
+			tpm2.PropertyPSFamilyIndicator: 1,
+			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
+		},
+		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		loadedImages: []secboot_efi.Image{
+			&mockImage{
+				contents: []byte("mock shim executable"),
+				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+				signatures: []*efi.WinCertificateAuthenticode{
+					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+				},
+			},
+			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
+			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
+		},
+		profileOpts:    PCRProfileOptionsDefault,
+		actions:        []actionAndArgs{{action: ActionNone}},
+		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
+	})
+	c.Assert(errs, HasLen, 1)
+	c.Check(errs[0], ErrorMatches, `secure boot is enabled but not in deployed mode`)
+	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
+		ErrorKindInvalidSecureBootMode,
+		SecureBootModeArg{
+			Enabled: true,
+			Mode:    efi.UserMode,
+		},
+		[]Action{ActionRebootToFWSettings, ActionProceed},
+		ErrNoDeployedMode,
+	))
+}
+
 // TODO: This is disabled temporarily until a follow-up PR which adds warnings to the returned errors
 // if RunChecks is going to return one or more errors anyway.
 //func (s *runChecksContextSuite) TestRunChecksBadTPMHierarchiesOwnedAndNoSecureBootPolicySupport(c *C) {
@@ -6145,12 +6210,10 @@ C7E003CB
 //			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 //				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 //			})),
-//			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+//			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 //			efitest.WithSysfsDevices(devices...),
 //			efitest.WithMockVars(efitest.MockVars{
 //				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-//				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-//				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 //				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 //				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 //				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -6224,12 +6287,10 @@ C7E003CB
 //			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 //				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 //			})),
-//			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+//			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 //			efitest.WithSysfsDevices(devices...),
 //			efitest.WithMockVars(efitest.MockVars{
 //				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-//				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-//				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 //				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 //				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 //				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -6302,12 +6363,10 @@ C7E003CB
 				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				DMAProtection: efitest.DMAProtectionDisabled,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -6466,12 +6525,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -6485,21 +6542,18 @@ C7E003CB
 		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 		profileOpts:  PCRProfileOptionsDefault,
 		prepare: func(_ int) {
-			// Set an authorization value for the endorsement hierarchy and
-			// an authorization policy for the storage hierarchy.
+			// Set an authorization value for the endorsement hierarchy
 			s.HierarchyChangeAuth(c, tpm2.HandleEndorsement, []byte("1234"))
-			c.Check(s.TPM.SetPrimaryPolicy(s.TPM.OwnerHandleContext(), make([]byte, 32), tpm2.HashAlgorithmSHA256, nil), IsNil)
 		},
 		actions: []actionAndArgs{{action: ActionNone}},
 	})
 	c.Assert(errs, HasLen, 1)
 	c.Check(errs[0], ErrorMatches, `error with TPM2 device: one or more of the TPM hierarchies is already owned:
 - TPM_RH_ENDORSEMENT has an authorization value
-- TPM_RH_OWNER has an authorization policy
 `)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindTPMHierarchiesOwned,
-		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}, WithAuthPolicy: tpm2.HandleList{tpm2.HandleOwner}},
+		&TPM2OwnedHierarchiesError{WithAuthValue: tpm2.HandleList{tpm2.HandleEndorsement}},
 		[]Action{ActionEnableAndClearTPMViaFirmware, ActionClearTPMSimple, ActionClearTPM, ActionRebootToFWSettings},
 		errs[0].Unwrap(),
 	))
@@ -6591,12 +6645,10 @@ C7E003CB
 				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				DMAProtection: efitest.DMAProtectionDisabled,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -6677,7 +6729,7 @@ C7E003CB
 				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				DMAProtection: efitest.DMAProtectionDisabled,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{}.SetSecureBoot(false)),
 		),
@@ -6747,12 +6799,10 @@ C7E003CB
 				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch: true,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -6838,129 +6888,6 @@ C7E003CB
 	))
 }
 
-func (s *runChecksContextSuite) TestRunChecksActionProceedUnsupportedErrorKind(c *C) {
-	// Test that passing an unsupported ErrorKind as an argument to ActionProceed
-	// generates an error.
-	meiAttrs := map[string][]byte{
-		"fw_ver": []byte(`0:16.1.27.2176
-0:16.1.27.2176
-0:16.0.15.1624
-`),
-		"fw_status": []byte(`94000245
-09F10506
-00000020
-00004000
-00041F03
-C7E003CB
-`),
-	}
-	devices := []internal_efi.SysfsDevice{
-		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
-		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
-		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
-			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
-		)),
-	}
-
-	errs := s.testRun(c, &testRunChecksContextRunParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithVirtMode(internal_efi.VirtModeNone, internal_efi.DetectVirtModeAll),
-			efitest.WithTPMDevice(newTpmDevice(tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1), nil, tpm2_device.ErrNoPPI)),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
-				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-				IncludeDriverLaunch: true,
-			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
-			efitest.WithSysfsDevices(devices...),
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
-				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
-		),
-		tpmPropertyModifiers: map[tpm2.Property]uint32{
-			tpm2.PropertyNVCountersMax:     0,
-			tpm2.PropertyPSFamilyIndicator: 1,
-			tpm2.PropertyManufacturer:      uint32(tpm2.TPMManufacturerINTC),
-		},
-		enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
-		iterations:   2,
-		loadedImages: []secboot_efi.Image{
-			&mockImage{
-				contents: []byte("mock shim executable"),
-				digest:   testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
-				signatures: []*efi.WinCertificateAuthenticode{
-					efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
-				},
-			},
-			&mockImage{contents: []byte("mock grub executable"), digest: testutil.DecodeHexString(c, "d5a9780e9f6a43c2e53fe9fda547be77f7783f31aea8013783242b040ff21dc0")},
-			&mockImage{contents: []byte("mock kernel executable"), digest: testutil.DecodeHexString(c, "2ddfbd91fa1698b0d133c38ba90dbba76c9e08371ff83d03b5fb4c2e56d7e81f")},
-		},
-		profileOpts: PCRProfileOptionsDefault,
-		actions: []actionAndArgs{
-			{action: ActionNone},
-			{action: ActionProceed, args: ActionProceedArgs{ErrorKindInvalidSecureBootMode}},
-		},
-		checkIntermediateErrs: func(i int, errs []*WithKindAndActionsError) {
-			switch i {
-			case 0:
-				c.Check(errs, HasLen, 1)
-				imageInfo := []*LoadedImageInfo{
-					{
-						DevicePath: efi.DevicePath{
-							&efi.ACPIDevicePathNode{
-								HID: 0x0a0341d0,
-								UID: 0x0,
-							},
-							&efi.PCIDevicePathNode{
-								Function: 0x1c,
-								Device:   0x2,
-							},
-							&efi.PCIDevicePathNode{
-								Function: 0x0,
-								Device:   0x0,
-							},
-							&efi.MediaRelOffsetRangeDevicePathNode{
-								StartingOffset: 0x38,
-								EndingOffset:   0x11dff,
-							},
-						},
-						DigestAlg: tpm2.HashAlgorithmSHA256,
-						Digest:    testutil.DecodeHexString(c, "1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6"),
-					},
-				}
-
-				c.Check(errs[0], ErrorMatches, `addon drivers were detected:
-- \[no description\] path=\\PciRoot\(0x0\)\\Pci\(0x2,0x1c\)\\Pci\(0x0,0x0\)\\Offset\(0x38,0x11dff\) authenticode-digest=TPM_ALG_SHA256:1e94aaed2ad59a4409f3230dca2ad8c03ef8e3fde77cc47dc7b81bb8b242f3e6
-`)
-				c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-					ErrorKindAddonDriversPresent,
-					LoadedImagesInfoArg(imageInfo),
-					[]Action{ActionProceed},
-					&AddonDriversPresentError{
-						Drivers: imageInfo,
-					},
-				))
-			}
-		},
-		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
-	})
-	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `invalid value for argument "error-kinds" at index 0: "invalid-secure-boot-mode" does not support the "proceed" action`)
-	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
-		ErrorKindInvalidArgument,
-		InvalidActionArgumentDetails{
-			Field:  "error-kinds",
-			Reason: InvalidActionArgumentReasonValue,
-		},
-		nil,
-		errs[0].Unwrap(),
-	))
-}
-
 func (s *runChecksContextSuite) TestRunChecksActionProceedUnexpectedErrorKind1(c *C) {
 	// Test that passing an unexpected ErrorKind as an argument to ActionProceed
 	// generates an error.
@@ -6993,12 +6920,10 @@ C7E003CB
 				Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 				IncludeDriverLaunch: true,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -7117,12 +7042,10 @@ C7E003CB
 				IncludeDriverLaunch:          true,
 				PreOSVerificationUsesDigests: crypto.SHA256,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -7258,12 +7181,10 @@ C7E003CB
 				IncludeDriverLaunch:          true,
 				PreOSVerificationUsesDigests: crypto.SHA256,
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -7397,12 +7318,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -7478,12 +7397,10 @@ C7E003CB
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
 				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -7555,12 +7472,10 @@ C7E003CB
 				nil,
 			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -7670,12 +7585,10 @@ C7E003CB
 				nil,
 			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -7785,12 +7698,10 @@ C7E003CB
 				nil,
 			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -7913,12 +7824,10 @@ C7E003CB
 				nil,
 			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -8030,12 +7939,10 @@ C7E003CB
 				nil,
 			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -8146,12 +8053,10 @@ C7E003CB
 				nil,
 			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -8261,12 +8166,10 @@ C7E003CB
 				nil,
 			)),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-			efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
+			efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG, cpuid.SMX}, 4, map[uint32]uint64{0x13a: (3 << 1), 0xc80: 0x40000000}),
 			efitest.WithSysfsDevices(devices...),
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},

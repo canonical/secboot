@@ -83,6 +83,15 @@ func (s *pcr7Suite) testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c 
 	})
 	defer restore()
 
+	restore = MockEfiComputePeImageDigest(func(alg crypto.Hash, r io.ReaderAt, sz int64) ([]byte, error) {
+		c.Check(alg, Equals, params.pcrAlg.GetHash())
+		c.Assert(r, testutil.ConvertibleTo, &mockImageReader{})
+		imageReader := r.(*mockImageReader)
+		c.Check(sz, Equals, int64(len(imageReader.contents)))
+		return imageReader.digest, nil
+	})
+	defer restore()
+
 	log, err := params.env.ReadEventLog()
 	c.Assert(err, IsNil)
 
@@ -103,8 +112,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -116,6 +123,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 		expectedFlags: SecureBootPolicyResultFlags(0),
 		expectedUsedAuthorities: []*X509CertificateID{
@@ -130,8 +138,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -143,6 +149,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "030ac3c913dab858f1d69239115545035cff671d6229f95577bb0ffbd827b35abaf6af6bfd223e04ecc9b60a9803642d"),
 		},
 		expectedFlags: SecureBootPolicyResultFlags(0),
 		expectedUsedAuthorities: []*X509CertificateID{
@@ -157,8 +164,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -173,6 +178,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 		expectedFlags: SecureBootPolicyResultFlags(0),
 		expectedUsedAuthorities: []*X509CertificateID{
@@ -187,8 +193,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -204,6 +208,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 		expectedFlags: SecureBootPreOSVerificationIncludesDigest,
 		expectedUsedAuthorities: []*X509CertificateID{
@@ -218,8 +223,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -235,8 +238,68 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 		expectedFlags: SecureBootIncludesWeakAlg | SecureBootPreOSVerificationIncludesDigest,
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoodSecureBootSeparatorAfterPreOS(c *C) {
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:               []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				SecureBootSeparatorOrder: efitest.SecureBootSeparatorAfterPreOS,
+			})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+		},
+		expectedFlags: SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoodWithDriverLaunchAndSecureBootSeparatorAfterPreOS(c *C) {
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:               []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				SecureBootSeparatorOrder: efitest.SecureBootSeparatorAfterPreOS,
+				IncludeDriverLaunch:      true,
+			})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+		},
+		expectedFlags: SecureBootPolicyResultFlags(0),
 		expectedUsedAuthorities: []*X509CertificateID{
 			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
 		},
@@ -249,8 +312,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -265,6 +326,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 		expectedFlags: SecureBootPolicyResultFlags(0),
 		expectedUsedAuthorities: []*X509CertificateID{
@@ -279,8 +341,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -295,6 +355,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 		expectedFlags: SecureBootPolicyResultFlags(0),
 		expectedUsedAuthorities: []*X509CertificateID{
@@ -308,8 +369,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
 			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
@@ -320,6 +379,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoo
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 		expectedFlags: SecureBootPolicyResultFlags(0),
 		expectedUsedAuthorities: []*X509CertificateID{
@@ -334,8 +394,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesWit
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -350,6 +408,37 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesWit
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+		},
+		permitDMAProtectionDisabled: true,
+		expectedFlags:               SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesWithPermittedDMAProtectionDisabledNullTerminated(c *C) {
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				DMAProtection: efitest.DMAProtectionDisabled | efitest.DMAProtectionDisabledEventNullTerminated,
+			})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 		permitDMAProtectionDisabled: true,
 		expectedFlags:               SecureBootPolicyResultFlags(0),
@@ -365,8 +454,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesWit
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -381,9 +468,186 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesWit
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 		permitDMAProtectionDisabled: true,
 		expectedFlags:               SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoodUserMode(c *C) {
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+		},
+		expectedFlags: SecureBootNoDeployedMode,
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoodWithVendorEventBeforeConfig(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	var eventsCopy []*tcglog.Event
+	added := false
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
+		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR && !added {
+			eventsCopy = append(eventsCopy, &tcglog.Event{
+				PCRIndex:  internal_efi.SecureBootPolicyPCR,
+				EventType: 0x8041,
+				Digests: tcglog.DigestMap{
+					tpm2.HashAlgorithmSHA256: testutil.DecodeHexString(c, "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"),
+				},
+				Data: tcglog.OpaqueEventData{0},
+			})
+			added = true
+		}
+
+		eventsCopy = append(eventsCopy, ev)
+	}
+	log.Events = eventsCopy
+
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(log),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+		},
+		expectedFlags: SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoodWithVendorEventWithConfig(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	var eventsCopy []*tcglog.Event
+	added := false
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
+		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR && ev.EventType == tcglog.EventTypeSeparator && !added {
+			eventsCopy = append(eventsCopy, &tcglog.Event{
+				PCRIndex:  internal_efi.SecureBootPolicyPCR,
+				EventType: 0x8041,
+				Digests: tcglog.DigestMap{
+					tpm2.HashAlgorithmSHA256: testutil.DecodeHexString(c, "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"),
+				},
+				Data: tcglog.OpaqueEventData{0},
+			})
+			added = true
+		}
+
+		eventsCopy = append(eventsCopy, ev)
+	}
+	log.Events = eventsCopy
+
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(log),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+		},
+		expectedFlags: SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoodWithVendorEventWithVerification(c *C) {
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	var eventsCopy []*tcglog.Event
+	added := false
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
+		eventsCopy = append(eventsCopy, ev)
+
+		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR && ev.EventType == tcglog.EventTypeSeparator && !added {
+			eventsCopy = append(eventsCopy, &tcglog.Event{
+				PCRIndex:  internal_efi.SecureBootPolicyPCR,
+				EventType: 0x8041,
+				Digests: tcglog.DigestMap{
+					tpm2.HashAlgorithmSHA256: testutil.DecodeHexString(c, "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"),
+				},
+				Data: tcglog.OpaqueEventData{0},
+			})
+			added = true
+		}
+	}
+	log.Events = eventsCopy
+
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(log),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+		},
+		expectedFlags: SecureBootPolicyResultFlags(0),
 		expectedUsedAuthorities: []*X509CertificateID{
 			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
 		},
@@ -396,8 +660,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -412,32 +674,10 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, Equals, ErrNoSecureBoot)
-}
-
-func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadUserMode(c *C) {
-	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-		),
-		pcrAlg: tpm2.HashAlgorithmSHA256,
-		iblImage: &mockImage{
-			signatures: []*efi.WinCertificateAuthenticode{
-				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
-			},
-		},
-	})
-	c.Check(err, Equals, ErrNoDeployedMode)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadFWSupportsDBT(c *C) {
@@ -445,8 +685,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -458,6 +696,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `generating secure boot profiles for systems with timestamp revocation \(dbt\) support is currently not supported`)
@@ -468,8 +707,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x61, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -481,54 +718,10 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `generating secure boot profiles for systems with OS recovery support, which requires dbr support, is not supported`)
-}
-
-func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadNoBootCurrent(c *C) {
-	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
-				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-		),
-		pcrAlg: tpm2.HashAlgorithmSHA256,
-		iblImage: &mockImage{
-			signatures: []*efi.WinCertificateAuthenticode{
-				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
-			},
-		},
-	})
-	c.Check(err, ErrorMatches, `cannot read BootCurrent variable: variable does not exist`)
-}
-
-func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadNoLoadOption(c *C) {
-	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x4, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
-				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-		),
-		pcrAlg: tpm2.HashAlgorithmSHA256,
-		iblImage: &mockImage{
-			signatures: []*efi.WinCertificateAuthenticode{
-				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
-			},
-		},
-	})
-	c.Check(err, ErrorMatches, `cannot read current Boot0004 load option from log: cannot find specified boot option`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadUnexpectedConfigMeasurement(c *C) {
@@ -556,8 +749,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -569,6 +760,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `unexpected EV_EFI_VARIABLE_DRIVER_CONFIG event: all expected secure boot variable have been measured`)
@@ -594,8 +786,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -607,6 +797,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `invalid event data for EV_EFI_VARIABLE_DRIVER_CONFIG event: some error`)
@@ -639,8 +830,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -652,6 +841,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `unexpected EV_EFI_VARIABLE_DRIVER_CONFIG event ordering \(expected db-d719b2cb-3d3a-4596-a3bc-dad00e67656f, got dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f\)`)
@@ -677,8 +867,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -690,6 +878,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `event data inconsistent with measured digest for EV_EFI_VARIABLE_DRIVER_CONFIG event \(name:\"dbx\", GUID:d719b2cb-3d3a-4596-a3bc-dad00e67656f, expected digest:0x1963d580fcc0cede165e23837b55335eebe18750c0b795883386026ea071e3c6, measured digest:0x8c8d89cdf0f2de4a1e97d436d7f6a19c49ab55d33bdb81c27470d4140b3de220\)`)
@@ -716,8 +905,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -729,6 +916,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `invalid event data for EV_EFI_VARIABLE_DRIVER_CONFIG event: SecureBoot value is not consistent with the current EFI variable value`)
@@ -739,8 +927,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -755,9 +941,10 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
-	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event \"UEFI Debug Mode\" whilst measuring config`)
+	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event \"UEFI Debug Mode\" before config`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadMissingConfigMeasurement(c *C) {
@@ -785,8 +972,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -798,6 +983,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `EV_EFI_VARIABLE_DRIVER_CONFIG events for some secure boot variables missing from log`)
@@ -809,7 +995,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 	seenIBLVerification := false
 	for _, ev := range log.Events {
 		eventsCopy = append(eventsCopy, ev)
-
 		switch {
 		case ev.PCRIndex == internal_efi.BootManagerCodePCR && ev.EventType == tcglog.EventTypeEFIBootServicesApplication:
 			// Delete measurement
@@ -827,8 +1012,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -840,6 +1023,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `missing load event for initial boot loader`)
@@ -850,8 +1034,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -863,9 +1045,10 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "3875f8b0611b9e5264603f28b9d2dedc544420bc68b45db72f8794fbd1cb6303"),
 		},
 	})
-	c.Check(err, ErrorMatches, `unexpected EV_EFI_BOOT_SERVICES_APPLICATION event for \\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\ubuntu\\shimx64.efi after already seeing a verification event during the OS-present environment. This event should be for the initial boot loader`)
+	c.Check(err, ErrorMatches, `OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for \\PciRoot\(0x0\)\\Pci\(0x1d,0x0\)\\Pci\(0x0,0x0\)\\NVMe\(0x1,00-00-00-00-00-00-00-00\)\\HD\(1,GPT,66de947b-fdb2-4525-b752-30d66bb2b960\)\\\\EFI\\ubuntu\\shimx64.efi is not associated with the initial boot loader image`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadInvalidSourceForFirstOSPresentVerification(c *C) {
@@ -887,8 +1070,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -900,6 +1081,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `cannot handle EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: event is not from db \(got db-8be4df61-93ca-11d2-aa0d-00e098032b8c\)`)
@@ -922,8 +1104,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -935,6 +1115,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `cannot handle EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: event data inconsistent with TPM_ALG_SHA256 event digest \(log digest:0x8c8d89cdf0f2de4a1e97d436d7f6a19c49ab55d33bdb81c27470d4140b3de220, expected digest:0x4d4a8e2c74133bbdc01a16eaf2dbb5d575afeb36f5d8dfcf609ae043909e2ee9\)`)
@@ -970,8 +1151,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -983,6 +1162,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `cannot handle EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: digest 0x4d4a8e2c74133bbdc01a16eaf2dbb5d575afeb36f5d8dfcf609ae043909e2ee9 has been measured by the firmware already`)
@@ -1005,8 +1185,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1018,9 +1196,10 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
-	c.Check(err, ErrorMatches, `cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for is associated with the current boot load option: event has invalid event data: some error`)
+	c.Check(err, ErrorMatches, `invalid event data for EV_EFI_BOOT_SERVICES_APPLICATION event: some error`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadInvalidVerificationEventData(c *C) {
@@ -1040,8 +1219,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1053,9 +1230,10 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
-	c.Check(err, ErrorMatches, `cannot handle EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: event has wong data format: some error`)
+	c.Check(err, ErrorMatches, `cannot handle EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: event has wrong data format: some error`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadDMAProtectionDisabled(c *C) {
@@ -1063,8 +1241,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1079,6 +1255,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event \"DMA Protection Disabled\" whilst measuring config`)
@@ -1089,8 +1266,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1105,9 +1280,10 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
-	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event \"DMA Protection Disabled\" whilst measuring config`)
+	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event \"DMA Protection Disabled\" before config`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadDMAProtectionDisabledBeforeVerification(c *C) {
@@ -1115,8 +1291,31 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				DMAProtection: efitest.DMAProtectionDisabled,
+			})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+		},
+	})
+	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event \"DMA Protection Disabled\" whilst measuring config`)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadDMAProtectionDisabledAfterSeparator(c *C) {
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1131,6 +1330,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event \"DMA Protection Disabled\" whilst measuring verification`)
@@ -1141,8 +1341,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1154,6 +1352,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `cannot read SecureBoot variable: variable does not exist`)
@@ -1164,8 +1363,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1177,6 +1374,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `cannot compute secure boot mode: inconsistent secure boot mode: firmware indicates audit mode is enabled when not in setup mode`)
@@ -1186,11 +1384,9 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:         &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:       &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
-				{Name: "DeployedMode", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
-				{Name: "SetupMode", GUID: efi.GlobalVariable}:         &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:    &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:    &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
 			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
 		),
@@ -1199,6 +1395,7 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			signatures: []*efi.WinCertificateAuthenticode{
 				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
 			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
 		},
 	})
 	c.Check(err, ErrorMatches, `cannot read OsIndicationsSupported variable: variable does not exist`)
@@ -1209,8 +1406,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
 				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "BootCurrent", GUID: efi.GlobalVariable}:            &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x3, 0x0}},
-				{Name: "BootOptionSupport", GUID: efi.GlobalVariable}:      &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x13, 0x03, 0x00, 0x00}},
 				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
 				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
 				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
@@ -1220,6 +1415,111 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		pcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Check(err, ErrorMatches, `must supply the initial boot loader image`)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadUnexpectedVendorEventInConfig(c *C) {
+	// Add a vendor event that is measured in the middle of the signature database measurements.
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	var eventsCopy []*tcglog.Event
+	added := false
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
+		eventsCopy = append(eventsCopy, ev)
+
+		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR && !added {
+			eventsCopy = append(eventsCopy, &tcglog.Event{
+				PCRIndex:  internal_efi.SecureBootPolicyPCR,
+				EventType: 0x8041,
+				Digests: tcglog.DigestMap{
+					tpm2.HashAlgorithmSHA256: testutil.DecodeHexString(c, "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"),
+				},
+				Data: tcglog.OpaqueEventData{0},
+			})
+			added = true
+		}
+
+	}
+	log.Events = eventsCopy
+
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(log),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+		},
+		expectedFlags: SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, ErrorMatches, `unexpected 00008041 event "" whilst measuring config`)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadUnexpectedDMAProtectionDisabledEventInConfig(c *C) {
+	// Add a "DMA Protection Disabled" event that is measured in the middle of the signature database measurements.
+	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
+	var eventsCopy []*tcglog.Event
+	added := false
+	events := log.Events
+	for len(events) > 0 {
+		ev := events[0]
+		events = events[1:]
+
+		eventsCopy = append(eventsCopy, ev)
+
+		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR && !added {
+			eventsCopy = append(eventsCopy, &tcglog.Event{
+				PCRIndex:  internal_efi.SecureBootPolicyPCR,
+				EventType: tcglog.EventTypeEFIAction,
+				Digests: tcglog.DigestMap{
+					tpm2.HashAlgorithmSHA256: testutil.DecodeHexString(c, "019537eeff4f1858181e09d26faa59a5ad3a9d8eef3d1bbbb35288e0e16d656c"),
+				},
+				Data: tcglog.DMAProtectionDisabled,
+			})
+			added = true
+		}
+
+	}
+	log.Events = eventsCopy
+
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(log),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: testutil.DecodeHexString(c, "25e1b08db2f31ff5f5d2ea53e1a1e8fda6e1d81af4f26a7908071f1dec8611b7"),
+		},
+		permitDMAProtectionDisabled: true,
+		expectedFlags:               SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, ErrorMatches, `unexpected EV_EFI_ACTION event "DMA Protection Disabled" whilst measuring config`)
 }
 
 // TODO (some harder, and some of these may require a more customizable test log generation in internal/efitest/log.go):

@@ -30,8 +30,8 @@ import (
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) error {
-	return &UnsupportedPlatformError{fmt.Errorf("checking host security is not implemented on %s", runtime.GOARCH)}
+func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (platformFirmwareIntegrityConfig, error) {
+	return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("checking host security is not implemented on %s", runtime.GOARCH)}
 }
 
 func checkDiscreteTPMPartialResetAttackMitigationStatus(env internal_efi.HostEnvironment, logResults *pcrBankResults) (discreteTPMPartialResetAttackMitigationStatus, error) {

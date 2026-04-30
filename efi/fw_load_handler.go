@@ -150,7 +150,12 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		e := events[0]
 		events = events[1:]
 
-		if e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIVariableDriverConfig {
+		if e.PCRIndex != internal_efi.SecureBootPolicyPCR {
+			// we don't care about this event.
+			continue
+		}
+
+		if e.EventType == tcglog.EventTypeEFIVariableDriverConfig {
 			// This is the first secure boot configuration measurement. In most
 			// circumstances, this will be the first measurement to PCR7. Only
 			// in the case where the first event is a EV_EFI_ACTION "DMA Protection
@@ -159,7 +164,7 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		}
 
 		switch {
-		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIAction &&
+		case e.EventType == tcglog.EventTypeEFIAction &&
 			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) || bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))) &&
 			allowInsufficientDMAProtection:
 			// This is a EV_EFI_ACTION "DMA Protection Disabled" measurement and is
@@ -175,10 +180,10 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 				ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 			}
 			allowInsufficientDMAProtection = false // Only allow this event to appear once
-		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType != tcglog.EventTypeEFIVariableDriverConfig:
-			return fmt.Errorf("unexpected event type (%v) found in log, before config", e.EventType)
+		case internal_efi.IsVendorEventType(e.EventType):
+			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 		default:
-			// we don't care about this event.
+			return fmt.Errorf("unexpected event type (%v) found in log, before config", e.EventType)
 		}
 	}
 
@@ -198,6 +203,28 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	}
 
 	// TODO: Support optional dbt/dbr database
+
+	// Include the user mode related measurements if the system is in user mode, it is
+	// permitted with the WithSecureBootUserMode option and they are being included in this
+	// branch.
+	includeUserMode := boolParamOrFalse(ctx.Params(), includeSecureBootUserModeParamKey)
+	switch deployedMode, _, err := ctx.Vars().ReadVar("DeployedMode", efi.GlobalVariable); {
+	case errors.Is(err, efi.ErrVarNotExist):
+		// pre-2.5 UEFI system
+	case err != nil:
+		return fmt.Errorf("cannot read DeployedMode variable: %w", err)
+	case len(deployedMode) != 1:
+		return fmt.Errorf("invalid DeployedMode value %#x", deployedMode)
+	case deployedMode[0] == 0 && includeUserMode:
+		// System is in user mode, the WithSecureBootUserMode option was supplied and
+		// we are including the user mode related measurements in this branch.
+		ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, "AuditMode", []byte{0})
+		ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, "DeployedMode", []byte{0})
+	default:
+		// Do nothing for the deployed mode case, or where the system is in user mode
+		// but where the WithSecureBootUserMode option is not supplied or we are creating
+		// a branch that allows for deployed mode to be enabled.
+	}
 
 	// We don't measure a EV_SEPARATOR here yet because we need to preserve the
 	// device-specific measurement ordering - see the notes above about when the
@@ -256,24 +283,6 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			// once we've encountered the first EV_EFI_VARIABLE_AUTHORITY event and
 			// we'll likely generate an invalid profile if we do. The preinstall
 			// checks will catch this.
-
-			// Except...
-			// Backward compliance: On Ubuntu Core not using preinstall checks,
-			// the firmware might be UEFI 2.5 compliant but not be in deployed mode.
-			// In that case we should still expect those measurements due to the mode.
-			if data, ok := e.Data.(*tcglog.EFIVariableData); ok {
-				if (data.VariableName == efi.GlobalVariable && data.UnicodeName == "AuditMode") {
-					if bytes.Equal(data.VariableData, []byte{0}) {
-						ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, "AuditMode", data.VariableData)
-					}
-				}
-				if (data.VariableName == efi.GlobalVariable && data.UnicodeName == "DeployedMode") {
-					if bytes.Equal(data.VariableData, []byte{0}) {
-						ctx.MeasureVariable(internal_efi.SecureBootPolicyPCR, efi.GlobalVariable, "DeployedMode", data.VariableData)
-					}
-				}
-			}
-
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIAction &&
 			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) || bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))) &&
 			allowInsufficientDMAProtection:
@@ -293,6 +302,8 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 				ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 			}
 			allowInsufficientDMAProtection = false // Only allow this event to appear once
+		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && internal_efi.IsVendorEventType(e.EventType):
+			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR:
 			return fmt.Errorf("unexpected event type (%v) found in log", e.EventType)
 		default:
@@ -311,6 +322,29 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	if !measuredSecureBootSeparator {
 		return errors.New("missing separator in log")
 	}
+
+	// Retain any other vendor defined events that occur before the first EV_EFI_VARIABLE_AUTHORITY
+	// event.
+	for len(events) > 0 {
+		e := events[0]
+		events = events[1:]
+
+		if e.PCRIndex != internal_efi.SecureBootPolicyPCR {
+			continue
+		}
+
+		if e.EventType == tcglog.EventTypeEFIVariableAuthority {
+			break
+		}
+
+		switch {
+		case internal_efi.IsVendorEventType(e.EventType):
+			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
+		default:
+			return fmt.Errorf("unexpected event type (%v) found in log", e.EventType)
+		}
+	}
+
 	return nil
 }
 

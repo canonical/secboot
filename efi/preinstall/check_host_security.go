@@ -21,7 +21,6 @@ package preinstall
 
 import (
 	"bytes"
-	"fmt"
 
 	"github.com/canonical/tcglog-parser"
 	"github.com/pilebones/go-udev/netlink"
@@ -49,6 +48,24 @@ const (
 	// dtpmPartialResetAttackMitigationUnavailable indicates that a partial
 	// mitigation is desired but not possible.
 	dtpmPartialResetAttackMitigationUnavailable
+)
+
+// platformFirmwareIntegrityConfig indicates how the root-of-trust provides
+// assurances of the platform firmware integrity.
+type platformFirmwareIntegrityConfig int
+
+const (
+	// platformFirmwareIntegrityNone indicates that no firmware integrity assurances
+	// are provided.
+	platformFirmwareIntegrityNone platformFirmwareIntegrityConfig = iota
+
+	// platformFirmwareIntegrityMeasured indicates that firmware integrity is provided
+	// by measured boot.
+	platformFirmwareIntegrityMeasured
+
+	// platformFirmwareIntegrityVerified indicates that firmware integrity is provided
+	// by verifying it against a key that is fused into the platform.
+	platformFirmwareIntegrityVerified
 )
 
 // checkForKernelIOMMU checks that the kernel has enabled some sort of DMA protection.
@@ -115,17 +132,9 @@ Loop:
 				//  as the TCG PC Client Platform Firmware Profile spec says that the event
 				//  data in EV_EFI_ACTION events should not be NULL terminated.
 				errs = append(errs, ErrInsufficientDMAProtection)
-			default:
-				// Unexpected data
-				return fmt.Errorf("unexpected EV_EFI_ACTION event data in PCR7 event: %q", event.Data)
 			}
-		case tcglog.EventTypeEFIVariableDriverConfig, tcglog.EventTypeSeparator:
-			// ok
 		case tcglog.EventTypeEFIVariableAuthority:
 			break Loop
-		default:
-			// Unexpected event type
-			return fmt.Errorf("unexpected event type (%v) in PCR7", event.EventType)
 		}
 	}
 

@@ -206,7 +206,7 @@ func handleVariableAuthorityEvent(pcrAlg tpm2.HashAlgorithmId, db efi.SignatureD
 	data, ok := ev.Data.(*tcglog.EFIVariableData)
 	if !ok {
 		// if decoding failed, the resulting data is guaranteed to implement error.
-		return efi.GUID{}, nil, fmt.Errorf("event has wong data format: %w", ev.Data.(error))
+		return efi.GUID{}, nil, fmt.Errorf("event has wrong data format: %w", ev.Data.(error))
 	}
 
 	// As we're only checking events up to the launch of the IBL, we don't expect
@@ -291,6 +291,7 @@ type secureBootPolicyResultFlags int
 const (
 	secureBootIncludesWeakAlg                 secureBootPolicyResultFlags = 1 << iota // Weak algorithms were used during image verification.
 	secureBootPreOSVerificationIncludesDigest                                         // Authenticode digests were used to authenticate pre-OS components.
+	secureBootNoDeployedMode                                                          // Deployed mode is not enabled.
 )
 
 // secureBootPolicyResult is the result of a successful call to checkSecureBootPolicyMeasurementsAndObtainAuthorities.
@@ -300,49 +301,39 @@ type secureBootPolicyResult struct {
 }
 
 // checkSecureBootPolicyMeasurementsAndObtainAuthorities performs some checks on the secure boot policy PCR (7).
-
+//
 // The supplied context is used to attach an EFI variable backend to, for functions that read
 // from EFI variables. The supplied env and log arguments provide other inputs to this function.
 // The pcrAlg argument is the PCR bank that is chosen as the best one to use. The iblImage
 // corresponds to the initial boot loader image for the current boot. This is used to detect the
 // launch of the OS, at which checks for PCR7 end. There are some limitations of this, ie, we may
 // not detect LoadImage bugs that happen later on, but once the OS has loaded, it's impossible to
-// tell whicj events come from firmware and which are under the control of OS components.
-
+// tell which events come from firmware and which are under the control of OS components.
+//
 // This ensures that secure boot is enabled, else an error is returned, as WithSecureBootPolicyProfile
 // only generates profiles compatible with secure boot being enabled.
-
-// If the version of UEFI is >= 2.5, it also makes sure that the secure boot mode is "deployed mode".
-// If the secure boot mode is "user mode", then the "AuditMode" and "DeployedMode" values are measured to PCR7,
-// something that WithSecureBootPolicyProfile doesn't support today. Support for "user mode" will be added
-// in the future, although the public RunChecks API will probably require a flag to opt in to supporting user
-// mode, as it is the less secure mode of the 2 (see the documentation for SecureBootMode in
-// github.com/canonical/go-efilib).
-
+//
+// If the version of UEFI is >= 2.5, it also makes sure that the secure boot mode is "deployed mode". If
+// not, then the result will indicate that the system is in user mode.
+//
 // It also reads the "OsIndicationsSupported" variable to test for features that are not supported by
 // WithSecureBootPolicyProfile. These are timestamp revocation (which requires an extra signature database -
 // "dbt") and OS recovery (which requires an extra signature database -"dbr", used to control access to
 // OsRecoveryOrder and OsRecover#### variables). Of the 2, it's likely that we might need to add support for
 // timestamp revocation at some point in the future.
-
-// It reads the "BootCurrent" EFI variable and matches this to the EFI_LOAD_OPTION associated with the current
-// boot from the TCG log - it uses the log as "BootXXXX" EFI variables can be updated at runtime and
-// might be out of data when this code runs. It uses this to detect the launch of the initial boot loader,
-// which might not necessarily be the first EV_EFI_BOOT_SERVICES_APPLICATION event in the OS-present
-// environment in PCR4 (eg, if Absolute is active).
-
+//
 // After these checks, it iterates over the secure boot configuration in the log, making sure that the
 // configuration is measured in the correct order, that the event data is valid, and that the measured digest
 // is the tagged hash of the event data. It makes sure that the value of "SecureBoot" in the log is consistent
 // with the "SecureBoot" variable (which is read-only at runtime), and it verifies that all of the signature
 // databases are formatted correctly and can be decoded. It will return an error if any of these checks fail.
-
+//
 // If the pre-OS environment contains events other than EV_EFI_VARIABLE_DRIVER_CONFIG, it will return an error.
 // This can happen a firmware debugger is enabled, in which case PCR7 will begin with a EV_EFI_ACTION
 // "UEFI Debug Mode" event. This case is detected by earlier firmware protection checks.
-
+//
 // If not all of the expected secure boot configuration is measured, an error is returned.
-
+//
 // Once the secure boot configuration has been measured, it looks for EV_EFI_VARIABLE_AUTHORITY events in PCR7,
 // until it detects the launch of the initial boot loader. It verifies that each of these come from db, and
 // if the log is in the OS-present environment, it ensures that the measured digest is the tagged hash of the
@@ -357,7 +348,7 @@ type secureBootPolicyResult struct {
 // reflect the new components each time. If the digest being matched is SHA-1, it sets the flag in the return
 // value indicating a weak algorithm. If any of these checks fail, an error is returned. If an event type
 // other than EV_EFI_VARIABLE_AUTHORITY is detected, an error is returned.
-
+//
 // Upon detecting the launch of the initial boot loader in PCR4, it extracts the authenticode signatures from
 // the supplied image, and matches these to a previously measured CA. If no match is found, an error is returned.
 // If a match is found, it ensures that the signing certificate has an RSA public key with a modulus that is at
@@ -389,23 +380,18 @@ func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, 
 		return nil, ErrNoSecureBoot
 	}
 
+	result = new(secureBootPolicyResult)
+
 	// On UEFI 2.5 and later, we require that deployed mode is enabled, because if it's disabled, it
 	// changes the sequence of events for PCR7 (the DeployedMode and AuditMode global variables are
 	// also measured).
-	// TODO(chrisccoulson): relax this later on in the profile generation to support user mode, but
-	// maybe add a new flag (RequireDeployedMode or AllowUserMode) to RunChecks. We should be
-	// able to generate policies for user mode as well - it shouldn't be necessary to enable deployed
-	// mode as long as secure boot is enabled, particularly because the only paths back from deployed
-	// mode are platform specific (ie, it could be a one way operation!)
 	if efi.IsDeployedModeSupported(varCtx) {
 		secureBootMode, err := efi.ComputeSecureBootMode(varCtx)
 		if err != nil {
 			return nil, fmt.Errorf("cannot compute secure boot mode: %w", err)
 		}
 		if secureBootMode != efi.DeployedMode {
-			// WithSecureBootPolicyProfile() doesn't generate working profiles if deployed mode is not
-			// enabled on UEFI >= 2.5.
-			return nil, ErrNoDeployedMode
+			result.Flags |= secureBootNoDeployedMode
 		}
 	}
 
@@ -430,13 +416,6 @@ func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, 
 	// TODO(chrisccoulson): Not sure if there's any indication that we might get SPDM related measurements,
 	// which our profile generation for PCR7 currently doesn't support.
 
-	// Obtain the load option for the current boot. We need this so that we can identify the launch of
-	// the initial boot loader later on.
-	bootOpt, err := readCurrentBootLoadOptionFromLog(varCtx, log)
-	if err != nil {
-		return nil, err
-	}
-
 	// Make sure that the secure boot config in the log is measured in the
 	// expected order, else WithSecureBootPolicyProfile() will generate an invalid policy,
 	// because we hard code the order. The order here is what we expect to see.
@@ -449,12 +428,10 @@ func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, 
 		// TODO: Add optional dbt / SPDM in the future.
 	}
 
-	result = new(secureBootPolicyResult)
 	var (
-		db                        efi.SignatureDatabase // The authorized signature database from the TCG log.
-		measuredSignatures        tpm2.DigestList       // The verification event digests measured by the firmware
-		seenOSPresentVerification bool                  // Whether we've seen a verification event in the OS-present phase
-		seenIBLLoadEvent          bool                  // Whether we've seen the launch event for the OS initial boot loader
+		db                 efi.SignatureDatabase // The authorized signature database from the TCG log.
+		measuredSignatures tpm2.DigestList       // The verification event digests measured by the firmware
+		seenIBLLoadEvent   bool                  // Whether we've seen the launch event for the OS initial boot loader
 	)
 
 	phaseTracker := newTcgLogPhaseTracker()
@@ -466,12 +443,56 @@ NextEvent:
 		}
 
 		switch phase {
-		case tcglogPhaseMeasuringSecureBootConfig:
+		case tcglogPhaseFirmwareLaunch:
 			if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {
 				// Not PCR7
 				continue NextEvent
 			}
 
+			switch ev.EventType {
+			case tcglog.EventTypeEFIAction:
+				// An EV_EFI_ACTION event measured to PCR7 may indicate some degraded condition
+				// that weakens device security. 2 known ones are:
+				// - "UEFI Debug Mode", which indicates the presence of a debugging endpoint.
+				//   The TCG PC Client PFP spec says this goes before the secure boot config
+				//   is measured.
+				// - "DMA Protection Disabled" to indicate that pre-boot DMA protection was
+				//   disabled. This event isn't formally documented anywhere - it is mentioned
+				//   in some tianocore documentation, although EDK2 doesn't have a reference
+				//   implementation. This event can be permitted, which means that we can
+				//   generate a policy that includes it. However, the tianocore documentation
+				//   doesn't specify event ordering, so we need to accommodate any possible
+				//   ordering of events.
+				//
+				// The presence of an EV_EFI_ACTION event other than "DMA Protection Disabled"
+				// will result in WithSecureBootPolicyProfile() creating an invalid policy,
+				// because it generally doesn't emit these measurements. Just return an error
+				// here to prevent the use of WithSecureBootPolicyProfile() unless it is a
+				// "DMA Protection Disabled" event and it is permitted.
+				//
+				// Note that "UEFI Debug Mode" and "DMA Protection Disabled" events are both
+				// caught by the host security checks, which run before this.
+				if permitDMAProtectionDisabledEvent && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
+					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00))) {
+					// This event is detected by the host security checks which will result in a flag
+					// being added to the results so that it can be picked up by the code in
+					// profile. We don't need to do anything else here other than make sure
+					// this event only appears once.
+					permitDMAProtectionDisabledEvent = false // Don't allow this more than once.
+					continue NextEvent
+				}
+				fallthrough
+			default:
+				// Anything that isn't EV_EFI_ACTION ends up here.
+				switch {
+				case internal_efi.IsVendorEventType(ev.EventType):
+					// ok
+				default:
+					return nil, fmt.Errorf("unexpected %v event %q before config", ev.EventType, ev.Data)
+				}
+			}
+		case tcglogPhaseMeasuringSecureBootConfig:
+			// ev.PCRIndex is always SecureBootPolicyPCR in this phase.
 			switch ev.EventType {
 			case tcglog.EventTypeEFIVariableDriverConfig:
 				if len(configs) == 0 {
@@ -523,34 +544,29 @@ NextEvent:
 					db = sigDb
 				}
 			case tcglog.EventTypeEFIAction:
-				// An EV_EFI_ACTION events with the string "UEFI Debug Mode" appears at the
-				// start of the log if a debugging endpoint is enabled. It's also possible that
-				// EV_EFI_ACTION events are used for other conditions in PCR7 that weaken device
-				// security (eg, the "DMA Protection Disabled" event).
-				//
-				// In general, it's not normal to see EV_EFI_ACTION events and these indicate some
-				// sort of abnormal condition that has a detrimental effect on device security.
-				// WithSecureBootPolicyProfile() will generate an invalid policy in this case because,
-				// with some exceptions, it doesn't emit them.
-				//
-				// Just return an error here to prevent the use of WithSecureBootPolicyProfile(). The
-				// "UEFI Debug Mode" and "DMA Protection Disabled" cases are already picked up by the
-				// firmware protection checks, so we don't need any special handling here.
-				//
-				// We do permit the "DMA Protection Disabled" case if required. In this case,
-				// WithSecureBootPolicyProfile() needs a separate option.
-				if permitDMAProtectionDisabledEvent && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
+				// See the doc notes for this event type in the tcglogPhaseFirmwareLaunch
+				// phase. This leg is here to accommodate a "DMA Protection Disabled" event
+				// as part of the secure boot configuration, just at the end of the signature
+				// database measurements. We only permit this if there are no signature database
+				// measurements remaining.
+				if permitDMAProtectionDisabledEvent && len(configs) == 0 && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
 					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00))) {
-					// This event is detected by the host security checks so we can skip it here.
-					// We'll emit a flag in the results which is picked up by the code in profile.go
-					// to add an option to permit this with WithSecureBootPolicyProfile().
+					// This event is detected by the host security checks which will result in a flag
+					// being added to the results so that it can be picked up by the code in
+					// profile. We don't need to do anything else here other than make sure
+					// this event only appears once.
 					permitDMAProtectionDisabledEvent = false // Don't allow this more than once.
 					continue NextEvent
 				}
 				fallthrough
 			default:
-				// Anything that isn't EV_EFI_VARIABLE_DRIVER_CONFIG ends up here.
-				return nil, fmt.Errorf("unexpected %v event %q whilst measuring config", ev.EventType, ev.Data)
+				// Anything that isn't EV_EFI_VARIABLE_DRIVER_CONFIG or EV_EFI_ACTION ends up here.
+				switch {
+				case internal_efi.IsVendorEventType(ev.EventType) && len(configs) == 0:
+					// ok
+				default:
+					return nil, fmt.Errorf("unexpected %v event %q whilst measuring config", ev.EventType, ev.Data)
+				}
 			}
 		case tcglogPhasePreOSThirdPartyDispatch:
 			if len(configs) > 0 {
@@ -599,30 +615,28 @@ NextEvent:
 			case tcglog.EventTypeSeparator:
 				// ok
 			case tcglog.EventTypeEFIAction:
-				// In general, it's not normal to see EV_EFI_ACTION events and these indicate some
-				// sort of abnormal condition that has a detrimental effect on device security.
-				// WithSecureBootPolicyProfile() will generate an invalid policy in this case because,
-				// with some exceptions, it doesn't emit them.
-				//
-				// Just return an error here to prevent the use of WithSecureBootPolicyProfile(). The
-				// "UEFI Debug Mode" and "DMA Protection Disabled" cases are already picked up by the
-				// firmware protection checks, so we don't need any special handling here.
-				//
-				// We do permit the "DMA Protection Disabled" case if required. In this case,
-				// WithSecureBootPolicyProfile() needs a separate option. Some firmware measures
-				// this after the EV_SEPARATOR in PCR7 but part of the pre-OS environment.
+				// See the doc notes for this event type in the tcglogPhaseFirmwareLaunch
+				// phase. This leg is here to accommodate a "DMA Protection Disabled" event
+				// as part of the secure boot configuration, just at the end of the signature
+				// database measurements.
 				if permitDMAProtectionDisabledEvent && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
 					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00))) {
-					// This event is detected by the host security checks so we can skip it here.
-					// We'll emit a flag in the results which is picked up by the code in profile.go
-					// to add an option to permit this with WithSecureBootPolicyProfile().
+					// This event is detected by the host security checks which will result in a flag
+					// being added to the results so that it can be picked up by the code in
+					// profile. We don't need to do anything else here other than make sure
+					// this event only appears once.
 					permitDMAProtectionDisabledEvent = false // Don't allow this more than once.
 					continue NextEvent
 				}
 				fallthrough
 			default:
-				// Anything that isn't EV_EFI_VARIABLE_AUTHORITY ends up here.
-				return nil, fmt.Errorf("unexpected %v event %q whilst measuring verification", ev.EventType, ev.Data)
+				// Anything that isn't EV_EFI_VARIABLE_AUTHORITY, EV_SEPARATOR or EV_EFI_ACTION ends up here.
+				switch {
+				case internal_efi.IsVendorEventType(ev.EventType):
+					// ok
+				default:
+					return nil, fmt.Errorf("unexpected %v event %q whilst measuring verification", ev.EventType, ev.Data)
+				}
 			}
 		case tcglogPhaseOSPresent:
 			if len(configs) > 0 {
@@ -639,28 +653,41 @@ NextEvent:
 				// and we haven't seen the event for the IBL yet. We stop once we see this
 				// because at this point, the rest of the measurements in this PCR are under
 				// the control of the OS.
-				yes, err := isLaunchedFromLoadOption(ev, bootOpt)
-				if err != nil {
-					return nil, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for is associated with the current boot load option: %w", err)
-				}
-				if !yes {
-					// This is not the launch event for the initial boot loader - ignore it.
-					if seenOSPresentVerification {
-						// The way we build profiles for PCR7 requires that any verification
-						// events in PCR7 during OS-present to be associated with the OS. If
-						// we've seen a verification event and we're in OS-present, then the
-						// next expected event is the load event for the initial boot loader.
-						// If we get verification events for Absolute (which is loaded from
-						// Flash and is normally verified earlier on with the verification of
-						// other Flash volumes), then we'll generate a potentially invalid
-						// profile for PCR7, because we don't copy events from the log once
-						// we're in OS-present.
-						return nil, fmt.Errorf("unexpected EV_EFI_BOOT_SERVICES_APPLICATION event for %v after already seeing a verification event during the OS-present environment. "+
-							"This event should be for the initial boot loader", ev.Data.(*tcglog.EFIImageLoadEvent).DevicePath)
-					}
-					continue NextEvent
+				data, ok := ev.Data.(*tcglog.EFIImageLoadEvent)
+				if !ok {
+					// The data resulting from decode errors are guaranteed to implement the error interface
+					return nil, fmt.Errorf("invalid event data for EV_EFI_BOOT_SERVICES_APPLICATION event: %w", ev.Data.(error))
 				}
 
+				switch isAbsolute, err := internal_efi.IsAbsoluteAgentLaunch(ev); {
+				case err != nil:
+					return nil, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with Absolute: %w", data.DevicePath, err)
+				case isAbsolute:
+					// skip this one
+					continue NextEvent
+				default:
+					isIBLLoadEvent, err := func() (bool, error) {
+						r, err := iblImage.Open()
+						if err != nil {
+							return false, fmt.Errorf("cannot open initial boot loader image: %w", err)
+						}
+						defer r.Close()
+
+						digest, err := efiComputePeImageDigest(pcrAlg.GetHash(), r, r.Size())
+						if err != nil {
+							return false, fmt.Errorf("cannot compute Authenticode digest of initial boot loader image: %w", err)
+						}
+						return bytes.Equal(digest, ev.Digests[pcrAlg]), nil
+					}()
+					switch {
+					case err != nil:
+						return nil, fmt.Errorf("cannot determine if OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is associated with the initial boot loader image: %w", data.DevicePath, err)
+					case !isIBLLoadEvent:
+						return nil, fmt.Errorf("OS-present EV_EFI_BOOT_SERVICES_APPLICATION event for %v is not associated with the initial boot loader image", data.DevicePath)
+					}
+				}
+
+				// We assume this is the IBL for the OS. Obtain signatures from binary
 				// This is the IBL for the OS. Obtain signatures from binary
 				seenIBLLoadEvent = true
 				signer, err := extractSignerWithTrustAnchorFromImage(result.UsedAuthorities, iblImage)
@@ -671,7 +698,7 @@ NextEvent:
 					return nil, fmt.Errorf("cannot determine if OS initial boot loader was verified by any X.509 certificate measured by any EV_EFI_VARIABLE_AUTHORITY event: %w", err)
 				}
 
-				ok, err := checkX509CertificatePublicKeyStrength(signer)
+				ok, err = checkX509CertificatePublicKeyStrength(signer)
 				if err != nil {
 					return nil, fmt.Errorf("cannot determine public key strength of initial OS boot loader signer: %w", err)
 				}
@@ -702,7 +729,6 @@ NextEvent:
 				}
 
 				measuredSignatures = append(measuredSignatures, ev.Digests[pcrAlg])
-				seenOSPresentVerification = true
 				ok, err := checkSignatureDataStrength(eslType, esdData)
 				if err != nil {
 					return nil, fmt.Errorf("cannot check strength of EFI_SIGNATURE_DATA associated with EV_EFI_VARIABLE_AUTHORITY event in OS-present phase: %w", err)
@@ -725,12 +751,13 @@ NextEvent:
 			case tcglog.EventTypeSeparator:
 				// ok
 			default:
-				// Anything that isn't EV_EFI_VARIABLE_AUTHORITY ends up here.
-				return nil, fmt.Errorf("unexpected %v event %q whilst measuring verification", ev.EventType, ev.Data)
-			}
-		case tcglogPhasePreOSThirdPartyDispatchUnterminated:
-			if ev.PCRIndex == internal_efi.SecureBootPolicyPCR {
-				return nil, fmt.Errorf("unexpected %v event in PCR7 after measuring config but before transitioning to OS-present", ev.EventType)
+				// Anything that isn't EV_EFI_VARIABLE_AUTHORITY or EV_SEPARATOR ends up here.
+				switch {
+				case internal_efi.IsVendorEventType(ev.EventType):
+					// ok
+				default:
+					return nil, fmt.Errorf("unexpected %v event %q whilst measuring verification", ev.EventType, ev.Data)
+				}
 			}
 		}
 	}

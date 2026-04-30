@@ -56,8 +56,11 @@ const (
 	DtpmPartialResetAttackMitigationPreferred   = dtpmPartialResetAttackMitigationPreferred
 	DtpmPartialResetAttackMitigationUnavailable = dtpmPartialResetAttackMitigationUnavailable
 	InsufficientDMAProtectionDetected           = insufficientDMAProtectionDetected
+	PlatformFirmwareIntegrityMeasured           = platformFirmwareIntegrityMeasured
+	PlatformFirmwareIntegrityVerified           = platformFirmwareIntegrityVerified
 	SecureBootIncludesWeakAlg                   = secureBootIncludesWeakAlg
 	SecureBootPreOSVerificationIncludesDigest   = secureBootPreOSVerificationIncludesDigest
+	SecureBootNoDeployedMode                    = secureBootNoDeployedMode
 	StartupLocalityNotProtected                 = startupLocalityNotProtected
 )
 
@@ -76,7 +79,6 @@ var (
 	DetectVirtualization                                  = detectVirtualization
 	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
 	InsertActionProceed                                   = insertActionProceed
-	IsLaunchedFromFirmwareVolume                          = isLaunchedFromFirmwareVolume
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
 	IsPPIActionAvailable                                  = isPPIActionAvailable
 	IsTPMDiscrete                                         = isTPMDiscrete
@@ -84,8 +86,6 @@ var (
 	MatchLaunchToLoadOption                               = matchLaunchToLoadOption
 	NewX509CertificateID                                  = newX509CertificateID
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
-	ReadCurrentBootLoadOptionFromLog                      = readCurrentBootLoadOptionFromLog
-	ReadLoadOptionFromLog                                 = readLoadOptionFromLog
 	ReadOrderedLoadOptionVariables                        = readOrderedLoadOptionVariables
 	RestrictedTPMLocalitiesIntel                          = restrictedTPMLocalitiesIntel
 	RunPPIAction                                          = runPPIAction

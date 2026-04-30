@@ -32,7 +32,7 @@ var _ = Suite(&tpmIntelSuite{})
 
 func (s *tpmIntelSuite) TestIsTPMDiscreteFromIntelBootguardTPM2(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (2 << 1)}),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 1, map[uint32]uint64{0x13a: (2 << 1)}),
 	)
 	amd64, err := env.AMD64()
 	c.Assert(err, IsNil)
@@ -43,7 +43,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteFromIntelBootguardTPM2(c *C) {
 
 func (s *tpmIntelSuite) TestIsTPMDiscreteFromIntelBootguardPTT(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (3 << 1)}),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 1, map[uint32]uint64{0x13a: (3 << 1)}),
 	)
 	amd64, err := env.AMD64()
 	c.Assert(err, IsNil)
@@ -54,7 +54,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteFromIntelBootguardPTT(c *C) {
 
 func (s *tpmIntelSuite) TestIsTPMDiscreteFromIntelBootguardTPM12(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (1 << 1)}),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 1, map[uint32]uint64{0x13a: (1 << 1)}),
 	)
 	amd64, err := env.AMD64()
 	c.Assert(err, IsNil)
@@ -64,7 +64,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteFromIntelBootguardTPM12(c *C) {
 
 func (s *tpmIntelSuite) TestIsTPMDiscreteFromIntelBootguardNoTPM(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0x13a: (0 << 1)}),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 1, map[uint32]uint64{0x13a: (0 << 1)}),
 	)
 	amd64, err := env.AMD64()
 	c.Assert(err, IsNil)
@@ -74,7 +74,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteFromIntelBootguardNoTPM(c *C) {
 
 func (s *tpmIntelSuite) TestIsTPMDiscreteFromIntelBootguardNoMSRSupport(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", nil, 0, nil),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 0, nil),
 	)
 	amd64, err := env.AMD64()
 	c.Assert(err, IsNil)

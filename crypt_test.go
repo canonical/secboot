@@ -682,6 +682,20 @@ func (s *cryptSuite) TestParseRecoveryKey3(c *C) {
 	})
 }
 
+func (s *cryptSuite) TestParseRecoveryKey4(c *C) {
+	s.testParseRecoveryKey(c, &testParseRecoveryKeyData{
+		formatted: "61665 00531 54469 09783 47273 19035 40077 28287",
+		expected:  testutil.DecodeHexString(c, "e1f01302c5d43726a9b85b4a8d9c7f6e"),
+	})
+}
+
+func (s *cryptSuite) TestParseRecoveryKey5(c *C) {
+	s.testParseRecoveryKey(c, &testParseRecoveryKeyData{
+		formatted: "61665   00531-54469 09783- 4727319035 -40077    28287   ",
+		expected:  testutil.DecodeHexString(c, "e1f01302c5d43726a9b85b4a8d9c7f6e"),
+	})
+}
+
 type testParseRecoveryKeyErrorHandlingData struct {
 	formatted      string
 	errChecker     Checker
@@ -722,14 +736,6 @@ func (s *cryptSuite) TestParseRecoveryKeyErrorHandling4(c *C) {
 		formatted:      "-00000-00000-00000-00000-00000-00000-00000-00000",
 		errChecker:     ErrorMatches,
 		errCheckerArgs: []interface{}{"incorrectly formatted: strconv.ParseUint: parsing \"-0000\": invalid syntax"},
-	})
-}
-
-func (s *cryptSuite) TestParseRecoveryKeyErrorHandling5(c *C) {
-	s.testParseRecoveryKeyErrorHandling(c, &testParseRecoveryKeyErrorHandlingData{
-		formatted:      "00000-00000-00000-00000-00000-00000-00000-00000-",
-		errChecker:     ErrorMatches,
-		errCheckerArgs: []interface{}{"incorrectly formatted: too many characters"},
 	})
 }
 

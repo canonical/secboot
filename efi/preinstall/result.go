@@ -99,6 +99,10 @@ const (
 	discreteTPMDetected
 	startupLocalityNotProtected
 	insufficientDMAProtectionDetected
+
+	// RequireLockTOPlatformFirmware means that PCR0 is required in a profile, using
+	// efi.WithPlatformFirmwareProfile.
+	RequireLockToPlatformFirmware
 )
 
 func (f CheckResultFlags) toStringSlice() []string {
@@ -127,6 +131,8 @@ func (f CheckResultFlags) toStringSlice() []string {
 			str = "no-secure-boot-policy-profile-support"
 		case RequestPartialDiscreteTPMResetAttackMitigation:
 			str = "request-partial-dtpm-reset-attack-mitigation"
+		case RequireLockToPlatformFirmware:
+			str = "require-lock-platform-firmware"
 		default:
 			str = fmt.Sprintf("%#08x", uint32(flag))
 		}
@@ -171,6 +177,8 @@ func (f *CheckResultFlags) UnmarshalJSON(data []byte) error {
 			val = NoSecureBootPolicyProfileSupport
 		case "request-partial-dtpm-reset-attack-mitigation":
 			val = RequestPartialDiscreteTPMResetAttackMitigation
+		case "require-lock-platform-firmware":
+			val = RequireLockToPlatformFirmware
 		case "insufficient-dma-protection-detected":
 			val = insufficientDMAProtectionDetected
 		case "discrete-tpm-detected":

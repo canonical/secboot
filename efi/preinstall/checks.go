@@ -143,6 +143,10 @@ const (
 	// and/or if no kernel IOMMU support was detected.
 	// This weakens security because it allows DMA attacks to compromise system integrity.
 	PermitInsufficientDMAProtection
+
+	// PermitSecureBootUserMode will prevent RunChecks from returning an error if secure
+	// boot is enabled but not in deployed mode on systems that support UEFI >= 2.5.
+	PermitSecureBootUserMode
 )
 
 var (
@@ -303,7 +307,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 
 	if virtMode == detectVirtNone {
 		// Only run host security checks if we are not in a VM
-		if err := checkHostSecurity(runChecksEnv, log); err != nil {
+		fwIntegrity, err := checkHostSecurity(runChecksEnv, log)
+		if err != nil {
 			var ce CompoundError
 			if !errors.As(err, &ce) {
 				return nil, &HostSecurityError{err}
@@ -315,6 +320,9 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 					deferredErrs = append(deferredErrs, &HostSecurityError{e})
 				}
 			}
+		}
+		if fwIntegrity == platformFirmwareIntegrityMeasured {
+			result.Flags |= RequireLockToPlatformFirmware
 		}
 
 		status, err := checkDiscreteTPMPartialResetAttackMitigationStatus(runChecksEnv, logResults)
@@ -432,6 +440,9 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		if pcr7Result.Flags&secureBootPreOSVerificationIncludesDigest > 0 {
 			addDeferredErrorOrWarning(ErrPreOSSecureBootAuthByEnrolledDigests, PermitPreOSSecureBootAuthByEnrolledDigests)
 		}
+		if pcr7Result.Flags&secureBootNoDeployedMode > 0 {
+			addDeferredErrorOrWarning(ErrNoDeployedMode, PermitSecureBootUserMode)
+		}
 		result.UsedSecureBootCAs = pcr7Result.UsedAuthorities
 	}
 
@@ -442,6 +453,11 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	for kind, flag := range errorKindToProceedFlag {
 		if flag&flags > 0 {
 			result.AcceptedErrors[kind] = nil
+		}
+	}
+	for info, flag := range errorKindWithArgsToProceedFlag {
+		if flag&flags > 0 {
+			result.AcceptedErrors[info.kind] = nil
 		}
 	}
 	if len(warnings) > 0 {

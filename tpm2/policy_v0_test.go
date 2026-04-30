@@ -1448,7 +1448,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthPublicKey(c 
 	})
 	c.Check(IsPolicyDataError(err), testutil.IsTrue)
 	c.Check(err, ErrorMatches, "public area of dynamic authorization policy signing key is invalid: TPM returned an error for parameter 2 whilst executing command TPM_CC_LoadExternal: "+
-		"TPM_RC_HASH \\(hash algorithm not supported or not appropriate\\)")
+		"TPM_RC_HASH \\+ TPM_RC_P \\+ TPM_RC_2 \\(hash algorithm not supported or not appropriate\\)")
 }
 
 func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicySignature(c *C) {
@@ -1489,7 +1489,7 @@ func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy
 		},
 	})
 	c.Check(IsPCRPolicyDataError(err), testutil.IsTrue)
-	c.Check(err, ErrorMatches, "cannot verify PCR policy signature: TPM returned an error for parameter 2 whilst executing command TPM_CC_VerifySignature: TPM_RC_SIGNATURE \\(the signature is not valid\\)")
+	c.Check(err, ErrorMatches, "cannot verify PCR policy signature: TPM returned an error for parameter 2 whilst executing command TPM_CC_VerifySignature: TPM_RC_SIGNATURE \\+ TPM_RC_P \\+ TPM_RC_2 \\(the signature is not valid\\)")
 }
 
 func (s *policyV0Suite) TestExecutePCRPolicyErrorHandlingInvalidAuthorizedPolicy(c *C) {

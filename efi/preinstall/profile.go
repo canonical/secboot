@@ -342,7 +342,7 @@ func (o *pcrProfileAutoSetPcrsOption) pcrOptions() ([]secboot_efi.PCRProfileEnab
 		// error with the appropriate set of required but unsupported PCRs.
 		pcrs[internal_efi.SecureBootPolicyPCR] = true
 
-		if o.opts&PCRProfileOptionLockToPlatformFirmware > 0 {
+		if o.opts&PCRProfileOptionLockToPlatformFirmware > 0 || o.result.Flags&RequireLockToPlatformFirmware > 0 {
 			pcrs[internal_efi.PlatformFirmwarePCR] = true
 		}
 		if o.opts&PCRProfileOptionLockToPlatformConfig > 0 {
@@ -429,7 +429,14 @@ func (o *pcrProfileAutoSetPcrsOption) pcrOptions() ([]secboot_efi.PCRProfileEnab
 		}
 	}
 
-	if o.opts&PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation == 0 && o.result.Flags&RequestPartialDiscreteTPMResetAttackMitigation > 0 {
+	switch {
+	case o.opts&PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation > 0 && o.opts&PCRProfileOptionLockToPlatformFirmware > 0:
+		return nil, fmt.Errorf("%q option is incompatible with %q option", PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation, PCRProfileOptionLockToPlatformFirmware)
+	case o.opts&PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation > 0:
+		if _, required := pcrs[internal_efi.PlatformFirmwarePCR]; required {
+			return nil, fmt.Errorf("%q option cannot be used when platform firmware profile is required", PCRProfileOptionNoPartialDiscreteTPMResetAttackMitigation)
+		}
+	case o.result.Flags&RequestPartialDiscreteTPMResetAttackMitigation > 0:
 		// Enable reset attack mitigations by including PCR0, because the startup locality
 		// is protected making it impossible to reconstruct PCR0 from software if the TPM is
 		// reset indepdendently of the host platform. Note that it is still possible for an
@@ -491,6 +498,11 @@ func (o *pcrProfileAutoSetPcrsOption) ApplyOptionTo(visitor internal_efi.PCRProf
 	if _, permitted := o.result.AcceptedErrors[ErrorKindInsufficientDMAProtection]; permitted {
 		if err := secboot_efi.WithAllowInsufficientDmaProtection().ApplyOptionTo(visitor); err != nil {
 			return fmt.Errorf("cannot add DMA allow insufficient protection profile option: %w", err)
+		}
+	}
+	if _, permitted := o.result.AcceptedErrors[ErrorKindInvalidSecureBootMode]; permitted {
+		if err := secboot_efi.WithAllowSecureBootUserMode().ApplyOptionTo(visitor); err != nil {
+			return fmt.Errorf("cannot add profile option for secure boot user mode: %w", err)
 		}
 	}
 	return nil

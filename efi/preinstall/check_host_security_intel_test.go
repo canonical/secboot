@@ -378,6 +378,41 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodFVMECSME
 	c.Check(err, IsNil)
 }
 
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardNoMEDevice1(c *C) {
+	// Test the case where there are no mei devices, but we can
+	// fallback to using the bootguard status MSR.
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 4, map[uint32]uint64{0x13a: 0x000000030000007d}),
+	)
+	c.Check(CheckHostSecurityIntelBootGuard(env), IsNil)
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardMEDevice2(c *C) {
+	// Test the case where the only mei device is not the required one.
+	device := efitest.NewMockSysfsDevice("/sys/devices/platform/intel_vsc/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
+		"/sys/devices/platform", map[string]string{"DRIVER": "intel_vsc"}, "platform", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(device),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 4, map[uint32]uint64{0x13a: 0x000000030000007d}),
+	)
+	c.Check(CheckHostSecurityIntelBootGuard(env), IsNil)
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardNoMEDevice3(c *C) {
+	// Test the case where there is a PCI mei device that isn't bound to the mei_me
+	// module. This probably isn't a realistic test case.
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", nil, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(device),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 4, map[uint32]uint64{0x13a: 0x000000030000007d}),
+	)
+	c.Check(CheckHostSecurityIntelBootGuard(env), IsNil)
+}
+
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoDevices(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts()
 	err := CheckHostSecurityIntelBootGuard(env)
@@ -393,36 +428,26 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEModul
 	c.Check(err, Equals, MissingKernelModuleError("mei_me"))
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevice1(c *C) {
-	// Test the case where there are no mei devices.
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices())
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardNoMEDeviceAndNoMSRModule(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 4, nil),
+	)
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device`)
+	c.Check(err, ErrorMatches, `the kernel module "msr" must be loaded`)
+	c.Check(err, Equals, MissingKernelModuleError("msr"))
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardNoMEDeviceAndNoBtgMSR(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 4, map[uint32]uint64{}),
+	)
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device or BootGuard status MSR`)
 	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevice2(c *C) {
-	// Test the case where the only mei device is not the required one.
-	device := efitest.NewMockSysfsDevice("/sys/devices/platform/intel_vsc/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
-		"/sys/devices/platform", map[string]string{"DRIVER": "intel_vsc"}, "platform", nil, nil,
-	))
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
-	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device`)
-	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
-}
-
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoMEDevice3(c *C) {
-	// Test the case where there is a PCI mei device that isn't bound to the mei_me
-	// module. This probably isn't a realistic test case.
-	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", nil, efitest.NewMockSysfsDevice(
-		"/sys/devices/pci0000:00:16:0", nil, "pci", nil, nil,
-	))
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
-	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `unsupported platform: no MEI PCI device`)
-	c.Check(err, FitsTypeOf, &UnsupportedPlatformError{})
-}
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrFwVer(c *C) {
 	attrs := map[string][]byte{
 		"fw_status": []byte(`94000245
@@ -525,29 +550,6 @@ C7E003CB
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrMfgMode(c *C) {
-	attrs := map[string][]byte{
-		"fw_ver": []byte(`0:16.1.27.2176
-0:16.1.27.2176
-0:16.0.15.1624
-`),
-		"fw_status": []byte(`94000255
-09F10506
-00000020
-00004000
-00041F03
-C7E003CB
-`),
-	}
-	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
-		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
-	))
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
-	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: ME is in manufacturing mode`)
-	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
-}
-
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrACMNotActive(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:18.0.5.2141
@@ -594,29 +596,6 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrACMNotDon
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoFPFSOCLock(c *C) {
-	attrs := map[string][]byte{
-		"fw_ver": []byte(`0:16.1.27.2176
-0:16.1.27.2176
-0:16.0.15.1624
-`),
-		"fw_status": []byte(`94000245
-09F10506
-00000020
-00004000
-00041F03
-87E003CB
-`),
-	}
-	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
-		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
-	))
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
-	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard OTP fuses are not locked`)
-	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
-}
-
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrBootGuardDisable(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
@@ -637,6 +616,75 @@ D7E003CB
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: BootGuard is disabled`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrMfgModeCSME11(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000255
+09F10506
+00000020
+00004000
+00041F03
+C7E003CB
+`),
+	}
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrFPFsNotLockedCSME11(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+87E003CB
+`),
+	}
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoManufLockCSME11(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": []byte(`94000245
+09F10506
+00000020
+00004000
+00041F03
+C7C003CB
+`),
+	}
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
@@ -706,6 +754,75 @@ C7E0024A
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: cannot determine BootGuard profile: invalid profile`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoSPIProtectionCSME18(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:18.0.5.2141
+0:18.0.5.2141
+0:18.0.5.2066
+`),
+		"fw_status": []byte(`A4000255
+09110500
+00000020
+00000000
+02F61F03
+40200000
+`),
+	}
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrFPFsNotLockedCSME18(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:18.0.5.2141
+0:18.0.5.2141
+0:18.0.5.2066
+`),
+		"fw_status": []byte(`A4000245
+09110500
+00000020
+00000000
+02F61F03
+00200000
+`),
+	}
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
+	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoManufLockCSME18(c *C) {
+	attrs := map[string][]byte{
+		"fw_ver": []byte(`0:18.0.5.2141
+0:18.0.5.2141
+0:18.0.5.2066
+`),
+		"fw_status": []byte(`A4000245
+09110500
+00000020
+00000000
+02F61F03
+40000000
+`),
+	}
+	device := efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+	))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+	err := CheckHostSecurityIntelBootGuard(env)
+	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
@@ -779,7 +896,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupport
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDisabledCPUID(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", nil, 1, map[uint32]uint64{0xc80: 0}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 1, map[uint32]uint64{0xc80: 0}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -787,7 +904,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDis
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDisabledMSR(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -795,7 +912,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDis
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDisabledAvailable(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -803,7 +920,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDis
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedEnabled(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 1}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 1}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -811,7 +928,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedEna
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErrMissingMSR(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 4, map[uint32]uint64{}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 4, map[uint32]uint64{}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -821,7 +938,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErr
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErrNoMSRSupport(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SDBG}, 0, nil))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 0, nil))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -832,7 +949,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErr
 
 func (s *hostSecurityIntelSuite) TestRestrictedTPMLocalitiesIntel(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", []uint64{cpuid.SMX}, 0, nil),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SMX}, 0, nil),
 	)
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
@@ -842,7 +959,7 @@ func (s *hostSecurityIntelSuite) TestRestrictedTPMLocalitiesIntel(c *C) {
 
 func (s *hostSecurityIntelSuite) TestRestrictedTPMLocalitiesIntelNoTXT(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", nil, 0, nil),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 0, nil),
 	)
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
