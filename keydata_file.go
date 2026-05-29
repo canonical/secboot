@@ -69,7 +69,7 @@ type FileKeyDataWriter struct {
 }
 
 func (w *FileKeyDataWriter) Commit() error {
-	f, err := osutil.NewAtomicFile(w.path, 0600, 0, sys.UserID(osutil.NoChown), sys.GroupID(osutil.NoChown))
+	f, err := osutil.NewAtomicFile(w.path, 0600, sys.UserID(osutil.NoChown), sys.GroupID(osutil.NoChown))
 	if err != nil {
 		return xerrors.Errorf("cannot create new atomic file: %w", err)
 	}
