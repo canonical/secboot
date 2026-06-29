@@ -6,17 +6,17 @@ help:
 	# make check-efi              Run tests of package efi
 	# make list-packages          List Go packages
 
+# Disable optimization and inlining (to facilitate step-by-step debugging)
+GCFLAGS = -gcflags "-N -l"
 
-.PHONY: build check check-tpm2-simulator FORCE
+.PHONY: build check check-tpm2-simulator fmt FORCE
 FORCE:
 
 # Build command line programs
-build:
-	go build -o test_efi_fde_compat cmd/test_efi_fde_compat/main.go
-	go build -o run_argon2 cmd/run_argon2/main.go
+build: test_efi_fde_compat run_argon2 reencrypt secboot-tool
 
-# Disable optimization and inlining (to facilitate step-by-step debugging)
-GCFLAGS = -gcflags "-N -l"
+%: cmd/%/main.go FORCE
+	go build -o $@ $(GCFLAGS) $<
 
 check-tpm2-simulator:
 	@echo "Checking installed snap: tpm2-simulator-chrisccoulson"

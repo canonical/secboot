@@ -273,3 +273,40 @@ func (s *viewSuite) TestViewReread(c *C) {
 	c.Check(view.UsedKeyslots(), DeepEquals, []int{0, 1})
 	c.Check(view.OrphanedTokenIds(), DeepEquals, []int{2})
 }
+
+func (s *viewSuite) TestTokenNamesSortedByKeyslotId(c *C) {
+	var testHeaderLocal = mockHeaderSource(luks2.HeaderInfo{
+		Metadata: luks2.Metadata{
+			Keyslots: map[int]*luks2.Keyslot{},
+			Tokens: map[int]luks2.Token{
+				0: &KeyDataToken{TokenBase: TokenBase{TokenKeyslot: 0, TokenName: "token-slot0"}},
+				1: &RecoveryToken{TokenBase: TokenBase{TokenKeyslot: 2, TokenName: "token-slot2"}},
+				3: &luks2.GenericToken{TokenType: "luks2-keyring", TokenKeyslots: []int{3, 4}}, // will be ignored
+				2: &KeyDataToken{TokenBase: TokenBase{TokenKeyslot: 8, TokenName: "token-slot8"}},
+				4: &KeyDataToken{TokenBase: TokenBase{TokenKeyslot: 1, TokenName: "token-slot1"}},
+			}}})
+
+	view, err := NewViewFromCustomHeaderSource(testHeaderLocal)
+	c.Assert(err, IsNil)
+	names, err := view.TokenNamesSortedByKeyslotId()
+	c.Check(names, DeepEquals, []string{"token-slot0", "token-slot1", "token-slot2", "token-slot8"})
+	c.Check(err, IsNil)
+}
+
+func (s *viewSuite) TestTokenNamesSortedByKeyslotIdErrDuplicateKeyslot(c *C) {
+	var testHeaderLocal = mockHeaderSource(luks2.HeaderInfo{
+		Metadata: luks2.Metadata{
+			Keyslots: map[int]*luks2.Keyslot{},
+			Tokens: map[int]luks2.Token{
+				0: &KeyDataToken{TokenBase: TokenBase{TokenKeyslot: 0, TokenName: "token-slot0"}},
+				1: &RecoveryToken{TokenBase: TokenBase{TokenKeyslot: 2, TokenName: "token-slot2a"}},
+				3: &luks2.GenericToken{TokenType: "luks2-keyring", TokenKeyslots: []int{3, 4}}, // will be ignored
+				2: &KeyDataToken{TokenBase: TokenBase{TokenKeyslot: 2, TokenName: "token-slot2b"}},
+				4: &KeyDataToken{TokenBase: TokenBase{TokenKeyslot: 1, TokenName: "token-slot1"}},
+			}}})
+
+	view, err := NewViewFromCustomHeaderSource(testHeaderLocal)
+	c.Assert(err, IsNil)
+	_, err = view.TokenNamesSortedByKeyslotId()
+	c.Check(err, NotNil)
+}

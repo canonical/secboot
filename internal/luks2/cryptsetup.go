@@ -20,7 +20,9 @@
 package luks2
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,9 +30,11 @@ import (
 	"os/exec"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/snapcore/secboot/log"
 	"github.com/snapcore/snapd/osutil"
 
 	"golang.org/x/xerrors"
@@ -77,11 +81,32 @@ const (
 	FeatureTokenReplace
 )
 
+type CryptsetupStatus struct {
+	Device       string
+	Reencryption string
+}
+
 // cryptsetupCmd is a helper for running the cryptsetup command. If stdin is supplied, data read
 // from it is supplied to cryptsetup via its stdin. If callback is supplied, it will be invoked
 // after cryptsetup has started.
-func cryptsetupCmd(stdin io.Reader, args ...string) error {
+func cryptsetupCmd(stdin io.Reader, args ...string) ([]byte, error) {
+	log.Debug("cryptsetup %v", strings.Join(args, " "))
 	cmd := exec.Command("cryptsetup", args...)
+	cmd.Stdin = stdin
+
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		log.Debug(string(output))
+		return output, fmt.Errorf("cryptsetup failed with: %v", osutil.OutputErr(output, err))
+	}
+
+	return output, nil
+}
+
+func cryptsetupCmdContext(ctx context.Context, stdin io.Reader, args ...string) error {
+	log.Debug("cryptsetup %v", strings.Join(args, " "))
+	cmd := exec.CommandContext(ctx, "cryptsetup", args...)
 	cmd.Stdin = stdin
 
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -91,14 +116,38 @@ func cryptsetupCmd(stdin io.Reader, args ...string) error {
 	return nil
 }
 
+func cryptsetupCmdAsync(ctx context.Context, stdin io.Reader, args ...string) (*exec.Cmd, io.ReadCloser, io.ReadCloser, error) {
+	log.Debug("cryptsetup %v", strings.Join(args, " "))
+	cmd := exec.CommandContext(ctx, "cryptsetup", args...)
+	cmd.Stdin = stdin
+
+	// Grab pipes for stdout and stderr before starting the command
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("cryptsetup(async): cannot get stdout pipe")
+	}
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("cryptsetup(async): cannot get stderr pipe")
+	}
+
+	// Start the process (non-blocking)
+	err = cmd.Start()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("cryptsetup(async): cannot start the process")
+	}
+
+	return cmd, stdoutPipe, stderrPipe, nil
+}
+
 // DetectCryptsetupFeatures returns the features supported by the cryptsetup binary
 // on this system.
 func DetectCryptsetupFeatures() Features {
 	featuresOnce.Do(func() {
 		features = 0
 
-		cmd := exec.Command("cryptsetup", "--version")
-		out, err := cmd.CombinedOutput()
+		out, err := cryptsetupCmd(nil, "--version")
 		if err == nil {
 			var major, minor, patch int
 			n, _ := fmt.Sscanf(string(out), "cryptsetup %d.%d.%d", &major, &minor, &patch)
@@ -111,7 +160,7 @@ func DetectCryptsetupFeatures() Features {
 				}
 			}
 		}
-		if err := cryptsetupCmd(nil, "--test-args", "token", "import", "--token-id", "0",
+		if _, err := cryptsetupCmd(nil, "--test-args", "token", "import", "--token-id", "0",
 			"--token-replace", "/dev/null"); err == nil {
 			features |= FeatureTokenReplace
 		}
@@ -370,7 +419,8 @@ func Format(devicePath, label string, key []byte, opts *FormatOptions) error {
 		// device to format
 		devicePath)
 
-	return cryptsetupCmd(bytes.NewReader(key), args...)
+	_, err := cryptsetupCmd(bytes.NewReader(key), args...)
+	return err
 }
 
 // AddKeyOptions provides the options for adding a key to a LUKS2 volume
@@ -430,7 +480,8 @@ func AddKey(devicePath string, existingKey, key []byte, options *AddKeyOptions) 
 
 	// existing and new key are both read from stdin
 	cmdInput := bytes.NewReader(append(existingKey, key...))
-	return cryptsetupCmd(cmdInput, args...)
+	_, err := cryptsetupCmd(cmdInput, args...)
+	return err
 }
 
 // ImportTokenOptions provides the options for importing a JSON token into a LUKS2 header.
@@ -479,13 +530,15 @@ func ImportToken(devicePath string, token Token, options *ImportTokenOptions) er
 	}
 	args = append(args, devicePath)
 
-	return cryptsetupCmd(bytes.NewReader(tokenJSON), args...)
+	_, err = cryptsetupCmd(bytes.NewReader(tokenJSON), args...)
+	return err
 }
 
 // RemoveToken removes the token with the supplied ID from the JSON metadata area of the specified
 // LUKS2 container.
 func RemoveToken(devicePath string, id int) error {
-	return cryptsetupCmd(nil, "token", "remove", "--token-id", strconv.Itoa(id), devicePath)
+	_, err := cryptsetupCmd(nil, "token", "remove", "--token-id", strconv.Itoa(id), devicePath)
+	return err
 }
 
 // KillSlot erases the keyslot with the supplied slot number from the specified LUKS2 container.
@@ -493,16 +546,95 @@ func RemoveToken(devicePath string, id int) error {
 // WARNING: This function will remove the last keyslot if there is only one left,
 // which will make the encrypted data permanently inaccessible.
 func KillSlot(devicePath string, slot int) error {
-	return cryptsetupCmd(nil, "luksKillSlot", "--batch-mode", "--type", "luks2", devicePath, strconv.Itoa(slot))
+	_, err := cryptsetupCmd(nil, "luksKillSlot", "--batch-mode", "--type", "luks2", devicePath, strconv.Itoa(slot))
+	return err
 }
 
 // SetSlotPriority sets the priority of the keyslot with the supplied slot number on
 // the specified LUKS2 container.
 func SetSlotPriority(devicePath string, slot int, priority SlotPriority) error {
-	return cryptsetupCmd(nil, "config", "--priority", priority.String(), "--key-slot", strconv.Itoa(slot), devicePath)
+	_, err := cryptsetupCmd(nil, "config", "--priority", priority.String(), "--key-slot", strconv.Itoa(slot), devicePath)
+	return err
 }
 
 // Check if key is valid key for LUKS2 container at devicePath.
 func TestContainerKey(devicePath string, key []byte) bool {
-	return cryptsetupCmd(bytes.NewReader(key), "open", "--test-passphrase", "--key-file", "-", devicePath) == nil
+	_, err := cryptsetupCmd(bytes.NewReader(key), "open", "--test-passphrase", "--key-file", "-", devicePath)
+	return err == nil
+}
+
+func ReencryptInitialize(ctx context.Context, activeName string, unlockKeys [][]byte) error {
+	log.Debug("ReencryptInitialize: unlockKeys=%v", unlockKeys)
+	var sizes strings.Builder
+	// Prepare concatenated keys
+	var allKeys []byte
+	for _, unlockKey := range unlockKeys {
+		sizes.WriteString(strconv.Itoa(len(unlockKey)))
+		sizes.WriteString(",")
+		allKeys = append(allKeys, unlockKey...)
+	}
+	log.Debug("ReencryptInitialize: sizes=%v", sizes.String())
+	log.Debug("ReencryptInitialize: keys=%v", allKeys)
+
+	args := []string{
+		"reencrypt",
+		"--type", "luks2",
+		// read existing key from stdin
+		"--keys-from-stdin-sizes", sizes.String(),
+		"--batch-mode",
+		"--init-only",
+		"--active-name", activeName}
+
+	cmdInput := bytes.NewReader(allKeys)
+	return cryptsetupCmdContext(ctx, cmdInput, args...)
+}
+
+func ReencryptResume(ctx context.Context, activeName string, unlockKey []byte) (*exec.Cmd, io.ReadCloser, io.ReadCloser, error) {
+	args := []string{
+		"reencrypt",
+		"--type", "luks2",
+		// read existing key from stdin
+		"--key-file", "-",
+		"--batch-mode",
+		"--resume-only",
+		"--progress-frequency", "1",
+		"--progress-json",
+		"--hotzone-size", "10M",
+		"--active-name", activeName}
+
+	// Unlock key is read from stdin
+	cmdInput := bytes.NewReader(unlockKey)
+	return cryptsetupCmdAsync(ctx, cmdInput, args...)
+}
+
+func ReadCryptsetupStatus(activeName string) (*CryptsetupStatus, error) {
+	out, err := cryptsetupCmd(nil, "status", activeName)
+	if err != nil {
+		return nil, fmt.Errorf("cryptsetup status %q: %w", activeName, err)
+	}
+
+	outReader := bytes.NewReader(out)
+
+	scanner := bufio.NewScanner(outReader)
+	var device, reencryption string
+	for scanner.Scan() {
+		line := scanner.Text()
+		tokens := strings.Fields(string(line))
+		if len(tokens) > 1 {
+			switch tokens[0] {
+			case "device:":
+				device = tokens[1]
+			case "reencryption:":
+				reencryption = tokens[1]
+			}
+		}
+	}
+	err = scanner.Err()
+	if err != nil {
+		fmt.Println("Status: err=", err)
+	}
+	return &CryptsetupStatus{
+		Device:       device,
+		Reencryption: reencryption,
+	}, nil
 }
