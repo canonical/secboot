@@ -153,6 +153,17 @@ func maybeMeasureDMAProtectionDisabledEvent(c *C, builder *logBuilder, opts *Log
 		data:      data})
 }
 
+func maybeMeasureThunderboltSecurityLevel0Event(c *C, builder *logBuilder, opts *LogOptions) {
+	if opts.ThunderboltSecurityLevel0 {
+		var data tcglog.EventData
+		data = tcglog.StringEventData("Security Level is Downgraded to 0")
+		builder.hashLogExtendEvent(c, data, &logEvent{
+			pcrIndex:  7,
+			eventType: tcglog.EventTypeEFIAction,
+			data:      data})
+	}
+}
+
 // SecureBootSeparatorOrder specifies when the EV_SEPARATOR event in PCR7
 // should be emitted.
 type SecureBootSeparatorOrder int
@@ -169,6 +180,7 @@ type LogOptions struct {
 	StartupLocality                   uint8                           // specify a startup locality other than 0
 	FirmwareDebugger                  bool                            // indicate a firmware debugger endpoint is enabled
 	DMAProtection                     DMAProtectionDisabledEventFlags // whether DMA protection is disabled
+	ThunderboltSecurityLevel0         bool                            // whether Thunderbolt security level is zero
 	SecureBootDisabled                bool                            // Whether secure boot is disabled
 	SecureBootSeparatorOrder          SecureBootSeparatorOrder        // when to emit the EV_SEPARATOR event for PCR7
 	IncludeDriverLaunch               bool                            // include a driver launch from a PCI device in the log
@@ -402,6 +414,7 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			eventType: tcglog.EventTypeSeparator,
 			data:      data})
 		maybeMeasureDMAProtectionDisabledEvent(c, builder, opts, DMAProtectionDisabledEventOrderAfterSeparator)
+		maybeMeasureThunderboltSecurityLevel0Event(c, builder, opts)
 	}
 
 	// Mock EFI driver launch

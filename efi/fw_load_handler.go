@@ -33,9 +33,10 @@ import (
 )
 
 const (
-	sbStateName              = "SecureBoot"                  // Unicode variable name for the EFI secure boot configuration (enabled/disabled)
-	dmaProtectionDisabled    = "DMA Protection Disabled"     // ASCII string measured to PCR7 if DMA remapping is disabled in the pre-OS environment
-	dmaProtectionDisabledNul = "DMA Protection Disabled\x00" // TCG PC Client Profile spec says no NUL-terminator, but some firmware is buggy
+	sbStateName               = "SecureBoot"                        // Unicode variable name for the EFI secure boot configuration (enabled/disabled)
+	dmaProtectionDisabled     = "DMA Protection Disabled"           // ASCII string measured to PCR7 if DMA remapping is disabled in the pre-OS environment
+	dmaProtectionDisabledNul  = "DMA Protection Disabled\x00"       // TCG PC Client Profile spec says no NUL-terminator, but some firmware is buggy
+	thunderboltSecurityLevel0 = "Security Level is Downgraded to 0" // ASCII string measured to PCR7 if Thunderbolt security level is set to zero in the pre-OS
 )
 
 // fwLoadHandler is an implementation of imageLoadHandler that measures firmware
@@ -137,6 +138,16 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// EV_EFI_ACTION event in the profile if it is present.
 	includeInsufficientDMAProtection := boolParamOrFalse(ctx.Params(), includeInsufficientDMAProtectionParamKey)
 
+	// allowThunderboltSecurityLevel0 indicates that we should permit generating profiles
+	// that are compatible with PCR7 even if there is an event ThunderboltSecurityLevel0.
+	// We consider that we cannot have both allowInsufficientDMAProtection and allowThunderboltSecurityLevel0.
+	allowThunderboltSecurityLevel0 := boolParamOrFalse(ctx.Params(), allowThunderboltSecurityLevel0ParamKey)
+
+	// includeThunderboltSecurityLevel0 indicates that where allowThunderboltSecurityLevel0
+	// is set to true, this branch should be a branch that includes the corresponding
+	// EV_EFI_ACTION event in the profile if it is present.
+	includeThunderboltSecurityLevel0 := boolParamOrFalse(ctx.Params(), includeThunderboltSecurityLevel0ParamKey)
+
 	// Wind the log forward to the first EV_EFI_VARIABLE_DRIVER_CONFIG event, including
 	// any EV_EFI_ACTION "DMA Protection Disabled" measurement before this in the target
 	// profile, if this measurement is encountered and the supplied options permit it.
@@ -180,6 +191,7 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 				ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 			}
 			allowInsufficientDMAProtection = false // Only allow this event to appear once
+			allowThunderboltSecurityLevel0 = false // Also forbid this one
 		case internal_efi.IsVendorEventType(e.EventType):
 			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 		default:
@@ -302,6 +314,25 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 				ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 			}
 			allowInsufficientDMAProtection = false // Only allow this event to appear once
+			allowThunderboltSecurityLevel0 = false // Also forbid this one
+		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIAction &&
+			bytes.Equal(e.Data.Bytes(), []byte(thunderboltSecurityLevel0)) &&
+			allowThunderboltSecurityLevel0:
+			// This is a EV_EFI_ACTION "Security Level is Downgraded to 0" measurement and is
+			// allowed to appear in PCR7. In this case, it is after the secure
+			// boot configuration measurements, and after the separator.
+			//
+			// Now we use the includeThunderboltSecurityLevel0 flag to determine if
+			// this run of fwLoadHandler should really measure it to this profile
+			// branch as well. Including a branch in the profile that skips this
+			// measurement makes it possible for the firmware setting to be corrected
+			// without invalidating the profile.
+			// Future runs can then drop the option to permit it.
+			if includeThunderboltSecurityLevel0 {
+				ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
+			}
+			allowThunderboltSecurityLevel0 = false // Only allow this event to appear once
+			allowInsufficientDMAProtection = false // Also forbid this one
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && internal_efi.IsVendorEventType(e.EventType):
 			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, e.Digests[ctx.PCRAlg()])
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR:

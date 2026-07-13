@@ -521,6 +521,61 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileInclude
 	})
 }
 
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileAllowThunderboltSecurityLevel0(c *C) {
+	// Verify that the EV_EFI_ACTION "Security Level is Downgraded to 0" event is permitted.
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			ThunderboltSecurityLevel0: true,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		loadParams: &LoadParams{
+			"allow_thunderbolt_security_level_0":   true,
+			"include_thunderbolt_security_level_0": false,
+		},
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileIncludeThunderboltSecurityLevel0(c *C) {
+	// Verify that the EV_EFI_ACTION "Security Level is Downgraded to 0" event is permitted and included.
+	vars := makeMockVars(c, withMsSecureBootConfig())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			ThunderboltSecurityLevel0: true,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		loadParams: &LoadParams{
+			"allow_thunderbolt_security_level_0":   true,
+			"include_thunderbolt_security_level_0": true,
+		},
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "bceb62feef69604bb510dd066dc494813716b7087bf11ee311e88c73ac5ba04e")}, // "Security Level is Downgraded to 0"
+		},
+	})
+}
+
 func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileWithVendorEventBeforeConfig(c *C) {
 	log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
 	var eventsCopy []*tcglog.Event
@@ -995,6 +1050,46 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartErrDisallowDMAProtectionDisabl
 
 	handler := NewFwLoadHandler(log)
 	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected event type \(EV_EFI_ACTION\) found in log, before config`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrDisallowThunderboltSecurityLevel0(c *C) {
+	// Verify that the EV_EFI_ACTION "Security Level is Downgraded to 0" event raises an error.
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR)}, nil, collector.Next())
+
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+		ThunderboltSecurityLevel0: true,
+	})
+
+	handler := NewFwLoadHandler(log)
+	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected event type \(EV_EFI_ACTION\) found in log`)
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartErrAllowThunderboltSecurityLevel0WithInsufficientDMAProtection(c *C) {
+	// Verify that an allowed event "Security Level is Downgraded to 0" together with an allowed event
+	// "DMA Protection Disabled" raise an error (as they are mutually exclusive).
+	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
+	loadParams := LoadParams{
+		"allow_insufficient_dma_protection":  true,
+		"allow_thunderbolt_security_level_0": true,
+	}
+	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR)},
+		&loadParams,
+		collector.Next())
+
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+		DMAProtection:             efitest.DMAProtectionDisabled,
+		ThunderboltSecurityLevel0: true,
+	})
+
+	handler := NewFwLoadHandler(log)
+	c.Check(handler.MeasureImageStart(ctx), ErrorMatches, `cannot measure secure boot policy: unexpected event type \(EV_EFI_ACTION\) found in log`)
 }
 
 func (s *fwLoadHandlerSuite) TestMeasureImageStartErrBadLogPCR7_1(c *C) {

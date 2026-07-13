@@ -1378,6 +1378,72 @@ func (s *pcrProfileSuite) TestAddPCRProfileUC20WithDbxUpdateWithAllowInsufficien
 	c.Check(err, IsNil)
 }
 
+func (s *pcrProfileSuite) TestAddPCRProfileUC20WithAllowThunderboltSecurityLevel0(c *C) {
+	// Test with a standard UC20 profile without recovery kernel
+	shim := newMockUbuntuShimImage15_7(c)
+	grub := newMockUbuntuGrubImage3(c)
+	runKernel := newMockUbuntuKernelImage3(c)
+
+	err := s.testAddPCRProfile(c, &testAddPCRProfileData{
+		vars: makeMockVars(c, withMsSecureBootConfig(), withSbatLevel([]byte("sbat,1,2022052400\ngrub,2\n"))),
+		log: efitest.NewLog(c, &efitest.LogOptions{
+			Algorithms:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			ThunderboltSecurityLevel0: true,
+		}),
+		alg: tpm2.HashAlgorithmSHA256,
+		loadSequences: NewImageLoadSequences(
+			SnapModelParams(testutil.MakeMockCore20ModelAssertion(c, map[string]interface{}{
+				"authority-id": "fake-brand",
+				"series":       "16",
+				"brand-id":     "fake-brand",
+				"model":        "fake-model",
+				"grade":        "secured",
+			}, "Jv8_JiHiIzJVcO9M55pPdqSDWUvuhfDIBJUS-3VW7F_idjix7Ffn5qMxB21ZQuij")),
+		).Append(
+			NewImageLoadActivity(shim).Loads(
+				NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=recover")).Loads(
+					NewImageLoadActivity(grub, KernelCommandlineParams("console=ttyS0 console=tty1 panic=-1 systemd.gpt_auto=0 snapd_recovery_mode=run")).Loads(
+						NewImageLoadActivity(runKernel),
+					),
+				),
+			),
+		),
+		expected: []tpm2.PCRValues{
+			// Not including Thunderbolt Security Level downgraded string
+			{
+				tpm2.HashAlgorithmSHA256: {
+					4:  testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
+					7:  testutil.DecodeHexString(c, "3d65dbe406e9427d402488ea4f87e07e8b584c79c578a735d48d21a6405fc8bb"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
+				},
+			},
+			// Including Thunderbolt Security Level downgraded string
+			{
+				tpm2.HashAlgorithmSHA256: {
+					4:  testutil.DecodeHexString(c, "bec6121586508581e08a41244944292ef452879f8e19c7f93d166e912c6aac5e"),
+					7:  testutil.DecodeHexString(c, "a2e75770cb3dc606de7a535af63f2c78ecad9159e69eb2ffa39b8b443d75c954"),
+					12: testutil.DecodeHexString(c, "fd1000c6f691c3054e2ff5cfacb39305820c9f3534ba67d7894cb753aa85074b"),
+				},
+			},
+		},
+	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithKernelConfigProfile(), WithAllowThunderboltSecurityLevel0())
+	c.Check(err, IsNil)
+}
+
+func (s *pcrProfileSuite) TestAddPCRProfileThunderboltSecurityLevel0(c *C) {
+	// Test with an unexpected ThunderboltSecurityLevel0 event
+	err := s.testAddPCRProfile(c, &testAddPCRProfileData{
+		vars: makeMockVars(c, withMsSecureBootConfig(), withSbatLevel([]byte("sbat,1,2022052400\ngrub,2\n"))),
+		log: efitest.NewLog(c, &efitest.LogOptions{
+			Algorithms:                []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			ThunderboltSecurityLevel0: true,
+		}),
+		alg:           tpm2.HashAlgorithmSHA256,
+		loadSequences: NewImageLoadSequences(),
+	}, WithSecureBootPolicyProfile(), WithBootManagerCodeProfile(), WithKernelConfigProfile())
+	c.Check(err, ErrorMatches, `cannot measure pre-OS: cannot measure secure boot policy: unexpected event type \(EV_EFI_ACTION\) found in log`)
+}
+
 func (s *pcrProfileSuite) TestAddPCRProfileUC20WithAllowSecureBootUserMode(c *C) {
 	shim := newMockUbuntuShimImage15_7(c)
 	grub := newMockUbuntuGrubImage3(c)
