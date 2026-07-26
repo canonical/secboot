@@ -392,18 +392,49 @@ func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
 }
 
 func (h *fwLoadHandler) measureDriversAndApps(ctx pcrBranchContext) error {
+	seenSeparator := false
+
 	for _, event := range h.log.Events {
+		// Some firmware extends vendor-defined events into PCR2 after the
+		// separator but before authorizing or launching the initial OS loader.
+		// Retain those events, but do not copy any PCR2 measurements made once
+		// OS image processing has begun.
+		if seenSeparator &&
+			((event.PCRIndex == internal_efi.SecureBootPolicyPCR &&
+				event.EventType == tcglog.EventTypeEFIVariableAuthority) ||
+				(event.PCRIndex == internal_efi.BootManagerCodePCR &&
+					event.EventType == tcglog.EventTypeEFIBootServicesApplication)) {
+			return nil
+		}
+
 		if event.PCRIndex != internal_efi.DriversAndAppsPCR {
 			continue
 		}
 
-		if event.EventType == tcglog.EventTypeSeparator {
-			return h.measureSeparator(ctx, internal_efi.DriversAndAppsPCR, event)
+		if !seenSeparator {
+			if event.EventType == tcglog.EventTypeSeparator {
+				if err := h.measureSeparator(ctx, internal_efi.DriversAndAppsPCR, event); err != nil {
+					return err
+				}
+				seenSeparator = true
+				continue
+			}
+			ctx.ExtendPCR(internal_efi.DriversAndAppsPCR, event.Digests[ctx.PCRAlg()])
+			continue
+		}
+
+		if !internal_efi.IsVendorEventType(event.EventType) {
+			return fmt.Errorf(
+				"unexpected post-separator event type %v found in PCR %d",
+				event.EventType, internal_efi.DriversAndAppsPCR)
 		}
 		ctx.ExtendPCR(internal_efi.DriversAndAppsPCR, event.Digests[ctx.PCRAlg()])
 	}
 
-	return errors.New("missing separator in log")
+	if !seenSeparator {
+		return errors.New("missing separator in log")
+	}
+	return errors.New("reached end of log before encountering initial OS authorization or launch")
 }
 
 func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error {
