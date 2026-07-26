@@ -20,12 +20,15 @@
 package efi
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
 )
+
+const hpPreBootDMAConfigEventData = `"SVM CPU Virtualization":"Enable";"DMA protection":"Enable";"Pre-boot DMA protection":"All PCIe devices";`
 
 // IsVendorEventType indicates whether the supplied event type is vendor
 // defined. Officially, this applies to any event type that is not within the
@@ -40,6 +43,15 @@ func IsVendorEventType(t tcglog.EventType) bool {
 	default:
 		return t > 0x7fff
 	}
+}
+
+// IsHPPreBootDMAConfigEvent indicates whether the supplied event is the exact
+// virtualization and pre-boot DMA configuration measurement produced by HP
+// firmware when "Measure Additional DMA Settings" is directed to PCR7.
+func IsHPPreBootDMAConfigEvent(ev *tcglog.Event) bool {
+	return ev.PCRIndex == SecureBootPolicyPCR &&
+		ev.EventType == tcglog.EventTypeEFIAction &&
+		bytes.Equal(ev.Data.Bytes(), []byte(hpPreBootDMAConfigEventData))
 }
 
 // IsLaunchedFromFirmwareVolume indicates that the supplied event is associated

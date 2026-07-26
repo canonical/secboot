@@ -146,6 +146,7 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// enabled. A firmware debugger permits an adversary with local access to control
 	// firmware execution, bypassing any protections offered by measuredboot or verified
 	// boot, and the presence of one should prevent FDE from being enabled.
+	measuredHPPreBootDMAConfig := false
 	for len(events) > 0 {
 		e := events[0]
 		events = events[1:]
@@ -156,14 +157,21 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		}
 
 		if e.EventType == tcglog.EventTypeEFIVariableDriverConfig {
-			// This is the first secure boot configuration measurement. In most
-			// circumstances, this will be the first measurement to PCR7. Only
-			// in the case where the first event is a EV_EFI_ACTION "DMA Protection
-			// Disabled" event will this not be true.
+			// This is the first secure boot configuration measurement. It is
+			// generally the first measurement to PCR7, although supported
+			// pre-configuration action or vendor events may precede it.
 			break
 		}
 
 		switch {
+		case internal_efi.IsHPPreBootDMAConfigEvent(e) && !measuredHPPreBootDMAConfig:
+			digest := e.Digests[ctx.PCRAlg()]
+			expectedDigest := tcglog.ComputeStringEventDigest(ctx.PCRAlg().GetHash(), string(e.Data.Bytes()))
+			if !bytes.Equal(digest, expectedDigest) {
+				return errors.New("invalid digest for HP pre-boot DMA configuration event")
+			}
+			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, digest)
+			measuredHPPreBootDMAConfig = true
 		case e.EventType == tcglog.EventTypeEFIAction &&
 			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) || bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))) &&
 			allowInsufficientDMAProtection:
