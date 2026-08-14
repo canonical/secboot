@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2024 Canonical Ltd
+ * Copyright (C) 2024-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -23,10 +23,18 @@ import (
 	. "github.com/snapcore/secboot/efi/preinstall"
 	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
+	snapd_testutil "github.com/snapcore/snapd/testutil"
 	. "gopkg.in/check.v1"
 )
 
-type tpmIntelSuite struct{}
+type tpmIntelSuite struct {
+	snapd_testutil.BaseTest
+}
+
+func (s *tpmIntelSuite) SetUpTest(c *C) {
+	s.BaseTest.SetUpTest(c)
+	s.AddCleanup(MockRuntimeGOARCH("amd64"))
+}
 
 var _ = Suite(&tpmIntelSuite{})
 
