@@ -3,7 +3,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2021-2024 Canonical Ltd
+ * Copyright (C) 2021-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -136,4 +136,16 @@ func (s *defaultEnvAMD64Suite) TestReadMSR(c *C) {
 		0: 0x40000000,
 		1: 0x40000000,
 	})
+}
+
+func (s *defaultEnvAMD64Suite) TestCPUIDFeatureSMXMatchesCpuidPackage(c *C) {
+	// Drift guard: CPUIDFeatureSMX must equal cpuid.SMX. If the cpuid
+	// package ever changes its bit positions this test will catch it.
+	c.Check(CPUIDFeatureSMX, Equals, cpuid.SMX)
+}
+
+func (s *defaultEnvAMD64Suite) TestCPUIDFeatureSDBGMatchesCpuidPackage(c *C) {
+	// Drift guard: CPUIDFeatureSDBG must equal cpuid.SDBG. If the cpuid
+	// package ever changes its bit positions this test will catch it.
+	c.Check(CPUIDFeatureSDBG, Equals, cpuid.SDBG)
 }
