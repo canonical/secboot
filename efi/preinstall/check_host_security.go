@@ -166,6 +166,8 @@ func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (platf
 	switch runtimeGOARCH {
 	case "amd64":
 		return checkHostSecurityAMD64(env, log)
+	case "arm64":
+		return checkHostSecurityARM64(env, log)
 	default:
 		return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("checking host security is not implemented on %s", runtimeGOARCH)}
 	}
@@ -178,6 +180,8 @@ func checkDiscreteTPMPartialResetAttackMitigationStatus(env internal_efi.HostEnv
 	switch runtimeGOARCH {
 	case "amd64":
 		return checkDiscreteTPMPartialResetAttackMitigationStatusAMD64(env, logResults)
+	case "arm64":
+		return checkDiscreteTPMPartialResetAttackMitigationStatusARM64(env, logResults)
 	default:
 		return dtpmPartialResetAttackMitigationNotRequired, nil
 	}
@@ -293,5 +297,74 @@ func checkDiscreteTPMPartialResetAttackMitigationStatusAMD64(env internal_efi.Ho
 	// The startup locality is available to the OS, so the mitigation
 	// is unavailable even though it would have been desired because
 	// PCR0 can be recreated from the OS.
+	return dtpmPartialResetAttackMitigationUnavailable, nil
+}
+
+// checkHostSecurityARM64Platform selects the platform-specific firmware
+// integrity check. Tests replace this to supply synthetic platforms.
+var checkHostSecurityARM64Platform = func(env internal_efi.HostEnvironmentARM64, cpuManufacturer string) (platformFirmwareIntegrityConfig, error) {
+	return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("unsupported CPU manufacturer: %s", cpuManufacturer)}
+}
+
+func checkHostSecurityARM64(env internal_efi.HostEnvironment, log *tcglog.Log) (platformFirmwareIntegrityConfig, error) {
+	arm64Env, err := env.ARM64()
+	if err != nil {
+		return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("cannot obtain ARM64 environment: %w", err)}
+	}
+
+	cpuManufacturer, err := arm64Env.CPUManufacturer()
+	if err != nil {
+		return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU manufacturer: %w", err)}
+	}
+
+	integrity, err := checkHostSecurityARM64Platform(arm64Env, cpuManufacturer)
+	if err != nil {
+		return platformFirmwareIntegrityNone, err
+	}
+
+	return checkHostSecurityARM64Generic(env, log, integrity)
+}
+
+func checkHostSecurityARM64Generic(env internal_efi.HostEnvironment, log *tcglog.Log, integrity platformFirmwareIntegrityConfig) (platformFirmwareIntegrityConfig, error) {
+	var errs []error
+
+	if err := checkSecureBootPolicyPCRForDegradedFirmwareSettings(log); err != nil {
+		var ce CompoundError
+		if !errors.As(err, &ce) {
+			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error whilst checking the TCG log for degraded firmware settings: %w", err)
+		}
+		errs = append(errs, ce.Unwrap()...)
+	}
+
+	if err := checkForKernelIOMMU(env); err != nil {
+		switch {
+		case errors.Is(err, ErrNoKernelIOMMU):
+			errs = append(errs, err)
+		default:
+			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error whilst checking sysfs to determine that kernel IOMMU support is enabled: %w", err)
+		}
+	}
+
+	if len(errs) > 0 {
+		return integrity, joinErrors(errs...)
+	}
+
+	return integrity, nil
+}
+
+// checkDiscreteTPMPartialResetAttackMitigationStatusARM64 determines whether a partial mitigation
+// against discrete TPM reset attacks should be enabled.
+func checkDiscreteTPMPartialResetAttackMitigationStatusARM64(env internal_efi.HostEnvironment, _ *pcrBankResults) (discreteTPMPartialResetAttackMitigationStatus, error) {
+	discreteTPM, err := isTPMDiscrete(env)
+	if err != nil {
+		return dtpmPartialResetAttackMitigationUnknown, &TPM2DeviceError{err}
+	}
+	if !discreteTPM {
+		return dtpmPartialResetAttackMitigationNotRequired, nil
+	}
+
+	// ARM64 has no generic mechanism to establish that the TPM startup locality
+	// is protected by the hardware root of trust, so PCR0 binding cannot be relied
+	// on to mitigate an independent reset of a discrete TPM.
 	return dtpmPartialResetAttackMitigationUnavailable, nil
 }
