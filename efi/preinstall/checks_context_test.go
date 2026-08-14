@@ -242,7 +242,7 @@ func (s *runChecksContextSuite) TestRunGood(c *C) {
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -293,7 +293,7 @@ func (s *runChecksContextSuite) TestRunGoodSHA384(c *C) {
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA384,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -344,7 +344,7 @@ func (s *runChecksContextSuite) TestRunGoodSHA1FromInitialFlags(c *C) {
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA1,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -390,7 +390,7 @@ func (s *runChecksContextSuite) TestRunGoodPermitInsufficientDMAProtectionFromIn
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindInsufficientDMAProtection: nil,
 				ErrorKindNoKernelIOMMU:             nil,
@@ -453,7 +453,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitInsufficientDMAPro
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindInsufficientDMAProtection: nil,
 				ErrorKindNoKernelIOMMU:             nil,
@@ -514,7 +514,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitNoHardwareRootOfTr
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindNoHardwareRootOfTrust: nil,
 			},
@@ -561,7 +561,7 @@ func (s *runChecksContextSuite) TestRunGoodPostInstall(c *C) {
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -601,7 +601,7 @@ func (s *runChecksContextSuite) TestRunGoodPreAndPostInstall(c *C) {
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -634,7 +634,7 @@ func (s *runChecksContextSuite) TestRunGoodPreAndPostInstall(c *C) {
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `4 errors detected:
 - availability of TPM's lockout hierarchy was not checked because the lockout hierarchy has an authorization value set
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
@@ -785,7 +785,7 @@ func (s *runChecksContextSuite) TestRunGoodDiscreteTPMDetectedSL3(c *C) {
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -833,7 +833,7 @@ func (s *runChecksContextSuite) TestRunGoodDiscreteTPMDetectedHCRTM(c *C) {
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -882,7 +882,7 @@ func (s *runChecksContextSuite) TestRunGoodInvalidPCR0Value(c *C) {
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformFirmwareProfileSupport | NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformFirmwareProfileSupport | NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `4 errors detected:
 - error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0xe9995745ca25279ec699688b70488116fe4d9f053cb0991dd71e82e7edfa66b5, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\)
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
@@ -890,6 +890,16 @@ func (s *runChecksContextSuite) TestRunGoodInvalidPCR0Value(c *C) {
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 		})
+		if fixture.additionalExpectedFlags&RequireLockToPlatformFirmware != 0 {
+			c.Assert(errs, HasLen, 1)
+			c.Check(errs[0], ErrorMatches, `error with or detected from measurement log: no suitable PCR algorithm available:
+- TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
+- TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
+- TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0xe9995745ca25279ec699688b70488116fe4d9f053cb0991dd71e82e7edfa66b5, reconstructed from log 0xa6602a7a403068b5556e78cc3f5b00c9c76d33d514093ca9b584dce7590e6c69\).
+`)
+			c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindNoSuitablePCRBank, nil, []Action{ActionRebootToFWSettings, ActionContactOEM}, errs[0].Unwrap()))
+			continue
+		}
 		c.Check(errs, HasLen, 0)
 	}
 }
@@ -936,7 +946,7 @@ func (s *runChecksContextSuite) TestRunGoodInvalidPCR2ValueWhenOmittedFromPCRPro
 				actions:                   []actionAndArgs{{action: ActionNone}},
 				expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 				expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-				expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+				expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 				expectedWarningsMatch: `4 errors detected:
 - error with drivers and apps \(PCR2\) measurements: PCR value mismatch \(actual from TPM 0xfa734a6a4d262d7405d47d48c0a1b127229ca808032555ad919ed5dd7c1f6519, reconstructed from log 0x3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969\)
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
@@ -991,7 +1001,7 @@ func (s *runChecksContextSuite) TestRunGoodInvalidPCR4ValueWhenOmittedFromPCRPro
 				actions:                   []actionAndArgs{{action: ActionNone}},
 				expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 				expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-				expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport,
+				expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 				expectedWarningsMatch: `4 errors detected:
 - error with boot manager code \(PCR4\) measurements: PCR value mismatch \(actual from TPM 0x1c93930d6b26232e061eaa33ecf6341fae63ce598a0c6a26ee96a0828639c044, reconstructed from log 0x4bc74f3ffe49b4dd275c9f475887b68193e2db8348d72e1c3c9099c2dcfa85b0\)
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
@@ -1041,7 +1051,7 @@ func (s *runChecksContextSuite) TestRunGoodAddonDriversPresentFromInitialFlags(c
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindAddonDriversPresent: nil,
 			},
@@ -1136,7 +1146,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitAddonDrivers(c *C)
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindAddonDriversPresent: nil,
 			},
@@ -1200,7 +1210,7 @@ func (s *runChecksContextSuite) TestRunGoodSysPrepAppsPresentFromInitialFlags(c 
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindSysPrepApplicationsPresent: nil,
 			},
@@ -1313,7 +1323,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitSysPrepApplication
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindSysPrepApplicationsPresent: nil,
 			},
@@ -1362,7 +1372,7 @@ func (s *runChecksContextSuite) TestRunGoodAbsoluteActiveFromInitialFlags(c *C) 
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindAbsolutePresent: nil,
 			},
@@ -1424,7 +1434,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitAbsolute(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindAbsolutePresent: nil,
 			},
@@ -1492,7 +1502,7 @@ func (s *runChecksContextSuite) TestRunGoodNoBootManagerCodeProfileSupportWhenOm
 				actions:                   []actionAndArgs{{action: ActionNone}},
 				expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 				expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-				expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport,
+				expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 				expectedWarningsMatch: `4 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -1540,7 +1550,7 @@ func (s *runChecksContextSuite) TestRunGoodPreOSSecureBootAuthByEnrolledDigestsF
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindAddonDriversPresent:                  nil,
 				ErrorKindPreOSSecureBootAuthByEnrolledDigests: nil,
@@ -1608,7 +1618,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitSecureBootUserMode
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindInvalidSecureBootMode: nil,
 			},
@@ -1653,7 +1663,7 @@ func (s *runChecksContextSuite) TestRunGoodPermitSecureBootUserModeFromInitialFl
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindInvalidSecureBootMode: nil,
 			},
@@ -1756,7 +1766,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitPreOSSecureBootAut
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindAddonDriversPresent:                  nil,
 				ErrorKindPreOSSecureBootAuthByEnrolledDigests: nil,
@@ -1809,7 +1819,7 @@ func (s *runChecksContextSuite) TestRunGoodWeakSecureBootAlgsFromInitialFlags(c 
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindAddonDriversPresent:                  nil,
 				ErrorKindWeakSecureBootAlgorithmsDetected:     nil,
@@ -1924,7 +1934,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitWeakSecureBootAlgs
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindAddonDriversPresent:                  nil,
 				ErrorKindWeakSecureBootAlgorithmsDetected:     nil,
@@ -2065,7 +2075,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedIndividualWithMultipleEr
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedAcceptedErrors: map[ErrorKind]json.RawMessage{
 				ErrorKindAddonDriversPresent:                  nil,
 				ErrorKindWeakSecureBootAlgorithmsDetected:     nil,
@@ -2135,7 +2145,7 @@ func (s *runChecksContextSuite) TestRunGoodPostInstallTPMDeviceLockedOut(c *C) {
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `5 errors detected:
 - availability of TPM's lockout hierarchy was not checked because the lockout hierarchy has an authorization value set
 - error with TPM2 device: TPM is in DA lockout mode
@@ -2210,7 +2220,7 @@ func (s *runChecksContextSuite) TestRunGoodActionClearTPMSimple(c *C) {
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -2287,7 +2297,7 @@ func (s *runChecksContextSuite) TestRunGoodActionClearTPM(c *C) {
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -2365,7 +2375,7 @@ func (s *runChecksContextSuite) TestRunGoodActionClearTPMMissingAuthValueArg(c *
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -2412,7 +2422,7 @@ func (s *runChecksContextSuite) TestRunGoodStartupLocalityNotProtected(c *C) {
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `4 errors detected:
 - error with system security: cannot enable partial mitigation against discrete TPM reset attacks
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
@@ -2462,7 +2472,7 @@ func (s *runChecksContextSuite) TestRunGoodInvalidPCR0ValueDiscreteTPM(c *C) {
 			actions:                   []actionAndArgs{{action: ActionNone}},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformFirmwareProfileSupport | NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformFirmwareProfileSupport | NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `5 errors detected:
 - error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0x420bd3899738e6b41dccd18253a556e152e2b107559b89cbf0cbf1661ff6ee55, reconstructed from log 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef\)
 - error with system security: cannot enable partial mitigation against discrete TPM reset attacks
@@ -2471,6 +2481,16 @@ func (s *runChecksContextSuite) TestRunGoodInvalidPCR0ValueDiscreteTPM(c *C) {
 - error with boot manager config \(PCR5\) measurements: generating profiles for PCR 5 is not supported yet, see https://github.com/canonical/secboot/issues/323
 `,
 		})
+		if fixture.additionalExpectedFlags&RequireLockToPlatformFirmware != 0 {
+			c.Assert(errs, HasLen, 1)
+			c.Check(errs[0], ErrorMatches, `error with or detected from measurement log: no suitable PCR algorithm available:
+- TPM_ALG_SHA512: the PCR bank is missing from the TCG log.
+- TPM_ALG_SHA384: the PCR bank is missing from the TCG log.
+- TPM_ALG_SHA256: error with platform firmware \(PCR0\) measurements: PCR value mismatch \(actual from TPM 0x420bd3899738e6b41dccd18253a556e152e2b107559b89cbf0cbf1661ff6ee55, reconstructed from log 0xb0d6d5f50852be1524306ad88b928605c14338e56a1b8c0dc211a144524df2ef\).
+`)
+			c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(ErrorKindNoSuitablePCRBank, nil, []Action{ActionRebootToFWSettings, ActionContactOEM}, errs[0].Unwrap()))
+			continue
+		}
 		c.Assert(errs, HasLen, 0)
 	}
 }
@@ -5674,7 +5694,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMSimpleFailsInvalidAuthVa
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -5758,7 +5778,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMSimpleFailsWithError(c *
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -5855,7 +5875,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMSimpleBecomesUnavailable
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -5936,7 +5956,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMInvalidAuthValueArgument
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -6022,7 +6042,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMInvalidAuthValue(c *C) {
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -6110,7 +6130,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMFailsWithError(c *C) {
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
@@ -6203,7 +6223,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMBecomesUnavailableAfterL
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 			expectedWarningsMatch: `3 errors detected:
 - error with platform config \(PCR1\) measurements: generating profiles for PCR 1 is not supported yet, see https://github.com/canonical/secboot/issues/322
 - error with drivers and apps config \(PCR3\) measurements: generating profiles for PCR 3 is not supported yet, see https://github.com/canonical/secboot/issues/341
