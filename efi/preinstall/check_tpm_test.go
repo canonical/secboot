@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Canonical Ltd
+ * Copyright (C) 2024-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -30,6 +30,7 @@ import (
 	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/secboot/internal/tpm2_device"
+	snapd_testutil "github.com/snapcore/snapd/testutil"
 	. "gopkg.in/check.v1"
 )
 
@@ -1148,4 +1149,71 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceLockoutAvailabilitySkipped(c *C) {
 
 	c.Assert(tpm, NotNil)
 	c.Check(dev.NumberOpen(), Equals, int(1))
+}
+
+type tpmAmd64Suite struct {
+	snapd_testutil.BaseTest
+}
+
+func (s *tpmAmd64Suite) SetUpTest(c *C) {
+	s.BaseTest.SetUpTest(c)
+	s.AddCleanup(MockRuntimeGOARCH("amd64"))
+}
+
+var _ = Suite(&tpmAmd64Suite{})
+
+func (s *tpmIntelSuite) TestIsTPMDiscreteIntelYes(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 1, map[uint32]uint64{0x13a: (2 << 1)}),
+	)
+	discrete, err := IsTPMDiscrete(env)
+	c.Check(err, IsNil)
+	c.Check(discrete, testutil.IsTrue)
+}
+
+func (s *tpmIntelSuite) TestIsTPMDiscreteIntelNo(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 1, map[uint32]uint64{0x13a: (3 << 1)}),
+	)
+	discrete, err := IsTPMDiscrete(env)
+	c.Check(err, IsNil)
+	c.Check(discrete, testutil.IsFalse)
+}
+
+func (s *tpmIntelSuite) TestIsTPMDiscreteIntelNoTPM2(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 1, map[uint32]uint64{0x13a: (0 << 1)}),
+	)
+	_, err := IsTPMDiscrete(env)
+	c.Check(err, ErrorMatches, `cannot check TPM discreteness using Intel BootGuard status: no TPM2 device is available`)
+	c.Check(errors.Is(err, ErrNoTPM2Device), testutil.IsTrue)
+}
+
+func (s *tpmIntelSuite) TestIsTPMDiscreteAMD(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("AuthenticAMD", 0x1a, nil, 1, nil))
+	_, err := IsTPMDiscrete(env)
+	c.Check(err, ErrorMatches, `unsupported platform: cannot check TPM discreteness on AMD systems`)
+
+	var upe *UnsupportedPlatformError
+	c.Check(errors.As(err, &upe), testutil.IsTrue)
+}
+
+func (s *tpmIntelSuite) TestIsTPMDiscreteUnrecognizedCPUVendor(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineInte", 0x6, nil, 1, nil))
+	_, err := IsTPMDiscrete(env)
+	c.Check(err, ErrorMatches, `unsupported platform: cannot determine CPU vendor: unknown CPU vendor: GenuineInte`)
+
+	var upe *UnsupportedPlatformError
+	c.Check(errors.As(err, &upe), testutil.IsTrue)
+}
+
+func (s *tpmSuite) TestIsTPMDiscreteUnsupportedArchitecture(c *C) {
+	restore := MockRuntimeGOARCH("ppc64le")
+	defer restore()
+
+	_, err := IsTPMDiscrete(nil)
+	c.Check(err, ErrorMatches, `unsupported platform: checking for TPM discreteness is not implemented on ppc64le`)
+
+	var upe *UnsupportedPlatformError
+	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }

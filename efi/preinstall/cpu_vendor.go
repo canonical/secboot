@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2024 Canonical Ltd
+ * Copyright (C) 2024-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -20,34 +20,31 @@
 package preinstall
 
 import (
-	"errors"
 	"fmt"
 
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
-// isTPMDiscrete determines whether the TPM is discrete
-func isTPMDiscrete(env internal_efi.HostEnvironment) (bool, error) {
+type cpuVendor int
+
+const (
+	cpuVendorUnknown cpuVendor = iota
+	cpuVendorIntel
+	cpuVendorAMD
+)
+
+func determineCPUVendor(env internal_efi.HostEnvironment) (cpuVendor, error) {
 	amd64, err := env.AMD64()
 	if err != nil {
-		return false, err
+		return cpuVendorUnknown, err
 	}
 
-	cpuVendor, err := determineCPUVendor(env)
-	if err != nil {
-		return false, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
-	}
-
-	switch cpuVendor {
-	case cpuVendorIntel:
-		discrete, err := isTPMDiscreteFromIntelBootGuard(amd64)
-		if err != nil {
-			return false, fmt.Errorf("cannot check TPM discreteness using Intel BootGuard status: %w", err)
-		}
-		return discrete, nil
-	case cpuVendorAMD:
-		return false, &UnsupportedPlatformError{errors.New("cannot check TPM discreteness on AMD systems")}
+	switch amd64.CPUVendorIdentificator() {
+	case "GenuineIntel":
+		return cpuVendorIntel, nil
+	case "AuthenticAMD":
+		return cpuVendorAMD, nil
 	default:
-		panic("not reached")
+		return cpuVendorUnknown, fmt.Errorf("unknown CPU vendor: %s", amd64.CPUVendorIdentificator())
 	}
 }
