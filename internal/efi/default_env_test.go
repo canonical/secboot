@@ -23,6 +23,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -764,4 +765,327 @@ func (s *defaultEnvAMD64Suite) TestNotAMD64Host(c *C) {
 
 	_, err := DefaultEnv.AMD64()
 	c.Check(err, Equals, ErrNotAMD64Host)
+}
+
+type defaultEnvARM64Suite struct {
+	snapd_testutil.BaseTest
+}
+
+var _ = Suite(&defaultEnvARM64Suite{})
+
+func (s *defaultEnvARM64Suite) SetUpTest(c *C) {
+	s.BaseTest.SetUpTest(c)
+	s.AddCleanup(MockRuntimeGOARCH("arm64"))
+}
+
+// buildSMBIOSType4 constructs a synthetic SMBIOS type 4 (Processor Information)
+// blob for testing. formattedArea contains the raw formatted area bytes
+// (including the 4-byte header: type, length, handle×2); formattedArea[0]
+// should be set to the desired type byte and formattedArea[1] is overwritten
+// with len(formattedArea). strs are the string-set entries appended in order.
+func buildSMBIOSType4(formattedArea []byte, strs ...string) []byte {
+	fa := make([]byte, len(formattedArea))
+	copy(fa, formattedArea)
+	if len(fa) >= 2 {
+		fa[1] = byte(len(fa))
+	}
+	out := append([]byte(nil), fa...)
+	for _, s := range strs {
+		out = append(out, s...)
+		out = append(out, 0)
+	}
+	out = append(out, 0) // end-of-string-set sentinel
+	return out
+}
+
+// makeValidType4Blob returns a minimal valid SMBIOS type 4 blob whose
+// Manufacturer field (0x07) points to string 1 and Version field (0x10)
+// points to string 2.
+func makeValidType4Blob(manufacturer, version string) []byte {
+	fa := make([]byte, 0x11) // 17 bytes: includes offsets 0x07 and 0x10
+	fa[0] = 4                // structure type 4
+	fa[0x07] = 1             // Manufacturer = string 1
+	fa[0x10] = 2             // Version = string 2
+	return buildSMBIOSType4(fa, manufacturer, version)
+}
+
+func (s *defaultEnvARM64Suite) TestCPUManufacturer(c *C) {
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		if path == "/sys/firmware/dmi/entries/4-0/raw" {
+			return makeValidType4Blob("NVIDIA", "GB10"), nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	manufacturer, err := arm64.CPUManufacturer()
+	c.Check(err, IsNil)
+	c.Check(manufacturer, Equals, "NVIDIA")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUVersion(c *C) {
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		if path == "/sys/firmware/dmi/entries/4-0/raw" {
+			return makeValidType4Blob("NVIDIA", "GB10"), nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	version, err := arm64.CPUVersion()
+	c.Check(err, IsNil)
+	c.Check(version, Equals, "GB10")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUManufacturerWhitespaceTrimming(c *C) {
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		if path == "/sys/firmware/dmi/entries/4-0/raw" {
+			return makeValidType4Blob("\t  Example Manufacturer  \t", "Example Version"), nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	manufacturer, err := arm64.CPUManufacturer()
+	c.Check(err, IsNil)
+	c.Check(manufacturer, Equals, "Example Manufacturer")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUVersionWhitespaceTrimming(c *C) {
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		if path == "/sys/firmware/dmi/entries/4-0/raw" {
+			return makeValidType4Blob("Example Manufacturer", "\t  Example Version  \t"), nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	version, err := arm64.CPUVersion()
+	c.Check(err, IsNil)
+	c.Check(version, Equals, "Example Version")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUManufacturerReadError(c *C) {
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		return nil, errors.New("some error")
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	_, err = arm64.CPUManufacturer()
+	c.Check(err, ErrorMatches, "cannot read /sys/firmware/dmi/entries/4-0/raw: some error")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUVersionReadError(c *C) {
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		return nil, errors.New("some error")
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	_, err = arm64.CPUVersion()
+	c.Check(err, ErrorMatches, "cannot read /sys/firmware/dmi/entries/4-0/raw: some error")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUManufacturerWrongStructureType(c *C) {
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		if path == "/sys/firmware/dmi/entries/4-0/raw" {
+			fa := make([]byte, 0x11)
+			fa[0] = 1    // wrong type (System Information, not Processor Information)
+			fa[0x07] = 1 // Manufacturer = string 1
+			fa[0x10] = 2 // Version = string 2
+			return buildSMBIOSType4(fa, "NVIDIA", "GB10"), nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	_, err = arm64.CPUManufacturer()
+	c.Check(err, ErrorMatches, "unexpected SMBIOS structure type 1 \\(expected 4\\)")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUManufacturerTooShortForHeader(c *C) {
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		if path == "/sys/firmware/dmi/entries/4-0/raw" {
+			return []byte{4, 3, 0}, nil // only 3 bytes, not enough for header
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	_, err = arm64.CPUManufacturer()
+	c.Check(err, ErrorMatches, "SMBIOS structure too short for header: have 3 bytes")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUManufacturerFormattedAreaTooShort(c *C) {
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		if path == "/sys/firmware/dmi/entries/4-0/raw" {
+			// Formatted area is only 7 bytes; Manufacturer is at 0x07,
+			// so formattedLen (7) <= fieldOffset (7): field not present.
+			fa := make([]byte, 7)
+			fa[0] = 4
+			fa[0x06] = 1 // not the manufacturer field, just filler
+			return buildSMBIOSType4(fa, "NVIDIA"), nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	_, err = arm64.CPUManufacturer()
+	c.Check(err, ErrorMatches, "SMBIOS structure too short to contain field at offset 0x07: formatted area length is 7")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUManufacturerDataTruncated(c *C) {
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		if path == "/sys/firmware/dmi/entries/4-0/raw" {
+			// Length field says 0x11 bytes but we only provide 8.
+			data := make([]byte, 8)
+			data[0] = 4
+			data[1] = 0x11 // claims 17-byte formatted area
+			data[0x07] = 1
+			return data, nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	_, err = arm64.CPUManufacturer()
+	c.Check(err, ErrorMatches, "SMBIOS structure data truncated: have 8 bytes, formatted area length is 17")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUManufacturerOutOfRangeStringIndex(c *C) {
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		if path == "/sys/firmware/dmi/entries/4-0/raw" {
+			fa := make([]byte, 0x11)
+			fa[0] = 4
+			fa[0x07] = 3 // Manufacturer = string 3, but only 2 strings exist
+			fa[0x10] = 2
+			return buildSMBIOSType4(fa, "NVIDIA", "GB10"), nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	_, err = arm64.CPUManufacturer()
+	c.Check(err, ErrorMatches, "SMBIOS string index 3 is out of range")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUManufacturerUnsetStringIndex(c *C) {
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		if path == "/sys/firmware/dmi/entries/4-0/raw" {
+			fa := make([]byte, 0x11)
+			fa[0] = 4
+			fa[0x07] = 0 // Manufacturer unset (index 0)
+			fa[0x10] = 1
+			return buildSMBIOSType4(fa, "GB10"), nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	_, err = arm64.CPUManufacturer()
+	c.Check(err, ErrorMatches, "SMBIOS field at offset 0x07 is unset")
+}
+
+// makeRealisticType4Blob returns a SMBIOS type 4 blob laid out like the ones
+// observed on real NVIDIA Spark hardware: a 0x32 byte formatted area, with
+// Socket Designation as string 1, Manufacturer as string 2, Version as string
+// 3, and further strings following Version.
+func makeRealisticType4Blob(manufacturer, version string) []byte {
+	fa := make([]byte, 0x32) // 50 bytes, as reported by dmidecode on DGX Spark and RTX Spark
+	fa[0] = 4                // structure type 4
+	fa[0x04] = 1             // Socket Designation = string 1
+	fa[0x07] = 2             // Manufacturer = string 2
+	fa[0x10] = 3             // Version = string 3
+	return buildSMBIOSType4(fa, "CPU01", manufacturer, version, "NA", "NA", "Spark")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUManufacturerAndVersionDGXSparkLayout(c *C) {
+	// Regression test using the structure shape reported by a real DGX Spark,
+	// where Version is string 3 and is followed by more strings.
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		if path == "/sys/firmware/dmi/entries/4-0/raw" {
+			return makeRealisticType4Blob("NVIDIA", "GB10"), nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	manufacturer, err := arm64.CPUManufacturer()
+	c.Check(err, IsNil)
+	c.Check(manufacturer, Equals, "NVIDIA")
+
+	version, err := arm64.CPUVersion()
+	c.Check(err, IsNil)
+	c.Check(version, Equals, "GB10")
+}
+
+func (s *defaultEnvARM64Suite) TestCPUManufacturerAndVersionRTXSparkLayout(c *C) {
+	// Regression test using the structure shape and version string reported by
+	// a real RTX Spark.
+	restore := MockOsReadFile(func(path string) ([]byte, error) {
+		if path == "/sys/firmware/dmi/entries/4-0/raw" {
+			return makeRealisticType4Blob("NVIDIA", "NVIDIA RTX Spark N1X (5120-core GPU, 18-core CPU)"), nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	})
+	defer restore()
+
+	arm64, err := DefaultEnv.ARM64()
+	c.Assert(err, IsNil)
+
+	manufacturer, err := arm64.CPUManufacturer()
+	c.Check(err, IsNil)
+	c.Check(manufacturer, Equals, "NVIDIA")
+
+	version, err := arm64.CPUVersion()
+	c.Check(err, IsNil)
+	c.Check(version, Equals, "NVIDIA RTX Spark N1X (5120-core GPU, 18-core CPU)")
+}
+
+func (s *defaultEnvARM64Suite) TestNotARM64Host(c *C) {
+	// Override the arm64 mock installed by SetUpTest: on a non-arm64 host
+	// ARM64() must return ErrNotARM64Host.
+	restore := MockRuntimeGOARCH("amd64")
+	defer restore()
+
+	_, err := DefaultEnv.ARM64()
+	c.Check(err, Equals, ErrNotARM64Host)
 }
