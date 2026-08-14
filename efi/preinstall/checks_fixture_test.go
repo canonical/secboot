@@ -267,5 +267,19 @@ func runChecksPlatformHostFixtures() []runChecksHostFixture {
 			additionalExpectedFlags: RequireLockToPlatformFirmware,
 			arch:                    "arm64",
 		},
+		{
+			name: "nvidia-dgx-spark-tpm-crb",
+			capabilities: runChecksHostCapabilityValid |
+				runChecksHostCapabilityNotVirtualMachine |
+				runChecksHostCapabilityDiscreteTPM |
+				runChecksHostCapabilityStartupLocality0AccessibleFromOS |
+				runChecksHostCapabilityStartupLocality3AccessibleFromOS |
+				runChecksHostCapabilityStartupLocality4AccessibleFromOS,
+			environment:             efitest.WithARM64Environment("NVIDIA", "GB10"),
+			virtualizationMode:      internal_efi.VirtModeNone,
+			virtualizationDetection: internal_efi.DetectVirtModeAll,
+			sysfsDevices:            newDevices("tpm_crb", true),
+			arch:                    "arm64",
+		},
 	}
 }
