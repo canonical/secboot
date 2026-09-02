@@ -6,9 +6,12 @@ on:
     branches: [ "master" ]
 jobs:
   tests:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
         goversion:
           - 1.18
 # The unit tests currently fail against the new stable go
