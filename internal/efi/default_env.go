@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2021 Canonical Ltd
+ * Copyright (C) 2021-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -22,24 +22,35 @@ package efi
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
+	"syscall"
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
 	"github.com/pilebones/go-udev/crawler"
 	"github.com/pilebones/go-udev/netlink"
+	internal_cpuid "github.com/snapcore/secboot/internal/cpuid"
 	"github.com/snapcore/secboot/internal/tpm2_device"
 )
 
 var (
 	crawlerExistingDevices   = crawler.ExistingDevices
+	cpuidFamily              = internal_cpuid.Family
+	cpuidHasFeature          = internal_cpuid.HasFeature
+	cpuidVendorIdentificator = internal_cpuid.VendorIdentificator
+	devcpuPath               = "/dev/cpu"
 	osOpen                   = os.Open
 	osReadFile               = os.ReadFile
 	osReadlink               = os.Readlink
+	runtimeGOARCH            = runtime.GOARCH
 	tpm2_deviceDefaultDevice = tpm2_device.DefaultDevice
 
 	eventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
@@ -240,3 +251,88 @@ func (defaultEnvImpl) EnumerateDevices(matcher netlink.Matcher) ([]SysfsDevice, 
 // DefaultEnv corresponds to the environment associated with the host
 // machine.
 var DefaultEnv = defaultEnvImpl{}
+
+type defaultEnvAMD64Impl struct{}
+
+// CPUVendorIdentificator implements [HostEnvironmentAMD64.CPUVendorIdentificator].
+func (defaultEnvAMD64Impl) CPUVendorIdentificator() string {
+	return cpuidVendorIdentificator()
+}
+
+// CPUFamily implements [HostEnvironmentAMD64.CPUFamily].
+func (defaultEnvAMD64Impl) CPUFamily() uint32 {
+	return cpuidFamily()
+}
+
+// HasCPUIDFeature implements [HostEnvironmentAMD64.HasCPUIDFeature].
+func (defaultEnvAMD64Impl) HasCPUIDFeature(feature uint64) bool {
+	return cpuidHasFeature(feature)
+}
+
+// ReadMSRs implements [HostEnvironmentAMD64.ReadMSRs].
+func (defaultEnvAMD64Impl) ReadMSRs(msr uint32) (map[uint32]uint64, error) {
+	dir, err := os.Open(devcpuPath)
+	switch {
+	case os.IsNotExist(err):
+		return nil, ErrNoKernelMSRSupport
+	case err != nil:
+		return nil, err
+	}
+	defer dir.Close()
+
+	entries, err := dir.ReadDir(-1)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[uint32]uint64)
+
+	for _, entry := range entries {
+		cpuNo, err := strconv.ParseUint(entry.Name(), 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("invalid CPU number for name %s: %w", entry.Name(), err)
+		}
+
+		val, err := func(name string) (uint64, error) {
+			f, err := os.Open(filepath.Join(dir.Name(), name, "msr"))
+			switch {
+			case os.IsNotExist(err):
+				return 0, ErrNoKernelMSRSupport
+			case errors.Is(err, syscall.EIO):
+				return 0, ErrNoMSRSupport
+			case err != nil:
+				return 0, err
+			}
+			defer f.Close()
+
+			var data [8]byte
+			_, err = f.ReadAt(data[:], int64(msr))
+			switch {
+			case errors.Is(err, syscall.EIO): // I think the kernel returns -EIO if the MSR is not supported, but this is poorly documented.
+				return 0, ErrNoMSRSupport
+			case err != nil:
+				return 0, fmt.Errorf("cannot read from MSR device: %w", err)
+			}
+
+			return binary.LittleEndian.Uint64(data[:]), nil
+		}(entry.Name())
+		if err != nil {
+			return nil, fmt.Errorf("cannot read value for CPU %s: %w", entry.Name(), err)
+		}
+
+		out[uint32(cpuNo)] = val
+	}
+
+	return out, nil
+}
+
+// AMD64 implements [HostEnvironment.AMD64].
+//
+// The architecture is checked at runtime (rather than by build constraint) so
+// that this implementation is compiled and unit tested on every architecture.
+func (defaultEnvImpl) AMD64() (HostEnvironmentAMD64, error) {
+	if runtimeGOARCH != "amd64" {
+		return nil, ErrNotAMD64Host
+	}
+	return defaultEnvAMD64Impl{}, nil
+}
