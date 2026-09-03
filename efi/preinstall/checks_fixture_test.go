@@ -50,15 +50,22 @@ const (
 	runChecksHostCapabilityStartupLocality4AccessibleFromOS
 )
 
-// Platform identity capabilities do not imply security properties. In
-// particular, HasIntelBootGuard does not imply that any TPM startup locality is
-// inaccessible from the OS; fixtures must declare locality properties
-// separately.
-
 // runChecksHostFixture abstracts host-specific details from scenario logic in
 // the shared RunChecks and RunChecksContext tests.
 type runChecksHostFixture struct {
-	name                    string
+	name string
+	// capabilities represent high level abstractions of one or more aspects of a host fixture
+	// that tests can use to determine if the fixture meets the requirements for a given scenario.
+	//
+	// For example, a scenario that tests fTPM-specific behavior may fail when run on a fixture
+	// with a dTPM. Depending on the level of the behavior being tested, this failure may not be
+	// particularly meaningful, and it may make more sense for the test to only run on fixtures
+	// that actually provide an fTPM.
+	//
+	// Capabilities simply summarize and label information encoded in other fields of the fixture.
+	// Declaring a capability by itself does not instantiate any mock behaviors, and it is the
+	// responsibility of the author to make sure that the capabilities are a faithful reflection
+	// of the actual behavior of the fixture.
 	capabilities            runChecksHostCapabilities
 	environment             efitest.MockHostEnvironmentOption
 	virtualizationMode      string
@@ -118,6 +125,15 @@ func intelDevices(status []byte, withIOMMU bool) []internal_efi.SysfsDevice {
 	)))
 }
 
+// runChecksPlatformHostFixtures returns an array of mock platform host configurations
+// for testing. Each fixture can define an EFI environment with CPU features, a set of sysfs
+// devices, virtualization information, and host ISA. Each fixture also includes a set of
+// "capabilities" which can be used by tests to decide whether they should expect a
+// certain fixture to work for a given test scenario or not.
+//
+// To add fixtures, append them to the array returned by this function. To add capabilities,
+// add them to the const block at the top of this file and then audit the existing fixtures
+// and add the new capability to any existing fixtures to which it might apply.
 func runChecksPlatformHostFixtures() []runChecksHostFixture {
 	return []runChecksHostFixture{
 		// amd64 fixtures

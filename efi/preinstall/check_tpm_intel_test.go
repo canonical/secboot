@@ -33,6 +33,7 @@ type tpmIntelSuite struct {
 
 func (s *tpmIntelSuite) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
+	// All Intel TPM tests assume an amd64 host
 	s.AddCleanup(MockRuntimeGOARCH("amd64"))
 }
 
