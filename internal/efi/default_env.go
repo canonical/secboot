@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 
 	efi "github.com/canonical/go-efilib"
@@ -50,10 +51,15 @@ var (
 	osOpen                   = os.Open
 	osReadFile               = os.ReadFile
 	osReadlink               = os.Readlink
+	// runtimeGOARCH is the architecture that host security checks are performed
+	// for. It is a variable so that tests can run the checks for architectures
+	// other than the one the test binary was built for.
 	runtimeGOARCH            = runtime.GOARCH
 	tpm2_deviceDefaultDevice = tpm2_device.DefaultDevice
 
 	eventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements" // Path of the TCG event log for the default TPM, in binary form
+
+	dmiProcessorInfoPath = "/sys/firmware/dmi/entries/4-0/raw"
 )
 
 func SetEventLogPath(path string) {
@@ -335,4 +341,93 @@ func (defaultEnvImpl) AMD64() (HostEnvironmentAMD64, error) {
 		return nil, ErrNotAMD64Host
 	}
 	return defaultEnvAMD64Impl{}, nil
+}
+
+type defaultEnvARM64Impl struct{}
+
+// smbiosType4ManufacturerOffset is the byte offset of the Manufacturer string
+// index within an SMBIOS type 4 (Processor Information) formatted area.
+const smbiosType4ManufacturerOffset = 0x07
+
+// smbiosType4VersionOffset is the byte offset of the Version string index
+// within an SMBIOS type 4 (Processor Information) formatted area.
+const smbiosType4VersionOffset = 0x10
+
+// decodeSMBIOSType4Field decodes a string field from an SMBIOS type 4
+// (Processor Information) structure blob. data is the raw binary blob read
+// from the kernel's DMI entries sysfs interface. fieldOffset is the byte
+// offset within the formatted area that holds the 1-based string index.
+//
+// Layout (DMTF SMBIOS specification):
+//   - byte 0:   structure type (must be 4)
+//   - byte 1:   length of the formatted area including the header
+//   - bytes 2-3: handle
+//   - bytes 4…: remaining formatted area
+//   - after the formatted area: NUL-terminated strings; string set ends
+//     with an additional NUL (empty string sentinel)
+func decodeSMBIOSType4Field(data []byte, fieldOffset uint8) (string, error) {
+	if len(data) < 4 {
+		return "", fmt.Errorf("SMBIOS structure too short for header: have %d bytes", len(data))
+	}
+	structType := data[0]
+	formattedLen := data[1]
+	if structType != 4 {
+		return "", fmt.Errorf("unexpected SMBIOS structure type %d (expected 4)", structType)
+	}
+	if int(formattedLen) <= int(fieldOffset) {
+		return "", fmt.Errorf("SMBIOS structure too short to contain field at offset 0x%02x: formatted area length is %d", fieldOffset, formattedLen)
+	}
+	if len(data) < int(formattedLen) {
+		return "", fmt.Errorf("SMBIOS structure data truncated: have %d bytes, formatted area length is %d", len(data), formattedLen)
+	}
+	strIdx := data[fieldOffset]
+	if strIdx == 0 {
+		return "", fmt.Errorf("SMBIOS field at offset 0x%02x is unset", fieldOffset)
+	}
+	stringsData := data[formattedLen:]
+	var n uint8
+	for i := 0; i < len(stringsData); {
+		end := i
+		for end < len(stringsData) && stringsData[end] != 0 {
+			end++
+		}
+		if i == end {
+			// Empty string: end-of-string-set sentinel.
+			break
+		}
+		n++
+		if n == strIdx {
+			return strings.TrimSpace(string(stringsData[i:end])), nil
+		}
+		i = end + 1
+	}
+	return "", fmt.Errorf("SMBIOS string index %d is out of range", strIdx)
+}
+
+// CPUManufacturer implements [HostEnvironmentARM64.CPUManufacturer].
+func (defaultEnvARM64Impl) CPUManufacturer() (string, error) {
+	data, err := osReadFile(dmiProcessorInfoPath)
+	if err != nil {
+		return "", fmt.Errorf("cannot read %s: %w", dmiProcessorInfoPath, err)
+	}
+	return decodeSMBIOSType4Field(data, smbiosType4ManufacturerOffset)
+}
+
+// CPUVersion implements [HostEnvironmentARM64.CPUVersion].
+func (defaultEnvARM64Impl) CPUVersion() (string, error) {
+	data, err := osReadFile(dmiProcessorInfoPath)
+	if err != nil {
+		return "", fmt.Errorf("cannot read %s: %w", dmiProcessorInfoPath, err)
+	}
+	return decodeSMBIOSType4Field(data, smbiosType4VersionOffset)
+}
+
+// ARM64 implements [HostEnvironment.ARM64].
+// The architecture is checked at runtime (rather than by build constraint) so
+// that this implementation is compiled and unit tested on every architecture.
+func (defaultEnvImpl) ARM64() (HostEnvironmentARM64, error) {
+	if runtimeGOARCH != "arm64" {
+		return nil, ErrNotARM64Host
+	}
+	return defaultEnvARM64Impl{}, nil
 }

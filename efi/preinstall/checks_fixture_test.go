@@ -109,6 +109,33 @@ func (f *runChecksHostFixture) mockRuntimeGOARCH(s interface{ AddCleanup(func())
 	s.AddCleanup(MockRuntimeGOARCH(f.arch))
 }
 
+const (
+	exampleARM64CPUManufacturer = "Example Manufacturer"
+	exampleARM64CPUVersion      = "Example OP-TEE SoC"
+)
+
+func init() {
+	RegisterARM64TestPlatform(exampleARM64CPUManufacturer, exampleARM64CPUVersion)
+}
+
+func runChecksArm64TPMDevice(driver string) internal_efi.SysfsDevice {
+	parent := efitest.NewMockSysfsDevice(
+		"/sys/devices/platform/firmware-tpm",
+		map[string]string{"DRIVER": driver},
+		"platform",
+		nil,
+		nil,
+	)
+
+	return efitest.NewMockSysfsDevice(
+		"/sys/devices/platform/firmware-tpm/tpm/tpm0",
+		map[string]string{"DEVNAME": "tpm0"},
+		"tpm",
+		nil,
+		parent,
+	)
+}
+
 // runChecksPlatformHostFixtures returns an array of mock platform host configurations
 // for testing. Each fixture can define an EFI environment with CPU features, a set of sysfs
 // devices, virtualization information, and host ISA. Each fixture also includes a set of
@@ -137,6 +164,14 @@ func runChecksPlatformHostFixtures() []runChecksHostFixture {
 		return append(devices, efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", attrs, efitest.NewMockSysfsDevice(
 			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
 		)))
+	}
+
+	newDevices := func(tpmDriver string, withIOMMU bool) []internal_efi.SysfsDevice {
+		devices := []internal_efi.SysfsDevice{runChecksArm64TPMDevice(tpmDriver)}
+		if withIOMMU {
+			devices = append([]internal_efi.SysfsDevice{efitest.NewMockSysfsDevice("/sys/devices/platform/smmu0", nil, "iommu", nil, nil)}, devices...)
+		}
+		return devices
 	}
 
 	return []runChecksHostFixture{
@@ -208,6 +243,29 @@ func runChecksPlatformHostFixtures() []runChecksHostFixture {
 			virtualizationMode:      "qemu",
 			virtualizationDetection: internal_efi.DetectVirtModeVM,
 			arch:                    "amd64",
+		},
+		// arm64 fixtures
+		{
+			name: "example-arm64-optee-ftpm",
+			capabilities: runChecksHostCapabilityValid |
+				runChecksHostCapabilityNotVirtualMachine |
+				runChecksHostCapabilityFirmwareTPM,
+			environment:             efitest.WithARM64Environment(exampleARM64CPUManufacturer, exampleARM64CPUVersion),
+			virtualizationMode:      internal_efi.VirtModeNone,
+			virtualizationDetection: internal_efi.DetectVirtModeAll,
+			sysfsDevices:            newDevices("optee-ftpm", true),
+			additionalExpectedFlags: RequireLockToPlatformFirmware,
+			arch:                    "arm64",
+		},
+		{
+			name:                    "example-arm64-optee-ftpm-no-kernel-iommu",
+			capabilities:            runChecksHostCapabilityNotVirtualMachine | runChecksHostCapabilityNoKernelIOMMU | runChecksHostCapabilityFirmwareTPM,
+			environment:             efitest.WithARM64Environment(exampleARM64CPUManufacturer, exampleARM64CPUVersion),
+			virtualizationMode:      internal_efi.VirtModeNone,
+			virtualizationDetection: internal_efi.DetectVirtModeAll,
+			sysfsDevices:            newDevices("optee-ftpm", false),
+			additionalExpectedFlags: RequireLockToPlatformFirmware,
+			arch:                    "arm64",
 		},
 	}
 }

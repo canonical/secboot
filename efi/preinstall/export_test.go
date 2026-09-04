@@ -22,6 +22,7 @@ package preinstall
 import (
 	"crypto"
 	"encoding/json"
+	"fmt"
 	"io"
 
 	efi "github.com/canonical/go-efilib"
@@ -44,6 +45,7 @@ type (
 	HfstsRegistersCsme18        = hfstsRegistersCsme18
 	JoinError                   = joinError
 	MeVersion                   = meVersion
+	PCRBankResults              = pcrBankResults
 	PcrResults                  = pcrResults
 	SecureBootPolicyResult      = secureBootPolicyResult
 	SecureBootPolicyResultFlags = secureBootPolicyResultFlags
@@ -98,6 +100,7 @@ var (
 	ClearTPM                                              = clearTPM
 	DetermineCPUVendor                                    = determineCPUVendor
 	DetectVirtualization                                  = detectVirtualization
+	DtpmPartialResetAttackMitigationUnknown               = dtpmPartialResetAttackMitigationUnknown
 	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
 	InsertActionProceed                                   = insertActionProceed
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
@@ -187,4 +190,23 @@ func MockRuntimeGOARCH(arch string) (restore func()) {
 	orig := runtimeGOARCH
 	runtimeGOARCH = arch
 	return func() { runtimeGOARCH = orig }
+}
+
+func RegisterARM64TestPlatform(cpuManufacturer, cpuVersion string) {
+	previous := checkHostSecurityARM64Platform
+	checkHostSecurityARM64Platform = func(env internal_efi.HostEnvironmentARM64, manufacturer string) (platformFirmwareIntegrityConfig, error) {
+		if manufacturer != cpuManufacturer {
+			return previous(env, manufacturer)
+		}
+
+		version, err := env.CPUVersion()
+		if err != nil {
+			return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU version: %w", err)}
+		}
+		if version != cpuVersion {
+			return previous(env, manufacturer)
+		}
+
+		return platformFirmwareIntegrityMeasured, nil
+	}
 }

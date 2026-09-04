@@ -93,6 +93,18 @@ type HostEnvironmentAMD64 interface {
 	ReadMSRs(msr uint32) (map[uint32]uint64, error)
 }
 
+// HostEnvironmentARM64 is an interface that abstracts out a host environment specific
+// to ARM64 platforms.
+type HostEnvironmentARM64 interface {
+	// CPUManufacturer returns the processor manufacturer from the SMBIOS
+	// type 4 (Processor Information) structure.
+	CPUManufacturer() (string, error)
+
+	// CPUVersion returns the processor version from the SMBIOS
+	// type 4 (Processor Information) structure.
+	CPUVersion() (string, error)
+}
+
 // DetectVirtMode controls what type of virtualization to test for.
 type DetectVirtMode int
 
@@ -123,6 +135,10 @@ var (
 	// are not AMD64.
 	ErrNotAMD64Host = errors.New("not a AMD64 host")
 
+	// ErrNotARM64Host is returned from HostEnvironment.ARM64 on environments that
+	// are not ARM64.
+	ErrNotARM64Host = errors.New("not a ARM64 host")
+
 	// ErrNoKernelMSRSupport is returned from HostEnvironmentAMD64.ReadMSRs if there is
 	// no support for reading MSRs.
 	ErrNoKernelMSRSupport = errors.New("missing kernel support for reading MSRs")
@@ -152,4 +168,8 @@ type HostEnvironment interface {
 	// AMD64 returns an interface that can be used to mock some parts of an AMD64 platform.
 	// This will return ErrNotAMD64Host on non-AMD64 platforms.
 	AMD64() (HostEnvironmentAMD64, error)
+
+	// ARM64 returns an interface that can be used to mock some parts of an ARM64 platform.
+	// This will return ErrNotARM64Host on non-ARM64 platforms.
+	ARM64() (HostEnvironmentARM64, error)
 }

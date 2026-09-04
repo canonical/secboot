@@ -27,6 +27,7 @@ import (
 	"github.com/canonical/go-tpm2/objectutil"
 	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	. "github.com/snapcore/secboot/efi/preinstall"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/secboot/internal/tpm2_device"
@@ -1203,6 +1204,56 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteUnrecognizedCPUVendor(c *C) {
 	_, err := IsTPMDiscrete(env)
 	c.Check(err, ErrorMatches, `unsupported platform: cannot determine CPU vendor: unknown CPU vendor: GenuineInte`)
 
+	var upe *UnsupportedPlatformError
+	c.Check(errors.As(err, &upe), testutil.IsTrue)
+}
+
+type tpmARM64Suite struct {
+	snapd_testutil.BaseTest
+}
+
+func (s *tpmARM64Suite) SetUpTest(c *C) {
+	s.BaseTest.SetUpTest(c)
+	s.AddCleanup(MockRuntimeGOARCH("arm64"))
+}
+
+var _ = Suite(&tpmARM64Suite{})
+
+func makeArm64TPMDevice(driver string) internal_efi.SysfsDevice {
+	parent := efitest.NewMockSysfsDevice(
+		"/sys/devices/platform/firmware-tpm",
+		map[string]string{"DRIVER": driver},
+		"platform",
+		nil,
+		nil,
+	)
+	return efitest.NewMockSysfsDevice(
+		"/sys/devices/platform/firmware-tpm/tpm/tpm0",
+		map[string]string{"DEVNAME": "tpm0"},
+		"tpm",
+		nil,
+		parent,
+	)
+}
+
+func (s *tpmARM64Suite) TestIsTPMDiscreteOPTEE(c *C) {
+	for _, driver := range []string{"optee-ftpm", "ftpm-tee"} {
+		env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(makeArm64TPMDevice(driver)))
+
+		discrete, err := IsTPMDiscrete(env)
+		c.Check(err, IsNil, Commentf("driver %q", driver))
+		c.Check(discrete, testutil.IsFalse, Commentf("driver %q", driver))
+	}
+}
+
+func (s *tpmARM64Suite) TestIsTPMDiscreteUnsupportedCPUManufacturer(c *C) {
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithARM64Environment("ACME", "Unknown"),
+		efitest.WithSysfsDevices(makeArm64TPMDevice("tpm_crb")),
+	)
+
+	_, err := IsTPMDiscrete(env)
+	c.Check(err, ErrorMatches, `unsupported platform: unsupported CPU manufacturer: ACME`)
 	var upe *UnsupportedPlatformError
 	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
