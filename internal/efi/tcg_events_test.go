@@ -51,6 +51,54 @@ func (*tcgEventsSuite) TestIsVendorEventType(c *C) {
 	}
 }
 
+func (*tcgEventsSuite) TestIsHPPreBootDMAConfigEvent(c *C) {
+	const hpData = `"SVM CPU Virtualization":"Enable";"DMA protection":"Enable";"Pre-boot DMA protection":"All PCIe devices";`
+
+	for _, params := range []struct {
+		event    *tcglog.Event
+		expected bool
+	}{
+		{
+			event: &tcglog.Event{
+				PCRIndex:  7,
+				EventType: tcglog.EventTypeEFIAction,
+				Data:      tcglog.StringEventData(hpData),
+			},
+			expected: true,
+		},
+		{
+			event: &tcglog.Event{
+				PCRIndex:  6,
+				EventType: tcglog.EventTypeEFIAction,
+				Data:      tcglog.StringEventData(hpData),
+			},
+		},
+		{
+			event: &tcglog.Event{
+				PCRIndex:  7,
+				EventType: tcglog.EventTypeEFIPlatformFirmwareBlob,
+				Data:      tcglog.StringEventData(hpData),
+			},
+		},
+		{
+			event: &tcglog.Event{
+				PCRIndex:  7,
+				EventType: tcglog.EventTypeEFIAction,
+				Data:      tcglog.StringEventData("UEFI Debug Mode"),
+			},
+		},
+		{
+			event: &tcglog.Event{
+				PCRIndex:  7,
+				EventType: tcglog.EventTypeEFIAction,
+				Data:      tcglog.StringEventData(hpData + "\x00"),
+			},
+		},
+	} {
+		c.Check(IsHPPreBootDMAConfigEvent(params.event), Equals, params.expected)
+	}
+}
+
 type invalidEventData struct {
 	err error
 }

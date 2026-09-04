@@ -57,17 +57,47 @@ func checkDriversAndAppsMeasurements(ctx context.Context, env internal_efi.HostE
 
 	var addonDrivers []*LoadedImageInfo
 
-	// Iterate over the log until OS-present and check if there are any
-	// drivers or applications loaded
+	// Iterate over the log through the initial OS authorization or launch
+	// boundary and check if there are any drivers or applications loaded.
 	phaseTracker := newTcgLogPhaseTracker()
 	for _, ev := range log.Events {
+		wasTransitioningToOSPresent := phaseTracker.phase == tcglogPhaseTransitioningToOSPresent
 		phase, err := phaseTracker.processEvent(ev)
 		if err != nil {
 			return nil, err
 		}
 
-		if phase >= tcglogPhaseTransitioningToOSPresent {
-			return addonDrivers, nil
+		switch phase {
+		case tcglogPhaseTransitioningToOSPresent:
+			// The phase tracker validates that this consists only of the
+			// remaining separators.
+			continue
+		case tcglogPhaseOSPresent:
+			if wasTransitioningToOSPresent {
+				// processEvent returns the new phase. The event that
+				// completes the transition is still one of the required
+				// separators, regardless of which PCR it belongs to.
+				continue
+			}
+
+			// Some firmware extends vendor-defined events into PCR2 after the
+			// separators but before authorizing or launching the initial OS
+			// loader. Validate the same narrow interval that profile
+			// generation retains.
+			if (ev.PCRIndex == internal_efi.SecureBootPolicyPCR &&
+				ev.EventType == tcglog.EventTypeEFIVariableAuthority) ||
+				(ev.PCRIndex == internal_efi.BootManagerCodePCR &&
+					ev.EventType == tcglog.EventTypeEFIBootServicesApplication) {
+				return addonDrivers, nil
+			}
+
+			if ev.PCRIndex == internal_efi.DriversAndAppsPCR &&
+				!internal_efi.IsVendorEventType(ev.EventType) {
+				return nil, fmt.Errorf(
+					"unexpected post-separator event type %v found in PCR %d",
+					ev.EventType, internal_efi.DriversAndAppsPCR)
+			}
+			continue
 		}
 
 		if ev.PCRIndex != internal_efi.DriversAndAppsPCR {
@@ -126,5 +156,8 @@ func checkDriversAndAppsMeasurements(ctx context.Context, env internal_efi.HostE
 		}
 	}
 
+	if phaseTracker.reachedOSPresent() {
+		return nil, errors.New("reached end of log before encountering initial OS authorization or launch")
+	}
 	return nil, errors.New("reached end of log before encountering transition to OS-present")
 }

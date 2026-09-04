@@ -157,6 +157,7 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// enabled. A firmware debugger permits an adversary with local access to control
 	// firmware execution, bypassing any protections offered by measuredboot or verified
 	// boot, and the presence of one should prevent FDE from being enabled.
+	measuredHPPreBootDMAConfig := false
 	for len(events) > 0 {
 		e := events[0]
 		events = events[1:]
@@ -167,14 +168,21 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		}
 
 		if e.EventType == tcglog.EventTypeEFIVariableDriverConfig {
-			// This is the first secure boot configuration measurement. In most
-			// circumstances, this will be the first measurement to PCR7. Only
-			// in the case where the first event is a EV_EFI_ACTION "DMA Protection
-			// Disabled" event will this not be true.
+			// This is the first secure boot configuration measurement. It is
+			// generally the first measurement to PCR7, although supported
+			// pre-configuration action or vendor events may precede it.
 			break
 		}
 
 		switch {
+		case internal_efi.IsHPPreBootDMAConfigEvent(e) && !measuredHPPreBootDMAConfig:
+			digest := e.Digests[ctx.PCRAlg()]
+			expectedDigest := tcglog.ComputeStringEventDigest(ctx.PCRAlg().GetHash(), string(e.Data.Bytes()))
+			if !bytes.Equal(digest, expectedDigest) {
+				return errors.New("invalid digest for HP pre-boot DMA configuration event")
+			}
+			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, digest)
+			measuredHPPreBootDMAConfig = true
 		case e.EventType == tcglog.EventTypeEFIAction &&
 			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) || bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))) &&
 			allowInsufficientDMAProtection:
@@ -423,18 +431,49 @@ func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
 }
 
 func (h *fwLoadHandler) measureDriversAndApps(ctx pcrBranchContext) error {
+	seenSeparator := false
+
 	for _, event := range h.log.Events {
+		// Some firmware extends vendor-defined events into PCR2 after the
+		// separator but before authorizing or launching the initial OS loader.
+		// Retain those events, but do not copy any PCR2 measurements made once
+		// OS image processing has begun.
+		if seenSeparator &&
+			((event.PCRIndex == internal_efi.SecureBootPolicyPCR &&
+				event.EventType == tcglog.EventTypeEFIVariableAuthority) ||
+				(event.PCRIndex == internal_efi.BootManagerCodePCR &&
+					event.EventType == tcglog.EventTypeEFIBootServicesApplication)) {
+			return nil
+		}
+
 		if event.PCRIndex != internal_efi.DriversAndAppsPCR {
 			continue
 		}
 
-		if event.EventType == tcglog.EventTypeSeparator {
-			return h.measureSeparator(ctx, internal_efi.DriversAndAppsPCR, event)
+		if !seenSeparator {
+			if event.EventType == tcglog.EventTypeSeparator {
+				if err := h.measureSeparator(ctx, internal_efi.DriversAndAppsPCR, event); err != nil {
+					return err
+				}
+				seenSeparator = true
+				continue
+			}
+			ctx.ExtendPCR(internal_efi.DriversAndAppsPCR, event.Digests[ctx.PCRAlg()])
+			continue
+		}
+
+		if !internal_efi.IsVendorEventType(event.EventType) {
+			return fmt.Errorf(
+				"unexpected post-separator event type %v found in PCR %d",
+				event.EventType, internal_efi.DriversAndAppsPCR)
 		}
 		ctx.ExtendPCR(internal_efi.DriversAndAppsPCR, event.Digests[ctx.PCRAlg()])
 	}
 
-	return errors.New("missing separator in log")
+	if !seenSeparator {
+		return errors.New("missing separator in log")
+	}
+	return errors.New("reached end of log before encountering initial OS authorization or launch")
 }
 
 func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error {
