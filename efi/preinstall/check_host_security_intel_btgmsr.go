@@ -1,5 +1,3 @@
-//go:build amd64
-
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*

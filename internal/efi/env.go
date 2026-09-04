@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2024 Canonical Ltd
+ * Copyright (C) 2024-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -65,6 +65,14 @@ type SysfsDevice interface {
 	AttributeReader(attr string) (io.ReadCloser, error)
 }
 
+// CPUIDFeatureSMX is the CPUID feature flag for Safer Mode Extensions (Intel TXT),
+// from leaf 1, ECX bit 6. Use with [HostEnvironmentAMD64.HasCPUIDFeature].
+const CPUIDFeatureSMX = uint64(1) << 6
+
+// CPUIDFeatureSDBG is the CPUID feature flag for the Silicon Debug interface,
+// from leaf 1, ECX bit 11. Use with [HostEnvironmentAMD64.HasCPUIDFeature].
+const CPUIDFeatureSDBG = uint64(1) << 11
+
 // HostEnvironmentAMD64 is an interface that abstracts out a host environment specific
 // to AMD64 platforms.
 type HostEnvironmentAMD64 interface {
@@ -74,8 +82,10 @@ type HostEnvironmentAMD64 interface {
 	// CPUFamily returns the CPU family ID.
 	CPUFamily() uint32
 
-	// HasCPUIDFeature returns if feature from FeatureNames map in the
-	// github.com/intel-go/cpuid package is available.
+	// HasCPUIDFeature returns if the given CPUID feature is available. Callers
+	// should use the CPUIDFeature* constants declared in this package, because
+	// github.com/canonical/cpuid only builds on x86 and callers of this interface
+	// are architecture independent.
 	HasCPUIDFeature(feature uint64) bool
 
 	// ReadMSRs reads the value of the specified MSR for all CPUs,

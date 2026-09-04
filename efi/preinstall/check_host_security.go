@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2024 Canonical Ltd
+ * Copyright (C) 2024-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -21,11 +21,19 @@ package preinstall
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"runtime"
 
 	"github.com/canonical/tcglog-parser"
 	"github.com/pilebones/go-udev/netlink"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
+
+// runtimeGOARCH is the architecture that host security checks are performed
+// for. It is a variable so that tests can run the checks for architectures
+// other than the one the test binary was built for.
+var runtimeGOARCH = runtime.GOARCH
 
 // discreteTPMPartialResetAttackMitigationStatus indicates whether a partial mitigation against
 // discrete TPM reset attacks should be enabled. See the documentation for
@@ -144,4 +152,146 @@ Loop:
 		return joinErrors(errs...)
 	}
 	return nil
+}
+
+// Architecture-specific host security checks are dispatched at runtime rather than
+// selected by build constraints, so that all architectures' checks are compiled and
+// testable everywhere.
+
+// checkHostSecurity is the main entry point for verifying that the host security
+// is sufficient. Errors that can't be resolved or which should prevent further checks from running
+// are returned immediately and without any wrapping. Errors that can be resolved and which shouldn't
+// prevent further checks from running are returned wrapped in [joinError].
+func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (platformFirmwareIntegrityConfig, error) {
+	switch runtimeGOARCH {
+	case "amd64":
+		return checkHostSecurityAMD64(env, log)
+	default:
+		return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("checking host security is not implemented on %s", runtimeGOARCH)}
+	}
+}
+
+// checkDiscreteTPMPartialResetAttackMitigationStatus determines whether a partial mitigation
+// against discrete TPM reset attacks should be enabled. See the documentation for
+// RequestPartialDiscreteTPMResetAttackMitigation.
+func checkDiscreteTPMPartialResetAttackMitigationStatus(env internal_efi.HostEnvironment, logResults *pcrBankResults) (discreteTPMPartialResetAttackMitigationStatus, error) {
+	switch runtimeGOARCH {
+	case "amd64":
+		return checkDiscreteTPMPartialResetAttackMitigationStatusAMD64(env, logResults)
+	default:
+		return dtpmPartialResetAttackMitigationNotRequired, nil
+	}
+}
+
+func checkHostSecurityAMD64(env internal_efi.HostEnvironment, log *tcglog.Log) (platformFirmwareIntegrityConfig, error) {
+	cpuVendor, err := determineCPUVendor(env)
+	if err != nil {
+		return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
+	}
+
+	amd64Env, err := env.AMD64()
+	if err != nil {
+		return platformFirmwareIntegrityNone, fmt.Errorf("cannot obtain AMD64 environment: %w", err)
+	}
+
+	var errs []error
+
+	var integrity platformFirmwareIntegrityConfig
+	switch cpuVendor {
+	case cpuVendorIntel:
+		if err := checkHostSecurityIntelBootGuard(env); err != nil {
+			var nohwrotErr *NoHardwareRootOfTrustError
+			ctxErr := fmt.Errorf("encountered an error when checking Intel BootGuard configuration: %w", err)
+			if !errors.As(err, &nohwrotErr) {
+				return platformFirmwareIntegrityNone, ctxErr
+			}
+			errs = append(errs, ctxErr)
+		}
+		if err := checkHostSecurityIntelCPUDebuggingLocked(amd64Env); err != nil {
+			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error when checking Intel CPU debugging configuration: %w", err)
+		}
+		if len(errs) == 0 {
+			integrity = platformFirmwareIntegrityVerified
+		}
+	case cpuVendorAMD:
+		integrity, err = checkHostSecurityAMDPSP(env)
+		if err != nil {
+			ctxErr := fmt.Errorf("encountered an error when checking the AMD PSP configuration: %w", err)
+			var nohwrotErr *NoHardwareRootOfTrustError
+			if !errors.As(err, &nohwrotErr) {
+				return platformFirmwareIntegrityNone, ctxErr
+			}
+			errs = append(errs, ctxErr)
+		}
+	default:
+		panic("not reached")
+	}
+
+	if err := checkSecureBootPolicyPCRForDegradedFirmwareSettings(log); err != nil {
+		var ce CompoundError
+		if !errors.As(err, &ce) {
+			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error whilst checking the TCG log for degraded firmware settings: %w", err)
+		}
+		errs = append(errs, ce.Unwrap()...)
+	}
+	if err := checkForKernelIOMMU(env); err != nil {
+		switch {
+		case errors.Is(err, ErrNoKernelIOMMU):
+			errs = append(errs, err)
+		default:
+			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error whilst checking sysfs to determine that kernel IOMMU support is enabled: %w", err)
+		}
+	}
+
+	if len(errs) > 0 {
+		return platformFirmwareIntegrityNone, joinErrors(errs...)
+	}
+
+	return integrity, nil
+}
+
+func checkDiscreteTPMPartialResetAttackMitigationStatusAMD64(env internal_efi.HostEnvironment, logResults *pcrBankResults) (discreteTPMPartialResetAttackMitigationStatus, error) {
+	cpuVendor, err := determineCPUVendor(env)
+	if err != nil {
+		return dtpmPartialResetAttackMitigationUnknown, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
+	}
+
+	if cpuVendor != cpuVendorIntel {
+		// Only enable this on Intel systems.
+		return dtpmPartialResetAttackMitigationNotRequired, nil
+	}
+
+	amd64Env, err := env.AMD64()
+	if err != nil {
+		return dtpmPartialResetAttackMitigationUnknown, fmt.Errorf("cannot obtain AMD64 environment: %w", err)
+	}
+
+	discreteTPM, err := isTPMDiscrete(env)
+	if err != nil {
+		return dtpmPartialResetAttackMitigationUnknown, &TPM2DeviceError{err}
+	}
+
+	switch {
+	case !discreteTPM:
+		// Not a discrete TPM.
+		return dtpmPartialResetAttackMitigationNotRequired, nil
+	case !logResults.Lookup(internal_efi.PlatformFirmwarePCR).Ok():
+		// PCR0 is unusable.
+		return dtpmPartialResetAttackMitigationUnavailable, nil
+	}
+
+	restrictedLocalities := restrictedTPMLocalitiesIntel(amd64Env)
+	for _, locality := range restrictedLocalities.Values() {
+		if locality == logResults.StartupLocality {
+			// The startup locality is not available to the OS, so
+			// we can enable the migitation because PCR0 cannot
+			// be recreated from the OS.
+			return dtpmPartialResetAttackMitigationPreferred, nil
+		}
+	}
+
+	// The startup locality is available to the OS, so the mitigation
+	// is unavailable even though it would have been desired because
+	// PCR0 can be recreated from the OS.
+	return dtpmPartialResetAttackMitigationUnavailable, nil
 }

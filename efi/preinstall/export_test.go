@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2024 Canonical Ltd
+ * Copyright (C) 2024-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -37,8 +37,13 @@ type (
 	BootManagerCodeResult       = bootManagerCodeResult
 	CheckFirmwareLogFlags       = checkFirmwareLogFlags
 	CheckTPM2DeviceFlags        = checkTPM2DeviceFlags
+	CpuVendor                   = cpuVendor
 	DetectVirtResult            = detectVirtResult
+	HfstsRegisters              = hfstsRegisters
+	HfstsRegistersCsme11        = hfstsRegistersCsme11
+	HfstsRegistersCsme18        = hfstsRegistersCsme18
 	JoinError                   = joinError
+	MeVersion                   = meVersion
 	PcrResults                  = pcrResults
 	SecureBootPolicyResult      = secureBootPolicyResult
 	SecureBootPolicyResultFlags = secureBootPolicyResultFlags
@@ -49,6 +54,8 @@ const (
 	AuthorityTrustDrivers                       = authorityTrustDrivers
 	CheckFirmwareLogPermitWeakPCRBanks          = checkFirmwareLogPermitWeakPCRBanks
 	CheckTPM2DevicePostInstall                  = checkTPM2DevicePostInstall
+	CpuVendorAMD                                = cpuVendorAMD
+	CpuVendorIntel                              = cpuVendorIntel
 	DetectVirtNone                              = detectVirtNone
 	DetectVirtVM                                = detectVirtVM
 	DiscreteTPMDetected                         = discreteTPMDetected
@@ -56,6 +63,12 @@ const (
 	DtpmPartialResetAttackMitigationPreferred   = dtpmPartialResetAttackMitigationPreferred
 	DtpmPartialResetAttackMitigationUnavailable = dtpmPartialResetAttackMitigationUnavailable
 	InsufficientDMAProtectionDetected           = insufficientDMAProtectionDetected
+	MeFamilyCsme                                = meFamilyCsme
+	MeFamilyMe                                  = meFamilyMe
+	MeFamilySps                                 = meFamilySps
+	MeFamilyTxe                                 = meFamilyTxe
+	MeFamilyUnknown                             = meFamilyUnknown
+	PlatformFirmwareIntegrityNone               = platformFirmwareIntegrityNone
 	PlatformFirmwareIntegrityMeasured           = platformFirmwareIntegrityMeasured
 	PlatformFirmwareIntegrityVerified           = platformFirmwareIntegrityVerified
 	SecureBootIncludesWeakAlg                   = secureBootIncludesWeakAlg
@@ -65,7 +78,14 @@ const (
 )
 
 var (
+	CalculateIntelMEFamily                                = calculateIntelMEFamily
 	CheckBootManagerCodeMeasurements                      = checkBootManagerCodeMeasurements
+	CheckHostSecurityAMDPSP                               = checkHostSecurityAMDPSP
+	CheckHostSecurityIntelBootGuard                       = checkHostSecurityIntelBootGuard
+	CheckHostSecurityIntelBootGuardCSME11                 = checkHostSecurityIntelBootGuardCSME11
+	CheckHostSecurityIntelBootGuardCSME18                 = checkHostSecurityIntelBootGuardCSME18
+	CheckHostSecurityIntelBootGuardMSR                    = checkHostSecurityIntelBootGuardMSR
+	CheckHostSecurityIntelCPUDebuggingLocked              = checkHostSecurityIntelCPUDebuggingLocked
 	CheckDiscreteTPMPartialResetAttackMitigationStatus    = checkDiscreteTPMPartialResetAttackMitigationStatus
 	CheckDriversAndAppsMeasurements                       = checkDriversAndAppsMeasurements
 	CheckFirmwareLogAndChoosePCRBank                      = checkFirmwareLogAndChoosePCRBank
@@ -76,16 +96,20 @@ var (
 	CheckSystemIsEFI                                      = checkSystemIsEFI
 	CheckTPM2ForRequiredPCClientFeatures                  = checkTPM2ForRequiredPCClientFeatures
 	ClearTPM                                              = clearTPM
+	DetermineCPUVendor                                    = determineCPUVendor
 	DetectVirtualization                                  = detectVirtualization
 	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
 	InsertActionProceed                                   = insertActionProceed
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
 	IsPPIActionAvailable                                  = isPPIActionAvailable
 	IsTPMDiscrete                                         = isTPMDiscrete
+	IsTPMDiscreteFromIntelBootGuard                       = isTPMDiscreteFromIntelBootGuard
 	JoinErrors                                            = joinErrors
 	MatchLaunchToLoadOption                               = matchLaunchToLoadOption
 	NewX509CertificateID                                  = newX509CertificateID
 	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
+	ReadIntelHFSTSRegistersFromMEISysfs                   = readIntelHFSTSRegistersFromMEISysfs
+	ReadIntelMEVersionFromMEISysfs                        = readIntelMEVersionFromMEISysfs
 	ReadOrderedLoadOptionVariables                        = readOrderedLoadOptionVariables
 	RestrictedTPMLocalitiesIntel                          = restrictedTPMLocalitiesIntel
 	RunPPIAction                                          = runPPIAction
@@ -157,4 +181,10 @@ func NewPCRBankResults(alg tpm2.HashAlgorithmId, sl uint8, pcrs [8]PcrResults) *
 		StartupLocality: sl,
 		pcrs:            pcrs,
 	}
+}
+
+func MockRuntimeGOARCH(arch string) (restore func()) {
+	orig := runtimeGOARCH
+	runtimeGOARCH = arch
+	return func() { runtimeGOARCH = orig }
 }
