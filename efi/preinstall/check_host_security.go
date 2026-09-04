@@ -303,7 +303,12 @@ func checkDiscreteTPMPartialResetAttackMitigationStatusAMD64(env internal_efi.Ho
 // checkHostSecurityARM64Platform selects the platform-specific firmware
 // integrity check. Tests replace this to supply synthetic platforms.
 var checkHostSecurityARM64Platform = func(env internal_efi.HostEnvironmentARM64, cpuManufacturer string) (platformFirmwareIntegrityConfig, error) {
-	return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("unsupported CPU manufacturer: %s", cpuManufacturer)}
+	switch cpuManufacturer {
+	case "NVIDIA":
+		return checkHostSecurityNVIDIA(env)
+	default:
+		return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("unsupported CPU manufacturer: %s", cpuManufacturer)}
+	}
 }
 
 func checkHostSecurityARM64(env internal_efi.HostEnvironment, log *tcglog.Log) (platformFirmwareIntegrityConfig, error) {
