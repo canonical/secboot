@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	. "github.com/snapcore/secboot"
@@ -36,11 +37,13 @@ import (
 
 type authRequestorAutoSuite struct {
 	snapd_testutil.BaseTest
+	authRequestorSdCredsTestMixin
 	authRequestorPlymouthTestMixin
 	authRequestorSystemdTestMixin
 }
 
 func (s *authRequestorAutoSuite) SetUpTest(c *C) {
+	s.AddCleanup(s.authRequestorSdCredsTestMixin.setUpTest(c))
 	s.AddCleanup(s.authRequestorPlymouthTestMixin.setUpTest(c))
 	s.AddCleanup(s.authRequestorSystemdTestMixin.setUpTest(c))
 }
@@ -170,7 +173,22 @@ func (s *authRequestorAutoSuite) TestNewAuthRequestor(c *C) {
 	})
 	defer restore()
 
-	requestor, err := NewAutoAuthRequestor(sdConsole, new(mockAutoAuthRequestorStringer))
+	requestor, err := NewAutoAuthRequestor(sdConsole, new(mockAutoAuthRequestorStringer), "")
+	c.Assert(err, IsNil)
+	c.Assert(requestor, NotNil)
+	c.Assert(requestor, testutil.ConvertibleTo, &AutoAuthRequestor{})
+	c.Assert(requestor.(*AutoAuthRequestor).Requestors(), HasLen, 3)
+	c.Check(requestor.(*AutoAuthRequestor).Requestors()[0], testutil.ConvertibleTo, &SystemdCredsAuthRequestor{})
+	c.Check(requestor.(*AutoAuthRequestor).Requestors()[1], testutil.ConvertibleTo, &PlymouthAuthRequestor{})
+	c.Check(requestor.(*AutoAuthRequestor).Requestors()[2], testutil.ConvertibleTo, &SystemdAuthRequestor{})
+}
+
+func (s *authRequestorAutoSuite) TestNewAuthRequestorSdCredsNotAvailable(c *C) {
+	sdConsole := new(bytes.Buffer)
+
+	c.Assert(os.Unsetenv("CREDENTIALS_DIRECTORY"), IsNil)
+
+	requestor, err := NewAutoAuthRequestor(sdConsole, new(mockAutoAuthRequestorStringer), "")
 	c.Assert(err, IsNil)
 	c.Assert(requestor, NotNil)
 	c.Assert(requestor, testutil.ConvertibleTo, &AutoAuthRequestor{})
@@ -185,12 +203,13 @@ func (s *authRequestorAutoSuite) TestNewAuthRequestorPlymouthNotAvailable(c *C) 
 	})
 	defer restore()
 
-	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Assert(err, IsNil)
 	c.Assert(requestor, NotNil)
 	c.Assert(requestor, testutil.ConvertibleTo, &AutoAuthRequestor{})
-	c.Assert(requestor.(*AutoAuthRequestor).Requestors(), HasLen, 1)
-	c.Check(requestor.(*AutoAuthRequestor).Requestors()[0], testutil.ConvertibleTo, &SystemdAuthRequestor{})
+	c.Assert(requestor.(*AutoAuthRequestor).Requestors(), HasLen, 2)
+	c.Check(requestor.(*AutoAuthRequestor).Requestors()[0], testutil.ConvertibleTo, &SystemdCredsAuthRequestor{})
+	c.Check(requestor.(*AutoAuthRequestor).Requestors()[1], testutil.ConvertibleTo, &SystemdAuthRequestor{})
 }
 
 func (s *authRequestorAutoSuite) TestNewAuthRequestorSystemdNotAvailable(c *C) {
@@ -199,15 +218,18 @@ func (s *authRequestorAutoSuite) TestNewAuthRequestorSystemdNotAvailable(c *C) {
 	})
 	defer restore()
 
-	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Assert(err, IsNil)
 	c.Assert(requestor, NotNil)
 	c.Assert(requestor, testutil.ConvertibleTo, &AutoAuthRequestor{})
-	c.Assert(requestor.(*AutoAuthRequestor).Requestors(), HasLen, 1)
-	c.Check(requestor.(*AutoAuthRequestor).Requestors()[0], testutil.ConvertibleTo, &PlymouthAuthRequestor{})
+	c.Assert(requestor.(*AutoAuthRequestor).Requestors(), HasLen, 2)
+	c.Check(requestor.(*AutoAuthRequestor).Requestors()[0], testutil.ConvertibleTo, &SystemdCredsAuthRequestor{})
+	c.Check(requestor.(*AutoAuthRequestor).Requestors()[1], testutil.ConvertibleTo, &PlymouthAuthRequestor{})
 }
 
 func (s *authRequestorAutoSuite) TestNewAuthRequestorNotAvailable(c *C) {
+	c.Assert(os.Unsetenv("CREDENTIALS_DIRECTORY"), IsNil)
+
 	restore := MockNewPlymouthAuthRequestor(func(_ AuthRequestorStringer) (AuthRequestor, error) {
 		return nil, ErrAuthRequestorNotAvailable
 	})
@@ -218,13 +240,13 @@ func (s *authRequestorAutoSuite) TestNewAuthRequestorNotAvailable(c *C) {
 	})
 	defer restore()
 
-	_, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	_, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Check(err, ErrorMatches, "the auth requestor is not available")
 	c.Check(errors.Is(err, ErrAuthRequestorNotAvailable), testutil.IsTrue)
 }
 
 func (s *authRequestorAutoSuite) TestNewAuthRequestorPlymouthError(c *C) {
-	_, err := NewAutoAuthRequestor(nil, nil)
+	_, err := NewAutoAuthRequestor(nil, nil, "")
 	c.Check(err, ErrorMatches, "cannot create Plymouth AuthRequestor: must supply an implementation of AuthRequestorStringer")
 }
 
@@ -234,15 +256,35 @@ func (s *authRequestorAutoSuite) TestNewAuthRequestorSystemdError(c *C) {
 	})
 	defer restore()
 
-	_, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	_, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Check(err, ErrorMatches, "cannot create systemd AuthRequestor: some error")
 }
 
+func (s *authRequestorAutoSuite) TestRequestUserCredentialSdCred(c *C) {
+	// Ensure that a systemd cred is used first if available.
+	s.setPassphrase(c, "password")
+	s.writeCred(c, "foo", "/dev/sda1", "password", "passphrase")
+
+	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "foo")
+	c.Assert(err, IsNil)
+
+	passphrase, passphraseType, err := requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
+	c.Check(err, IsNil)
+	c.Check(passphrase, Equals, "password")
+	c.Check(passphraseType, Equals, UserAuthTypePassphrase)
+
+	c.Check(s.mockPlymouth.Calls(), HasLen, 0)
+	c.Check(s.mockSdAskPassword.Calls(), HasLen, 0)
+
+	c.Assert(requestor, testutil.ConvertibleTo, &AutoAuthRequestor{})
+	c.Check(requestor.(*AutoAuthRequestor).LastUsed(), testutil.ConvertibleTo, &SystemdCredsAuthRequestor{})
+}
+
 func (s *authRequestorAutoSuite) TestRequestUserCredentialPlymouth(c *C) {
-	// Ensure that plymouth is used first if available.
+	// Ensure that plymouth is used first if available and there is no systemd cred.
 	s.setPassphrase(c, "password")
 
-	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Assert(err, IsNil)
 
 	passphrase, passphraseType, err := requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
@@ -265,7 +307,7 @@ func (s *authRequestorAutoSuite) TestRequestUserCredentialSystemd(c *C) {
 	s.setPassphrase(c, "password")
 	s.stopPlymouthd(c)
 
-	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Assert(err, IsNil)
 
 	passphrase, passphraseType, err := requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
@@ -283,7 +325,7 @@ func (s *authRequestorAutoSuite) TestRequestUserCredentialSystemd(c *C) {
 func (s *authRequestorAutoSuite) TestRequestUserCredentialDifferentName(c *C) {
 	s.setPassphrase(c, "password")
 
-	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Assert(err, IsNil)
 
 	passphrase, passphraseType, err := requestor.RequestUserCredential(context.Background(), "foo", "/dev/sda1", UserAuthTypePassphrase)
@@ -304,7 +346,7 @@ func (s *authRequestorAutoSuite) TestRequestUserCredentialDifferentName(c *C) {
 func (s *authRequestorAutoSuite) TestRequestUserCredentialDifferentPath(c *C) {
 	s.setPassphrase(c, "password")
 
-	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Assert(err, IsNil)
 
 	passphrase, passphraseType, err := requestor.RequestUserCredential(context.Background(), "data", "/dev/nvme0n1p3", UserAuthTypePassphrase)
@@ -325,7 +367,7 @@ func (s *authRequestorAutoSuite) TestRequestUserCredentialDifferentPath(c *C) {
 func (s *authRequestorAutoSuite) TestRequestUserCredentialDifferentCredentialType(c *C) {
 	s.setPassphrase(c, "password")
 
-	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Assert(err, IsNil)
 
 	passphrase, passphraseType, err := requestor.RequestUserCredential(context.Background(), "foo", "/dev/sda1", UserAuthTypePassphrase|UserAuthTypeRecoveryKey)
@@ -346,7 +388,7 @@ func (s *authRequestorAutoSuite) TestRequestUserCredentialDifferentCredentialTyp
 func (s *authRequestorAutoSuite) TestRequestUserCredentialDifferentPassphrase(c *C) {
 	s.setPassphrase(c, "1234")
 
-	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Assert(err, IsNil)
 
 	passphrase, passphraseType, err := requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
@@ -367,7 +409,7 @@ func (s *authRequestorAutoSuite) TestRequestUserCredentialDifferentPassphrase(c 
 func (s *authRequestorAutoSuite) TestRequestUserCredentialCanceledContext(c *C) {
 	s.setPassphrase(c, "password")
 
-	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Assert(err, IsNil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -382,7 +424,7 @@ func (s *authRequestorAutoSuite) TestRequestUserCredentialPlymouthFails(c *C) {
 	// Ensure we get an error if any implementation fails with an unexpected error.
 	s.authRequestorSystemdTestMixin.setPassphrase(c, "password")
 
-	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Assert(err, IsNil)
 
 	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)
@@ -398,7 +440,7 @@ func (s *authRequestorAutoSuite) TestRequestUserCredentialNotAvailable(c *C) {
 	})
 	defer restore()
 
-	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer))
+	requestor, err := NewAutoAuthRequestor(nil, new(mockAutoAuthRequestorStringer), "")
 	c.Assert(err, IsNil)
 
 	_, _, err = requestor.RequestUserCredential(context.Background(), "data", "/dev/sda1", UserAuthTypePassphrase)

@@ -27,8 +27,9 @@ import (
 )
 
 var (
-	newPlymouthAuthRequestor = NewPlymouthAuthRequestor
-	newSystemdAuthRequestor  = NewSystemdAuthRequestor
+	newPlymouthAuthRequestor     = NewPlymouthAuthRequestor
+	newSystemdAuthRequestor      = NewSystemdAuthRequestor
+	newSystemdCredsAuthRequestor = NewSystemdCredsAuthRequestor
 )
 
 type autoAuthRequestor struct {
@@ -59,6 +60,7 @@ func (r *autoAuthRequestor) NotifyUserAuthResult(ctx context.Context, result Use
 
 // NewAutoAuthRequestor creates an implementation of AuthRequestor that automatically
 // selects the first available implementation in the following order:
+// - systemd credential.
 // - Plymouth.
 // - systemd-ask-password.
 //
@@ -71,9 +73,20 @@ func (r *autoAuthRequestor) NotifyUserAuthResult(ctx context.Context, result Use
 // The caller supplies an implementation of AuthRequestorStringer that returns messages.
 // The console argument is used by the systemd-ask-password implementation of
 // [AuthRequestor.NotifyUserAuthResult] where result is not [UserAuthResultSuccess]. If not
-// provided, it defaults to [os.Stderr].
-func NewAutoAuthRequestor(stderr io.Writer, stringer AuthRequestorStringer) (AuthRequestor, error) {
+// provided, it defaults to [os.Stderr]. The credPrefix argument is used to specify the
+// prefix for systemd credentials.
+func NewAutoAuthRequestor(stderr io.Writer, stringer AuthRequestorStringer, credPrefix string) (AuthRequestor, error) {
 	var requestors []AuthRequestor
+
+	switch sdcred, err := newSystemdCredsAuthRequestor(stderr, credPrefix); {
+	case errors.Is(err, ErrAuthRequestorNotAvailable):
+		// ignore
+	case err != nil:
+		return nil, fmt.Errorf("cannot create sdcreds AuthRequestor: %w", err)
+	default:
+		requestors = append(requestors, sdcred)
+	}
+
 	switch ply, err := newPlymouthAuthRequestor(stringer); {
 	case errors.Is(err, ErrAuthRequestorNotAvailable):
 		// ignore

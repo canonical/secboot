@@ -60,6 +60,8 @@ type authRequestorSystemdSuite struct {
 }
 
 func (s *authRequestorSystemdSuite) SetUpTest(c *C) {
+	s.BaseTest.SetUpTest(c)
+
 	s.AddCleanup(s.authRequestorSystemdTestMixin.setUpTest(c))
 }
 
