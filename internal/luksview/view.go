@@ -22,9 +22,11 @@ package luksview
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/log"
 )
 
 type namedTokenData struct {
@@ -98,6 +100,11 @@ func (v *View) Reread() error {
 	for id, token := range hdr.Metadata.Tokens {
 		named, ok := token.(NamedToken)
 		if !ok {
+			// This typically happens with tokens not managed by secboot
+			// and tokens that have multiple keyslots (eg: when reencryption
+			// has been initialized)
+			log.Warning("LUKS header has unsupported token (type %q, keyslots: %v)",
+				token.Type(), token.Keyslots())
 			continue
 		}
 
@@ -200,4 +207,35 @@ func (v *View) UsedKeyslots() (slots []int) {
 	}
 	sort.Ints(slots)
 	return slots
+}
+
+// KeyslotNamesSortedById returns the token names sorted
+// by their keyslot identifier (in ascending order)
+// Assumption: there is only one keyslot by token
+func (v *View) TokenNamesSortedByKeyslotId() ([]string, error) {
+	tokenNamesByKeyslotId := map[int]string{}
+	var keyslotIdentifiers []int
+
+	for name, token := range v.namedTokens {
+		keyslots := token.token.Keyslots()
+		if len(keyslots) != 1 {
+			return nil, fmt.Errorf("token %q has %v keyslots", name, len(keyslots))
+		}
+		existing, ok := tokenNamesByKeyslotId[keyslots[0]]
+		if ok {
+			return nil, fmt.Errorf("token %q has keyslot %v already used by %q", name, keyslots[0], existing)
+		}
+		tokenNamesByKeyslotId[keyslots[0]] = name
+		keyslotIdentifiers = append(keyslotIdentifiers, keyslots[0])
+	}
+
+	slices.Sort(keyslotIdentifiers)
+
+	sortedTokenNames := []string{}
+
+	for _, v := range keyslotIdentifiers {
+		sortedTokenNames = append(sortedTokenNames, tokenNamesByKeyslotId[v])
+	}
+
+	return sortedTokenNames, nil
 }

@@ -65,6 +65,8 @@ type StorageContainerBackend interface {
 	// depending on how the backend works - there may be backends in the
 	// future that don't use block devices for storage containers.
 	ProbeActivated(ctx context.Context, path string) (StorageContainer, error)
+
+	NewOnlineReencryption(activeName string) (Reencryption, error)
 }
 
 var (
