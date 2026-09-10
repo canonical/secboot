@@ -20,6 +20,9 @@
 package efi
 
 import (
+	"context"
+	"errors"
+
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/tcglog-parser"
@@ -32,7 +35,8 @@ import (
 // context.
 type pcrBranchContext interface {
 	pcrProfileContext
-	Params() loadParams        // access the externally supplied parameters for this branch
+	Params() loadParams // access the externally supplied parameters for this branch
+	VarContext() context.Context
 	Vars() varReadWriter       // access the variable state for this branch
 	FwContext() *fwContext     // access the platform firmware state for this branch
 	ShimContext() *shimContext // access the shim state for this branch
@@ -41,6 +45,23 @@ type pcrBranchContext interface {
 	ResetCRTMPCR(locality uint8)                                              // reset the S-CRTM PCR (0) from the specified locality
 	ExtendPCR(pcr tpm2.Handle, digest tpm2.Digest)                            // extend the specified PCR for this branch
 	MeasureVariable(pcr tpm2.Handle, guid efi.GUID, name string, data []byte) // measure the specified variable for this branch
+}
+
+type pcrBranchVarCtx struct {
+	ctx *pcrBranchCtx
+}
+
+func (c *pcrBranchVarCtx) Get(name string, guid efi.GUID) (efi.VariableAttributes, []byte, error) {
+	data, attrs, err := c.ctx.vars.ReadVar(name, guid)
+	return attrs, data, err
+}
+
+func (c *pcrBranchVarCtx) Set(name string, guid efi.GUID, attrs efi.VariableAttributes, data []byte) error {
+	return c.ctx.vars.WriteVar(name, guid, attrs, data)
+}
+
+func (c *pcrBranchVarCtx) List() ([]efi.VariableDescriptor, error) {
+	return nil, errors.New("not supported")
 }
 
 type pcrBranchCtx struct {
@@ -77,6 +98,10 @@ func (c *pcrBranchCtx) newSubBranch(bp *secboot_tpm2.PCRProtectionProfileBranchP
 
 func (c *pcrBranchCtx) Params() loadParams {
 	return c.params
+}
+
+func (c *pcrBranchCtx) VarContext() context.Context {
+	return context.WithValue(context.Background(), efi.VarsBackendKey{}, &pcrBranchVarCtx{ctx: c})
 }
 
 func (c *pcrBranchCtx) Vars() varReadWriter {
