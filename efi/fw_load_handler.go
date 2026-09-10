@@ -423,18 +423,33 @@ func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
 }
 
 func (h *fwLoadHandler) measureDriversAndApps(ctx pcrBranchContext) error {
+	seenSeparator := false
+
 	for _, event := range h.log.Events {
 		if event.PCRIndex != internal_efi.DriversAndAppsPCR {
 			continue
 		}
 
 		if event.EventType == tcglog.EventTypeSeparator {
-			return h.measureSeparator(ctx, internal_efi.DriversAndAppsPCR, event)
+			if seenSeparator {
+				return errors.New("more than one separator in log")
+			}
+			if err := h.measureSeparator(ctx, internal_efi.DriversAndAppsPCR, event); err != nil {
+				return err
+			}
+			seenSeparator = true
+			continue
 		}
+
+		// Some firmware measures vendor events here after the separator,
+		// and this profile is a copy of the log, so keep copying.
 		ctx.ExtendPCR(internal_efi.DriversAndAppsPCR, event.Digests[ctx.PCRAlg()])
 	}
 
-	return errors.New("missing separator in log")
+	if !seenSeparator {
+		return errors.New("missing separator in log")
+	}
+	return nil
 }
 
 func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error {

@@ -992,6 +992,19 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartDriversAndAppsProfile2(c *C) {
 	})
 }
 
+func (s *fwLoadHandlerSuite) TestMeasureImageStartDriversAndAppsProfileVendorEventAfterSeparator(c *C) {
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		logOptions: &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}, IncludeVendorEventAfterSeparator: true},
+		alg:        tpm2.HashAlgorithmSHA256,
+		pcrs:       MakePcrFlags(internal_efi.DriversAndAppsPCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 2, eventType: mockPcrBranchResetEvent},
+			{pcr: 2, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+			{pcr: 2, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a")}, // vendor event, SHA-256 of 0x01
+		},
+	})
+}
+
 func (s *fwLoadHandlerSuite) TestMeasureImageStartErrDisallowDMAProtectionDisabled(c *C) {
 	collector := NewVariableSetCollector(efitest.NewMockHostEnvironment(makeMockVars(c, withMsSecureBootConfig()), nil))
 	ctx := newMockPcrBranchContext(&mockPcrProfileContext{
