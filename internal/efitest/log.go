@@ -191,6 +191,7 @@ type LogOptions struct {
 	NoSBAT                            bool                            // omit the SbatLevel measurement to mimic older versions of shim
 	PreOSVerificationUsesDigests      crypto.Hash                     // Whether Driver or SysPrep launches are verified using a digest
 	DisableDeployedMode               bool                            // Whether deployed/audit modes are disabled and we have UEFI 2.5
+	IncludeVendorEventAfterSeparator  bool                            // include a vendor-defined event in PCR2 after the pre-OS to OS-present transition
 }
 
 // NewLog creates a mock TCG log for testing. The log will look like a standard
@@ -664,6 +665,15 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			eventType: tcglog.EventTypeSeparator,
 			data:      data})
 		maybeMeasureDMAProtectionDisabledEvent(c, builder, opts, DMAProtectionDisabledEventOrderAfterSeparator)
+	}
+
+	// Mock a vendor-defined event measured to PCR2 after the transition to OS-present.
+	if opts.IncludeVendorEventAfterSeparator {
+		data := tcglog.OpaqueEventData([]byte{0x01})
+		builder.hashLogExtendEvent(c, data, &logEvent{
+			pcrIndex:  2,
+			eventType: tcglog.EventType(0x8401),
+			data:      data})
 	}
 
 	// Mock firmware application launch
