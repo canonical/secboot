@@ -455,6 +455,7 @@ var ErrRecoveryKeyUsed = errors.New("cannot activate with platform protected key
 // If activation with one of the KeyData objects succeeds (ie, no error is
 // returned), then the supplied SnapModel is authorized to access the data on
 // this volume.
+// Deprecated: Use [ActivateContext.ActivateContainer]
 func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequestor AuthRequestor, options *ActivateVolumeOptions, keys ...*KeyData) error {
 	if options.PassphraseTries < 0 {
 		return errors.New("invalid PassphraseTries")
@@ -529,6 +530,7 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 //
 // If the RecoveryKeyTries field of options is less than zero, an error will be
 // returned.
+// Deprecated: Use [ActivateContext.ActivateContainer]
 func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, authRequestor AuthRequestor, options *ActivateVolumeOptions) error {
 	if authRequestor == nil {
 		return errors.New("nil authRequestor")
@@ -543,12 +545,14 @@ func ActivateVolumeWithRecoveryKey(volumeName, sourceDevicePath string, authRequ
 // ActivateVolumeWithKey attempts to activate the LUKS encrypted volume at
 // sourceDevicePath and create a mapping with the name volumeName, using the
 // provided key. This makes use of systemd-cryptsetup.
+// Deprecated: Use [ActivateContext.ActivateContainer]
 func ActivateVolumeWithKey(volumeName, sourceDevicePath string, key []byte, options *ActivateVolumeOptions) error {
 	return luks2Activate(volumeName, sourceDevicePath, key, luks2.AnySlot)
 }
 
 // DeactivateVolume attempts to deactivate the LUKS encrypted volumeName.
 // This makes use of systemd-cryptsetup.
+// Deprecated: Use [ActivateContext.DeactivateContainer]
 func DeactivateVolume(volumeName string) error {
 	return luks2Deactivate(volumeName)
 }
