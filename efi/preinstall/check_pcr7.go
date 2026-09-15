@@ -362,6 +362,10 @@ type secureBootPolicyResult struct {
 //
 // If the end of the log is reached without encountering the launch of the initial boot loader, an error is returned.
 func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, env internal_efi.HostEnvironment, log *tcglog.Log, pcrAlg tpm2.HashAlgorithmId, iblImage secboot_efi.Image, permitDMAProtectionDisabledEvent bool) (result *secureBootPolicyResult, err error) {
+	return checkSecureBootPolicyMeasurementsAndObtainAuthoritiesWithConfig(ctx, env, log, pcrAlg, iblImage, permitDMAProtectionDisabledEvent, nil)
+}
+
+func checkSecureBootPolicyMeasurementsAndObtainAuthoritiesWithConfig(ctx context.Context, env internal_efi.HostEnvironment, log *tcglog.Log, pcrAlg tpm2.HashAlgorithmId, iblImage secboot_efi.Image, permitDMAProtectionDisabledEvent bool, amdConfig *amdPreOSMeasurementConfig) (result *secureBootPolicyResult, err error) {
 	if iblImage == nil {
 		return nil, errors.New("must supply the initial boot loader image")
 	}
@@ -429,9 +433,11 @@ func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, 
 	}
 
 	var (
-		db                 efi.SignatureDatabase // The authorized signature database from the TCG log.
-		measuredSignatures tpm2.DigestList       // The verification event digests measured by the firmware
-		seenIBLLoadEvent   bool                  // Whether we've seen the launch event for the OS initial boot loader
+		db                     efi.SignatureDatabase // The authorized signature database from the TCG log.
+		measuredSignatures     tpm2.DigestList       // The verification event digests measured by the firmware
+		seenIBLLoadEvent       bool                  // Whether we've seen the launch event for the OS initial boot loader
+		seenHPPreBootDMAConfig bool                  // Whether we've seen HP's additional pre-boot DMA configuration event
+		seenAMDTSMEConfig      bool                  // Whether we've seen AMD's TSME status measurement
 	)
 
 	phaseTracker := newTcgLogPhaseTracker()
@@ -440,6 +446,20 @@ NextEvent:
 		phase, err := phaseTracker.processEvent(ev)
 		if err != nil {
 			return nil, err
+		}
+		if phase != tcglogPhaseFirmwareLaunch && amdConfig != nil && amdConfig.HPPreBootDMAConfigEnabled && !seenHPPreBootDMAConfig {
+			return nil, errors.New("missing expected HP pre-boot DMA configuration event")
+		}
+		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR {
+			if internal_efi.IsAMDTSMEConfigEvent(ev) && phase == tcglogPhaseMeasuringSecureBootConfig && len(configs) > 0 {
+				return nil, errors.New("unexpected AMD TSME configuration event whilst measuring secure boot configuration")
+			}
+			if handled, err := checkAMDTSMEConfigEvent(ev, pcrAlg, amdConfig, &seenAMDTSMEConfig); handled {
+				if err != nil {
+					return nil, err
+				}
+				continue NextEvent
+			}
 		}
 
 		switch phase {
@@ -452,7 +472,8 @@ NextEvent:
 			switch ev.EventType {
 			case tcglog.EventTypeEFIAction:
 				// An EV_EFI_ACTION event measured to PCR7 may indicate some degraded condition
-				// that weakens device security. 2 known ones are:
+				// that weakens device security, or may record a security-relevant
+				// platform configuration. 3 known ones are:
 				// - "UEFI Debug Mode", which indicates the presence of a debugging endpoint.
 				//   The TCG PC Client PFP spec says this goes before the secure boot config
 				//   is measured.
@@ -463,15 +484,25 @@ NextEvent:
 				//   generate a policy that includes it. However, the tianocore documentation
 				//   doesn't specify event ordering, so we need to accommodate any possible
 				//   ordering of events.
+				// - HP's exact additional DMA settings event, which records enabled SVM,
+				//   DMA protection and pre-boot DMA protection for all PCIe devices. This
+				//   is accepted once before the secure boot configuration and its digest
+				//   is validated below.
 				//
-				// The presence of an EV_EFI_ACTION event other than "DMA Protection Disabled"
-				// will result in WithSecureBootPolicyProfile() creating an invalid policy,
-				// because it generally doesn't emit these measurements. Just return an error
-				// here to prevent the use of WithSecureBootPolicyProfile() unless it is a
-				// "DMA Protection Disabled" event and it is permitted.
+				// Other EV_EFI_ACTION events will result in
+				// WithSecureBootPolicyProfile() creating an invalid policy because it
+				// generally doesn't emit these measurements. Reject them here.
 				//
 				// Note that "UEFI Debug Mode" and "DMA Protection Disabled" events are both
 				// caught by the host security checks, which run before this.
+				if internal_efi.IsHPPreBootDMAConfigEvent(ev) && amdConfig != nil && amdConfig.HPPreBootDMAConfigEnabled && !seenHPPreBootDMAConfig {
+					expectedDigest := tcglog.ComputeStringEventDigest(pcrAlg.GetHash(), internal_efi.HPPreBootDMAConfigEventData())
+					if !bytes.Equal(ev.Digests[pcrAlg], expectedDigest) {
+						return nil, errors.New("invalid digest for HP pre-boot DMA configuration event")
+					}
+					seenHPPreBootDMAConfig = true
+					continue NextEvent
+				}
 				if permitDMAProtectionDisabledEvent && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
 					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00))) {
 					// This event is detected by the host security checks which will result in a flag

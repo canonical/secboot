@@ -495,6 +495,11 @@ func (o *pcrProfileAutoSetPcrsOption) ApplyOptionTo(visitor internal_efi.PCRProf
 			return fmt.Errorf("cannot add PCR profile option %d: %w", i, err)
 		}
 	}
+	if config := o.result.amdPreOSMeasurementConfig; config != nil {
+		if err := secboot_efi.WithAMDPreOSMeasurements(config.TSMEEnabled, config.HPPreBootDMAConfigEnabled).ApplyOptionTo(visitor); err != nil {
+			return fmt.Errorf("cannot add AMD pre-OS measurements profile option: %w", err)
+		}
+	}
 	if _, permitted := o.result.AcceptedErrors[ErrorKindInsufficientDMAProtection]; permitted {
 		if err := secboot_efi.WithAllowInsufficientDmaProtection().ApplyOptionTo(visitor); err != nil {
 			return fmt.Errorf("cannot add DMA allow insufficient protection profile option: %w", err)
