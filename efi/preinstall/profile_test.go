@@ -592,3 +592,23 @@ func (s *profileSuite) TestWithAutoTCGPCRInvalidSecureBootMode(c *C) {
 		},
 	})
 }
+
+func (s *profileSuite) TestWithAutoTCGPCRAMDPreOSMeasurements(c *C) {
+	result := &CheckResult{
+		UsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
+	}
+	SetAMDPreOSMeasurementConfigForTest(result, &AMDPreOSMeasurementConfig{
+		TSMEEnabled:               true,
+		HPPreBootDMAConfigEnabled: true,
+	})
+	profile := WithAutoTCGPCRProfile(result, PCRProfileOptionsDefault)
+
+	visitor := &mockPcrProfileOptionVisitor{
+		imageLoadParams: []internal_efi.LoadParams{{}},
+	}
+	c.Check(profile.ApplyOptionTo(visitor), IsNil)
+	c.Check(visitor.imageLoadParams, DeepEquals, []internal_efi.LoadParams{{
+		"amd_tsme_enabled":               true,
+		"include_hp_pre_boot_dma_config": true,
+	}})
+}

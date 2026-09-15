@@ -34,6 +34,15 @@ func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (platf
 	return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("checking host security is not implemented on %s", runtime.GOARCH)}
 }
 
+func checkHostSecurityAndAMDPreOSMeasurements(env internal_efi.HostEnvironment, log *tcglog.Log) (platformFirmwareIntegrityConfig, *amdPreOSMeasurementConfig, error) {
+	integrity, err := checkHostSecurity(env, log)
+	return integrity, nil, err
+}
+
+func detectAMDPreOSMeasurementConfig(env internal_efi.HostEnvironment) (*amdPreOSMeasurementConfig, error) {
+	return nil, &UnsupportedPlatformError{fmt.Errorf("checking AMD pre-OS measurement configuration is not implemented on %s", runtime.GOARCH)}
+}
+
 func checkDiscreteTPMPartialResetAttackMitigationStatus(env internal_efi.HostEnvironment, logResults *pcrBankResults) (discreteTPMPartialResetAttackMitigationStatus, error) {
 	return dtpmPartialResetAttackMitigationNotRequired, nil
 }
