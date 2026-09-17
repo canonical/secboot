@@ -22,7 +22,6 @@ package luksview
 import (
 	"context"
 	"fmt"
-	"slices"
 	"sort"
 
 	"github.com/snapcore/secboot/internal/luks2"
@@ -226,7 +225,7 @@ func (v *View) TokenNamesSortedByKeyslotId() ([]string, error) {
 		keyslotIdentifiers = append(keyslotIdentifiers, keyslots[0])
 	}
 
-	slices.Sort(keyslotIdentifiers)
+	sort.Ints(keyslotIdentifiers)
 
 	sortedTokenNames := []string{}
 
