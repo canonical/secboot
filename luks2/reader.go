@@ -27,6 +27,7 @@ import (
 	"github.com/snapcore/secboot"
 	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
+	"github.com/snapcore/secboot/log"
 )
 
 // storageContainerReadWriterImpl is the main implementation that backs
@@ -137,7 +138,15 @@ func (s *storageContainerReadWriterImpl) ensureKeyslot(ctx context.Context, name
 	if !inUse {
 		return fmt.Errorf("no metadata for keyslot %q", name)
 	}
-	ks.keyslotId = token.Keyslots()[0] // luksview guarantees there is always 1 keyslot here.
+
+	log.Debugf("token.Keyslots()=%v", token.Keyslots())
+	// luksview guarantees there is always 1 or 2 keyslots.
+	if len(token.Keyslots()) == 1 {
+		ks.keyslotId = token.Keyslots()[0]
+	} else {
+		// Two keyslots associated with this token (happens when reencryption is in progress)
+		ks.keyslotId = internal_luks2.AnySlot
+	}
 	if ks.keyslotType == secboot.KeyslotTypePlatform {
 		// TODO: Once the functionality of luksview is implemented directly in
 		// this package, we'll give recovery keyslots a priority as well. This
@@ -255,7 +264,7 @@ func (s *storageContainerReader) ListKeyslotNames(ctx context.Context) ([]string
 	return s.impl.ListKeyslotNames(ctx)
 }
 
-// ReadKeyslot implements [secboot.StorageContainerReader.ListKeyslotNames].
+// ReadKeyslot implements [secboot.StorageContainerReader.ReadKeyslot].
 func (s *storageContainerReader) ReadKeyslot(ctx context.Context, name string) (secboot.Keyslot, error) {
 	return s.impl.ReadKeyslot(ctx, name)
 }

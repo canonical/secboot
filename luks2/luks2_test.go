@@ -111,8 +111,8 @@ func newMockContainerData() *mockContainerData {
 func newKeyDataToken(name string, slot, priority int, data []byte) *luksview.KeyDataToken {
 	return &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: slot,
-			TokenName:    name,
+			TokenKeyslots: []int{slot},
+			TokenName:     name,
 		},
 		Priority: priority,
 		Data:     data,
@@ -127,8 +127,8 @@ func (v *mockLuksView) TokenByName(name string) (token luksview.NamedToken, id i
 	if id, exists := v.data.recoveryKeyslots[name]; exists {
 		return &luksview.RecoveryToken{
 			TokenBase: luksview.TokenBase{
-				TokenKeyslot: id,
-				TokenName:    name,
+				TokenKeyslots: []int{id},
+				TokenName:     name,
 			},
 		}, 0, true // We return 0 for all token IDs because the test doesn't use it.
 	}
