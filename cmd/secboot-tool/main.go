@@ -41,6 +41,8 @@ func main() {
 		err = cmdActivateContainer(args)
 	case "deactivate":
 		err = cmdDeactivateContainer(args)
+	case "reencrypt":
+		err = cmdReencrypt(args)
 	default:
 		die(Usage)
 	}
