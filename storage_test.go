@@ -21,6 +21,7 @@ package secboot_test
 
 import (
 	"context"
+	"fmt"
 
 	. "gopkg.in/check.v1"
 
@@ -119,6 +120,10 @@ func (b *mockStorageContainerBackend) ProbeActivated(ctx context.Context, path s
 		backendProbeCtx:      ctx,
 		mockStorageContainer: container,
 	}, nil
+}
+
+func (b *mockStorageContainerBackend) NewOnlineReencryption(activeName string) (Reencryption, error) {
+	return nil, fmt.Errorf("mockStorageContainerBackend does not implement NewOnlineReencryption")
 }
 
 type storageSuite struct{}
