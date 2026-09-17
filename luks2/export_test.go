@@ -45,6 +45,7 @@ type (
 	StorageContainerBackend = storageContainerBackend
 	StorageContainerImpl    = storageContainerImpl
 	StorageContainerReader  = storageContainerReader
+	ReencryptionImpl        = reencryptionImpl
 )
 
 func MockDevRoot(path string) (restore func()) {
@@ -121,5 +122,12 @@ func NewStorageContainer(path string, dev uint64) *StorageContainerImpl {
 	return &storageContainerImpl{
 		path: path,
 		dev:  dev,
+	}
+}
+
+func NewReencryptionImpl(path, activeName string) ReencryptionImpl {
+	return ReencryptionImpl{
+		sourcePath:   path,
+		dmActiveName: activeName,
 	}
 }

@@ -528,3 +528,32 @@ func (s *readerSuite) TestContainerReaderReadKeyslotClosed(c *C) {
 	_, err = r.ReadKeyslot(context.Background(), "default")
 	c.Check(err, Equals, secboot.ErrStorageContainerClosed)
 }
+
+func (s *readerSuite) TestContainerReaderReadKeyslotMultipleKeyslots(c *C) {
+	keyDataToken := luksview.KeyDataToken{
+		TokenBase: luksview.TokenBase{
+			TokenKeyslots: []int{0, 1},
+			TokenName:     "token-name-default",
+		},
+		Data: []byte("dummy keyslot metadata1"),
+	}
+	s.addUnlockKeyslot("/dev/sda1", &keyDataToken)
+
+	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
+	r, err := container.OpenRead(context.Background())
+	c.Assert(err, IsNil)
+
+	ks, err := r.ReadKeyslot(context.Background(), "token-name-default")
+	c.Assert(err, IsNil)
+	c.Check(ks.Type(), Equals, secboot.KeyslotTypePlatform)
+	c.Check(ks.Name(), Equals, "token-name-default")
+	c.Check(ks.Priority(), Equals, 0)
+
+	data, err := io.ReadAll(ks.Data())
+	c.Check(err, IsNil)
+	c.Check(data, DeepEquals, []byte("dummy keyslot metadata1"))
+
+	var tmpl Keyslot
+	c.Assert(ks, Implements, &tmpl)
+	c.Check(ks.(Keyslot).KeyslotID(), Equals, internal_luks2.AnySlot)
+}

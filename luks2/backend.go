@@ -29,6 +29,7 @@ import (
 
 	"github.com/snapcore/secboot"
 	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/log"
 	"golang.org/x/sys/unix"
 )
 
@@ -156,6 +157,27 @@ func (b *storageContainerBackend) ProbeActivated(ctx context.Context, path strin
 	}
 
 	return nil, nil
+}
+
+// NewOnlineReencryption implements [secboot.StorageContainerBackend.NewOnlineReencryption].
+func (b *storageContainerBackend) NewOnlineReencryption(activeName string) (secboot.Reencryption, error) {
+	// Get the source path.
+	status, err := internal_luks2.ReadCryptsetupStatus(activeName)
+	if err != nil {
+		log.Warningf("cannot read cryptsetup status of %v: %v", activeName, err.Error())
+		// This backend cannot manage this active name.
+		return nil, nil
+	}
+	if len(status.Device) == 0 {
+		return nil, fmt.Errorf("cannot get device of cryptsetup active name '%v'", activeName)
+	}
+
+	reencryption := reencryptionImpl{
+		sourcePath:   status.Device,
+		dmActiveName: activeName,
+	}
+
+	return reencryption, nil
 }
 
 func init() {

@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 
 	"golang.org/x/xerrors"
 
@@ -66,6 +67,10 @@ func NewLUKS2KeyDataReader(devicePath, name string) (*LUKS2KeyDataReader, error)
 
 	if kdToken.Data == nil {
 		return nil, errors.New("named keyslot does not contain key data yet")
+	}
+
+	if len(token.Keyslots()) != 1 {
+		return nil, fmt.Errorf("token has %v keyslot(s)", len(token.Keyslots()))
 	}
 
 	return &LUKS2KeyDataReader{
@@ -125,6 +130,11 @@ func NewLUKS2KeyDataWriter(devicePath, name string) (*LUKS2KeyDataWriter, error)
 		return nil, errors.New("named keyslot has the wrong type")
 	}
 
+	if len(token.Keyslots()) != 1 {
+		// When reencryption is in progress, there are 2 keyslots. This is not supported here.
+		return nil, fmt.Errorf("token has %v keyslot(s)", len(token.Keyslots()))
+	}
+
 	return &LUKS2KeyDataWriter{
 		devicePath: devicePath,
 		id:         id,
@@ -137,8 +147,8 @@ func NewLUKS2KeyDataWriter(devicePath, name string) (*LUKS2KeyDataWriter, error)
 func (w *LUKS2KeyDataWriter) Commit() error {
 	token := &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: w.slot,
-			TokenName:    w.name},
+			TokenKeyslots: []int{w.slot},
+			TokenName:     w.name},
 		Priority: w.priority,
 		Data:     w.Bytes()}
 

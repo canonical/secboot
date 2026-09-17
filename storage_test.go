@@ -40,16 +40,19 @@ func (c *mockStorageContainerWithProbeContext) probeContext() context.Context {
 }
 
 type mockStorageContainerBackend struct {
-	containers          map[string]*mockStorageContainer
-	activatedContainers map[string]*mockStorageContainer
-	probeErr            error
-	probeActivatedErr   error
+	containers               map[string]*mockStorageContainer
+	activatedContainers      map[string]*mockStorageContainer
+	probeErr                 error
+	probeActivatedErr        error
+	reencryptions            map[string]*mockReencryption
+	newOnlineReencryptionErr error
 }
 
 func newMockStorageContainerBackend() *mockStorageContainerBackend {
 	return &mockStorageContainerBackend{
 		containers:          make(map[string]*mockStorageContainer),
 		activatedContainers: make(map[string]*mockStorageContainer),
+		reencryptions:       make(map[string]*mockReencryption),
 	}
 }
 
@@ -119,6 +122,30 @@ func (b *mockStorageContainerBackend) ProbeActivated(ctx context.Context, path s
 		backendProbeCtx:      ctx,
 		mockStorageContainer: container,
 	}, nil
+}
+
+func (b *mockStorageContainerBackend) NewOnlineReencryption(activeName string) (Reencryption, error) {
+	if b.newOnlineReencryptionErr != nil {
+		return nil, b.newOnlineReencryptionErr
+	}
+
+	reencryption, exists := b.reencryptions[activeName]
+	if !exists {
+		return nil, nil
+	}
+	return reencryption, nil
+}
+
+func (b *mockStorageContainerBackend) addReencryption(activeName string, reencryption *mockReencryption) {
+	if reencryption == nil {
+		delete(b.reencryptions, activeName)
+		return
+	}
+	b.reencryptions[activeName] = reencryption
+}
+
+func (b *mockStorageContainerBackend) setNewOnlineReencryptionErr(err error) {
+	b.newOnlineReencryptionErr = err
 }
 
 type storageSuite struct{}
