@@ -1,9 +1,7 @@
-//go:build amd64
-
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2024 Canonical Ltd
+ * Copyright (C) 2024-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -26,7 +24,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/canonical/cpuid"
 	"github.com/canonical/go-tpm2"
 	"github.com/pilebones/go-udev/netlink"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
@@ -346,7 +343,7 @@ const (
 func checkHostSecurityIntelCPUDebuggingLocked(env internal_efi.HostEnvironmentAMD64) error {
 	// Check for "Silicon Debug Interface", returned in bit 11 of %ecx when calling
 	// cpuid with %eax=1.
-	debugSupported := env.HasCPUIDFeature(cpuid.SDBG)
+	debugSupported := env.HasCPUIDFeature(internal_efi.CPUIDFeatureSDBG)
 	if !debugSupported {
 		return nil
 	}
@@ -374,7 +371,7 @@ func checkHostSecurityIntelCPUDebuggingLocked(env internal_efi.HostEnvironmentAM
 // restrictedTPMLocalitiesIntel returns the TPM localities with access restricted
 // from the OS.
 func restrictedTPMLocalitiesIntel(env internal_efi.HostEnvironmentAMD64) tpm2.Locality {
-	if env.HasCPUIDFeature(cpuid.SMX) {
+	if env.HasCPUIDFeature(internal_efi.CPUIDFeatureSMX) {
 		// The Intel TXT spec says that locality 4 is only available to microcode,
 		// and is locked before handing over to an ACM which has access to locality
 		// 3. The SINIT ACM uses this to establish a D-RTM and then locks access to

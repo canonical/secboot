@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2021-2024 Canonical Ltd
+ * Copyright (C) 2021-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -21,6 +21,7 @@ package efi_test
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"io"
 	"os"
@@ -637,4 +638,130 @@ func (s *defaultEnvSuite) TestSysfsDeviceParentNoParent(c *C) {
 	parent, err = parent.Parent()
 	c.Check(err, IsNil)
 	c.Check(parent, IsNil)
+}
+
+type defaultEnvAMD64Suite struct {
+	restoreGOARCH func()
+}
+
+var _ = Suite(&defaultEnvAMD64Suite{})
+
+func (s *defaultEnvAMD64Suite) SetUpTest(c *C) {
+	s.restoreGOARCH = MockRuntimeGOARCH("amd64")
+}
+
+func (s *defaultEnvAMD64Suite) TearDownTest(c *C) {
+	s.restoreGOARCH()
+	s.restoreGOARCH = nil
+}
+
+func (s *defaultEnvAMD64Suite) TestCPUVendorIdentificatorIntel(c *C) {
+	restore := MockCPUIDVendorIdentificator(func() string { return "GenuineIntel" })
+	defer restore()
+
+	amd64, err := DefaultEnv.AMD64()
+	c.Assert(err, IsNil)
+	c.Check(amd64.CPUVendorIdentificator(), Equals, "GenuineIntel")
+}
+
+func (s *defaultEnvAMD64Suite) TestCPUVendorIdentificatorAMD(c *C) {
+	restore := MockCPUIDVendorIdentificator(func() string { return "AuthenticAMD" })
+	defer restore()
+
+	amd64, err := DefaultEnv.AMD64()
+	c.Assert(err, IsNil)
+	c.Check(amd64.CPUVendorIdentificator(), Equals, "AuthenticAMD")
+}
+
+func (s *defaultEnvAMD64Suite) TestCPUFamily1(c *C) {
+	restore := MockCPUIDFamily(func() uint32 { return 0x12 })
+	defer restore()
+
+	amd64, err := DefaultEnv.AMD64()
+	c.Assert(err, IsNil)
+	c.Check(amd64.CPUFamily(), Equals, uint32(0x12))
+}
+
+func (s *defaultEnvAMD64Suite) TestCPUFamily2(c *C) {
+	restore := MockCPUIDFamily(func() uint32 { return 0x17 })
+	defer restore()
+
+	amd64, err := DefaultEnv.AMD64()
+	c.Assert(err, IsNil)
+	c.Check(amd64.CPUFamily(), Equals, uint32(0x17))
+}
+
+func (s *defaultEnvAMD64Suite) TestCPUIDHasFeatureSDBGTrue(c *C) {
+	restore := MockCPUIDHasFeature(func(feature uint64) bool {
+		c.Check(feature, Equals, CPUIDFeatureSDBG)
+		return true
+	})
+	defer restore()
+
+	amd64, err := DefaultEnv.AMD64()
+	c.Assert(err, IsNil)
+	c.Check(amd64.HasCPUIDFeature(CPUIDFeatureSDBG), testutil.IsTrue)
+}
+
+func (s *defaultEnvAMD64Suite) TestCPUIDHasFeatureSDBGFalse(c *C) {
+	restore := MockCPUIDHasFeature(func(feature uint64) bool {
+		c.Check(feature, Equals, CPUIDFeatureSDBG)
+		return false
+	})
+	defer restore()
+
+	amd64, err := DefaultEnv.AMD64()
+	c.Assert(err, IsNil)
+	c.Check(amd64.HasCPUIDFeature(CPUIDFeatureSDBG), testutil.IsFalse)
+}
+
+func (s *defaultEnvAMD64Suite) TestCPUIDHasFeatureArbitraryBitPassedThrough(c *C) {
+	// Verify that an arbitrary feature bit is forwarded unchanged to the
+	// underlying hook (architecture-neutral replacement for SSE3-specific test).
+	const arbitraryFeature = uint64(1) << 0 // leaf 1, ECX bit 0
+	restore := MockCPUIDHasFeature(func(feature uint64) bool {
+		c.Check(feature, Equals, arbitraryFeature)
+		return true
+	})
+	defer restore()
+
+	amd64, err := DefaultEnv.AMD64()
+	c.Assert(err, IsNil)
+	c.Check(amd64.HasCPUIDFeature(arbitraryFeature), testutil.IsTrue)
+}
+
+func (s *defaultEnvAMD64Suite) TestReadMSR(c *C) {
+	dir := c.MkDir()
+	restore := MockDevcpuPath(dir)
+	defer restore()
+
+	c.Assert(os.Mkdir(filepath.Join(dir, "0"), 0755), IsNil)
+	c.Assert(os.Mkdir(filepath.Join(dir, "1"), 0755), IsNil)
+
+	data := make([]byte, 0xc80)
+	var data8 [8]byte
+	binary.LittleEndian.PutUint64(data8[:], 0x40000000)
+	data = append(data, data8[:]...)
+
+	c.Assert(os.WriteFile(filepath.Join(dir, "0/msr"), data, 0644), IsNil)
+	c.Assert(os.WriteFile(filepath.Join(dir, "1/msr"), data, 0644), IsNil)
+
+	amd64, err := DefaultEnv.AMD64()
+	c.Assert(err, IsNil)
+	vals, err := amd64.ReadMSRs(0xc80)
+	c.Assert(err, IsNil)
+	c.Check(vals, DeepEquals, map[uint32]uint64{
+		0: 0x40000000,
+		1: 0x40000000,
+	})
+}
+
+func (s *defaultEnvAMD64Suite) TestNotAMD64Host(c *C) {
+	// Override the arch pinned by SetUpTest to simulate a non-amd64 host.
+	// This now runs on every architecture including amd64 itself.
+	restore := MockRuntimeGOARCH("arm64")
+	defer restore()
+
+	_, err := DefaultEnv.AMD64()
+	c.Check(err, Equals, ErrNotAMD64Host)
 }
