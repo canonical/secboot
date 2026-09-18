@@ -1162,7 +1162,7 @@ func (s *tpmAmd64Suite) SetUpTest(c *C) {
 
 var _ = Suite(&tpmAmd64Suite{})
 
-func (s *tpmIntelSuite) TestIsTPMDiscreteIntelYes(c *C) {
+func (s *tpmAmd64Suite) TestIsTPMDiscreteIntelYes(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
 		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 1, map[uint32]uint64{0x13a: (2 << 1)}),
 	)
@@ -1171,7 +1171,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteIntelYes(c *C) {
 	c.Check(discrete, testutil.IsTrue)
 }
 
-func (s *tpmIntelSuite) TestIsTPMDiscreteIntelNo(c *C) {
+func (s *tpmAmd64Suite) TestIsTPMDiscreteIntelNo(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
 		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 1, map[uint32]uint64{0x13a: (3 << 1)}),
 	)
@@ -1180,7 +1180,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteIntelNo(c *C) {
 	c.Check(discrete, testutil.IsFalse)
 }
 
-func (s *tpmIntelSuite) TestIsTPMDiscreteIntelNoTPM2(c *C) {
+func (s *tpmAmd64Suite) TestIsTPMDiscreteIntelNoTPM2(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
 		efitest.WithAMD64Environment("GenuineIntel", 0x6, nil, 1, map[uint32]uint64{0x13a: (0 << 1)}),
 	)
@@ -1189,7 +1189,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteIntelNoTPM2(c *C) {
 	c.Check(errors.Is(err, ErrNoTPM2Device), testutil.IsTrue)
 }
 
-func (s *tpmIntelSuite) TestIsTPMDiscreteAMD(c *C) {
+func (s *tpmAmd64Suite) TestIsTPMDiscreteAMD(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("AuthenticAMD", 0x1a, nil, 1, nil))
 	_, err := IsTPMDiscrete(env)
 	c.Check(err, ErrorMatches, `unsupported platform: cannot check TPM discreteness on AMD systems`)
@@ -1198,7 +1198,7 @@ func (s *tpmIntelSuite) TestIsTPMDiscreteAMD(c *C) {
 	c.Check(errors.As(err, &upe), testutil.IsTrue)
 }
 
-func (s *tpmIntelSuite) TestIsTPMDiscreteUnrecognizedCPUVendor(c *C) {
+func (s *tpmAmd64Suite) TestIsTPMDiscreteUnrecognizedCPUVendor(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineInte", 0x6, nil, 1, nil))
 	_, err := IsTPMDiscrete(env)
 	c.Check(err, ErrorMatches, `unsupported platform: cannot determine CPU vendor: unknown CPU vendor: GenuineInte`)
