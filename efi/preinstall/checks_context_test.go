@@ -218,7 +218,7 @@ func (s *runChecksContextSuite) TestRunGood(c *C) {
 	// Good test on a fTPM with a single run
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -257,7 +257,7 @@ func (s *runChecksContextSuite) TestRunGoodSHA384(c *C) {
 	// Good test on a fTPM with a single run and SHA384 selected as the PCR bank
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
@@ -309,7 +309,7 @@ func (s *runChecksContextSuite) TestRunGoodSHA1FromInitialFlags(c *C) {
 	// permitted by passing the PermitWeakPCRBanks flag as an initial flag.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -362,7 +362,7 @@ func (s *runChecksContextSuite) TestRunGoodPermitInsufficientDMAProtectionFromIn
 	// supplying PermitInsufficientDMAProtection as an initial flag.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -410,7 +410,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitInsufficientDMAPro
 	// Test that ActionProceed enables PermitInsufficientDMAProtection.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -473,7 +473,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitNoHardwareRootOfTr
 	// Test that ActionProceed enables PermitNoHardwareRootOfTrust.
 	required := runChecksHostCapabilityInsufficientHWRootOfTrust
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -535,7 +535,7 @@ func (s *runChecksContextSuite) TestRunGoodPostInstall(c *C) {
 	// NV counters.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -576,7 +576,7 @@ func (s *runChecksContextSuite) TestRunGoodPreAndPostInstall(c *C) {
 	// Test good pre-install and post-install scenario on a fTPM.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -651,7 +651,7 @@ func (s *runChecksContextSuite) TestRunGoodPermitVirtualMachineFromInitialFlags(
 	// the initial flags to permit it.
 	required := runChecksHostCapabilityVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -695,7 +695,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitVirtualMachine(c *
 	// Test that ActionProceed turns on PermitVirtualMachine.
 	required := runChecksHostCapabilityVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -757,7 +757,7 @@ func (s *runChecksContextSuite) TestRunGoodDiscreteTPMDetectedSL3(c *C) {
 		runChecksHostCapabilityDiscreteTPM |
 		runChecksHostCapabilityStartupLocality3InaccessibleFromOS
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -805,7 +805,7 @@ func (s *runChecksContextSuite) TestRunGoodDiscreteTPMDetectedHCRTM(c *C) {
 		runChecksHostCapabilityDiscreteTPM |
 		runChecksHostCapabilityStartupLocality4InaccessibleFromOS
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -853,7 +853,7 @@ func (s *runChecksContextSuite) TestRunGoodInvalidPCR0Value(c *C) {
 	required := runChecksHostCapabilityValid |
 		runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -901,7 +901,7 @@ func (s *runChecksContextSuite) TestRunGoodInvalidPCR2ValueWhenOmittedFromPCRPro
 	// with the log, but PCR2 isn't required for the specified profile options.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		func() {
@@ -956,7 +956,7 @@ func (s *runChecksContextSuite) TestRunGoodInvalidPCR4ValueWhenOmittedFromPCRPro
 	// with the log, but PCR4 isn't required for the specified profile options.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		func() {
@@ -1013,7 +1013,7 @@ func (s *runChecksContextSuite) TestRunGoodAddonDriversPresentFromInitialFlags(c
 	// initial flag.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -1063,7 +1063,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitAddonDrivers(c *C)
 	// Test that ActionProceed turns on PermitAddonDrivers.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -1158,7 +1158,7 @@ func (s *runChecksContextSuite) TestRunGoodSysPrepAppsPresentFromInitialFlags(c 
 	// initial flag.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -1220,7 +1220,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitSysPrepApplication
 	// Test that ActionProceed enables PermitSysPrepApplications.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -1334,7 +1334,7 @@ func (s *runChecksContextSuite) TestRunGoodAbsoluteActiveFromInitialFlags(c *C) 
 	// permitted with the PermitAbsoluteComputrace initial flag.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -1381,7 +1381,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitAbsolute(c *C) {
 	// Test that ActionProceed enables PermitAbsoluteComputrace.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -1446,7 +1446,7 @@ func (s *runChecksContextSuite) TestRunGoodNoBootManagerCodeProfileSupportWhenOm
 	// are invalid, but the profile options permits the omission of PCR4.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		func() {
@@ -1511,7 +1511,7 @@ func (s *runChecksContextSuite) TestRunGoodPreOSSecureBootAuthByEnrolledDigestsF
 	// as one of the initial flags.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -1561,7 +1561,7 @@ func (s *runChecksContextSuite) TestRunGoodPreOSSecureBootAuthByEnrolledDigestsF
 func (s *runChecksContextSuite) TestRunGoodActionProceedPermitSecureBootUserMode(c *C) {
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -1626,7 +1626,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitSecureBootUserMode
 func (s *runChecksContextSuite) TestRunGoodPermitSecureBootUserModeFromInitialFlags(c *C) {
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -1674,7 +1674,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitPreOSSecureBootAut
 	// be used to ignore multiple errors.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -1780,7 +1780,7 @@ func (s *runChecksContextSuite) TestRunGoodWeakSecureBootAlgsFromInitialFlags(c 
 	// was supplied as an initial flag.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -1835,7 +1835,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedPermitWeakSecureBootAlgs
 	// can be used to ignore multiple errors.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -1951,7 +1951,7 @@ func (s *runChecksContextSuite) TestRunGoodActionProceedIndividualWithMultipleEr
 	// multiple errors are reported.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2093,7 +2093,7 @@ func (s *runChecksContextSuite) TestRunGoodPostInstallTPMDeviceLockedOut(c *C) {
 	// it will be cleared during a reprovision as well.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2152,7 +2152,7 @@ func (s *runChecksContextSuite) TestRunGoodActionClearTPMSimple(c *C) {
 	// Test that ActionClearTPMSimple works.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2229,7 +2229,7 @@ func (s *runChecksContextSuite) TestRunGoodActionClearTPM(c *C) {
 	// Test that ActionClearTPM works.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2307,7 +2307,7 @@ func (s *runChecksContextSuite) TestRunGoodActionClearTPMMissingAuthValueArg(c *
 	// value and no arguments are supplied.
 	required := runChecksHostCapabilityValid | runChecksHostCapabilityFirmwareTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2387,7 +2387,7 @@ func (s *runChecksContextSuite) TestRunGoodStartupLocalityNotProtected(c *C) {
 		runChecksHostCapabilityDiscreteTPM |
 		runChecksHostCapabilityStartupLocality0AccessibleFromOS
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2430,7 +2430,7 @@ func (s *runChecksContextSuite) TestRunGoodInvalidPCR0ValueDiscreteTPM(c *C) {
 	required := runChecksHostCapabilityValid |
 		runChecksHostCapabilityDiscreteTPM
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2480,7 +2480,7 @@ func (s *runChecksContextSuite) TestRunGoodInvalidPCR0ValueDiscreteTPM(c *C) {
 func (s *runChecksContextSuite) TestRunBadUnexpectedAction(c *C) {
 	required := runChecksHostCapabilities(0)
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2497,7 +2497,7 @@ func (s *runChecksContextSuite) TestRunBadUnexpectedAction(c *C) {
 func (s *runChecksContextSuite) TestRunBadExternalAction(c *C) {
 	required := runChecksHostCapabilityNotVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2535,7 +2535,7 @@ func (s *runChecksContextSuite) TestRunBadVirtualMachine(c *C) {
 	// is detected.
 	required := runChecksHostCapabilityVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2561,7 +2561,7 @@ func (s *runChecksContextSuite) TestRunBadNotEFI(c *C) {
 	// Test the error case where the host system is not EFI
 	required := runChecksHostCapabilityNotVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2583,7 +2583,7 @@ func (s *runChecksContextSuite) TestRunBadEFIVariableAccessError(c *C) {
 	// Test the error case where an EFI variable access fails
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2617,7 +2617,7 @@ func (s *runChecksContextSuite) TestRunBadNoTPM2Device(c *C) {
 	// Test the error case where no valid TPM2 device is detected.
 	required := runChecksHostCapabilityNotVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2638,7 +2638,7 @@ func (s *runChecksContextSuite) TestRunBadTPMDeviceFailure(c *C) {
 	// Test the error case where the TPM device is in failure mode.
 	required := runChecksHostCapabilityNotVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2667,7 +2667,7 @@ func (s *runChecksContextSuite) TestRunBadNoPCClientTPMDevice(c *C) {
 	// a PC Client device.
 	required := runChecksHostCapabilityNotVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2692,7 +2692,7 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabled(c *C) {
 	// Test the error case where the TPM has been disabled by firmware.
 	required := runChecksHostCapabilityNotVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2735,7 +2735,7 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabledRunEnableTPMViaFirmw
 	// we run the ActionEnableTPMViaFirmware action.
 	required := runChecksHostCapabilityNotVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		p := &mockPPI{
@@ -2791,7 +2791,7 @@ func (s *runChecksContextSuite) TestRunBadTPM2DeviceDisabledRunEnableAndClearTPM
 	// we run the ActionEnableAndClearTPMViaFirmware action.
 	required := runChecksHostCapabilityNotVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		p := &mockPPI{
@@ -2846,7 +2846,7 @@ func (s *runChecksContextSuite) TestRunBadTPMHierarchiesOwned(c *C) {
 	// Test the error case where one or more hierarchies of the TPM are already owned.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -2903,7 +2903,7 @@ func (s *runChecksContextSuite) TestRunBadTPMHierarchiesOwnedRunActionClearTPMVi
 	// we run the ActionClearTPMViaFirmware action.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		p := &mockPPI{
@@ -2973,7 +2973,7 @@ func (s *runChecksContextSuite) TestRunBadTPMHierarchiesOwnedRunActionEnableAndC
 	// we run the ActionEnableAndClearTPMViaFirmware action.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		p := &mockPPI{
@@ -3041,7 +3041,7 @@ func (s *runChecksContextSuite) TestRunBadTPMDeviceLockoutLockedOut(c *C) {
 	// Test the error case where the TPM's lockout hierarchy is locked out.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3102,7 +3102,7 @@ func (s *runChecksContextSuite) TestRunBadTPMDeviceLockoutLockedOutRunActionClea
 	// we run the ActionClearTPMViaFirmware action.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		p := &mockPPI{
@@ -3179,7 +3179,7 @@ func (s *runChecksContextSuite) TestRunBadTPMDeviceLockoutLockedOutRunActionEnab
 	// we run the ActionEnableAndClearTPMViaFirmware action.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		p := &mockPPI{
@@ -3255,7 +3255,7 @@ func (s *runChecksContextSuite) TestRunBadTPMInsufficientCounters(c *C) {
 	// Test the error case where there appears to be too few NV counters.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3306,7 +3306,7 @@ func (s *runChecksContextSuite) TestRunBadTPMInsufficientCountersRunActionClearT
 	// we run the ActionClearTPMViaFirmware action.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		p := &mockPPI{
@@ -3365,7 +3365,7 @@ func (s *runChecksContextSuite) TestRunBadTPMInsufficientCountersRunActionEnable
 	// we run the ActionEnableAndClearTPMViaFirmware action.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		p := &mockPPI{
@@ -3425,7 +3425,7 @@ func (s *runChecksContextSuite) TestRunBadTPMHierarchiesOwnedAndLockedOut(c *C) 
 	// RunChecks completes with success.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3493,7 +3493,7 @@ func (s *runChecksContextSuite) TestRunBadTCGLog(c *C) {
 	// Test the error case where the TCG log cannot be decoded.
 	required := runChecksHostCapabilityNotVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3524,7 +3524,7 @@ func (s *runChecksContextSuite) TestRunBadInvalidPCR2Value(c *C) {
 	// has been marked as mandatory due to the usage of the Microsoft UEFI CA.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3567,7 +3567,7 @@ func (s *runChecksContextSuite) TestRunBadInvalidPCR4Value(c *C) {
 	// has been marked as mandatory due to the usage of the Microsoft UEFI CA.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3611,7 +3611,7 @@ func (s *runChecksContextSuite) TestRunBadInvalidPCR7Value(c *C) {
 	// require it.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3655,7 +3655,7 @@ func (s *runChecksContextSuite) TestRunBadUEFIDebuggingEnabled(c *C) {
 	// Test the error case where a UEFI debugger is enabled.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3684,7 +3684,7 @@ func (s *runChecksContextSuite) TestRunBadInsufficientDMAProtection(c *C) {
 	// Test the error case where DMA protection is disabled.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3718,7 +3718,7 @@ func (s *runChecksContextSuite) TestRunBadNoKernelIOMMU(c *C) {
 	// Test the error case where the kernel doesn't enable a IOMMU
 	required := runChecksHostCapabilityNoKernelIOMMU
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3751,7 +3751,7 @@ func (s *runChecksContextSuite) TestRunChecksBadTPMHierarchiesOwnedAndNoKernelIO
 	// errors doesn't permit it.
 	required := runChecksHostCapabilityNoKernelIOMMU
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3808,7 +3808,7 @@ func (s *runChecksContextSuite) TestRunBadNoHardwareRootOfTrust(c *C) {
 	// Test the error case where the hardware root of trust is insufficient.
 	required := runChecksHostCapabilityInsufficientHWRootOfTrust
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3911,7 +3911,7 @@ func (s *runChecksContextSuite) TestRunBadSHA1(c *C) {
 	// than SHA1, but SHA1 is disallowed by default.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -3961,7 +3961,7 @@ func (s *runChecksContextSuite) TestRunBadPCRProfileMostSecure(c *C) {
 	// PCRs - it is intended that this will work eventually.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4004,7 +4004,7 @@ func (s *runChecksContextSuite) TestRunBadInvalidPCR7ValuePCRProfilePermitNoSecu
 	// work in the future.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4049,7 +4049,7 @@ func (s *runChecksContextSuite) TestRunBadAddonDriversPresent(c *C) {
 	// but the initial flags do not permit these.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4122,7 +4122,7 @@ func (s *runChecksContextSuite) TestRunBadSysPrepAppsPresent(c *C) {
 	// but the initial flags do not permit these.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4214,7 +4214,7 @@ func (s *runChecksContextSuite) TestRunBadAbsoluteActive(c *C) {
 	// flags do not permit this.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4260,7 +4260,7 @@ func (s *runChecksContextSuite) TestRunBadNotAllBootManagerCodeDigestsVerified(c
 	// supplied when creating the RunChecksContext.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4306,7 +4306,7 @@ func (s *runChecksContextSuite) TestRunBadInvalidSecureBootModeSecureBootDisable
 	// but is marked invalid because secure boot is disabled.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4354,7 +4354,7 @@ func (s *runChecksContextSuite) TestRunBadInvalidSecureBootModeSecureBootDisable
 	// https://launchpad.net/bugs/2125439
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4401,7 +4401,7 @@ func (s *runChecksContextSuite) TestRunBadNoSecureBootPolicySupport(c *C) {
 	// because dbx is measured twice.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		log := efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})
@@ -4457,7 +4457,7 @@ func (s *runChecksContextSuite) TestRunBadWeakSecureBootAlgs(c *C) {
 	// the current boot.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4547,7 +4547,7 @@ func (s *runChecksContextSuite) TestRunBadInvalidSecureBootModeNoDeployedMode(c 
 	// but is marked invalid because the system is not in deployed mode.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4735,7 +4735,7 @@ func (s *runChecksContextSuite) TestRunChecksBadInsufficientDMAProtectionAndNoKe
 	// both of the returned errors.
 	required := runChecksHostCapabilityNoKernelIOMMU
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		s.RequireAlgorithm(c, tpm2.AlgorithmSHA384)
@@ -4789,7 +4789,7 @@ func (s *runChecksContextSuite) TestRunChecksActionEnableTPMViaFirmwareNotAvaila
 	// this action is not available.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4830,7 +4830,7 @@ func (s *runChecksContextSuite) TestRunChecksActionEnableAndClearTPMViaFirmwareN
 	// this action is not available.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4871,7 +4871,7 @@ func (s *runChecksContextSuite) TestRunChecksActionClearTPMViaFirmwareNotAvailab
 	// is not available.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4928,7 +4928,7 @@ func (s *runChecksContextSuite) TestRunChecksPPIActionWithShutdownTransition(c *
 	// "reboot".
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -4977,7 +4977,7 @@ func (s *runChecksContextSuite) TestRunChecksActionProceedUnavailable(c *C) {
 	// be suppressed in this case.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -5041,7 +5041,7 @@ func (s *runChecksContextSuite) TestRunChecksActionProceedErrorsOrderedAfterOthe
 	// returned after other errors.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -5102,7 +5102,7 @@ func (s *runChecksContextSuite) TestRunChecksActionProceedUnsupportedArgumentTyp
 	// generates an error.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -5194,7 +5194,7 @@ func (s *runChecksContextSuite) TestRunChecksActionProceedUnexpectedErrorKind1(c
 	// generates an error.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -5286,7 +5286,7 @@ func (s *runChecksContextSuite) TestRunChecksActionProceedUnexpectedErrorKind2(c
 	// more than once generates an error.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -5396,7 +5396,7 @@ func (s *runChecksContextSuite) TestRunChecksActionProceedUnexpectedErrorKind3(c
 	// already accepting all errors generates an error.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -5495,7 +5495,7 @@ func (s *runChecksContextSuite) TestRunChecksClearTPMNotAvailable(c *C) {
 	// not available because owner clear is disabled.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -5555,7 +5555,7 @@ func (s *runChecksContextSuite) TestRunChecksClearTPMSimpleNotAvailable(c *C) {
 	// lockout hierarchy has a non-empty authorization value.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -5613,7 +5613,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMSimpleFailsInvalidAuthVa
 	// receiving the first error and submitting the action.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -5697,7 +5697,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMSimpleFailsWithError(c *
 	// TPM fails for some reason.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -5781,7 +5781,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMSimpleBecomesUnavailable
 	// hierarchy is used with an invalid auth value.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -5878,7 +5878,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMInvalidAuthValueArgument
 	// hierarchy authorization value argument is the wrong type.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -5964,7 +5964,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMInvalidAuthValue(c *C) {
 	// the lockoutAuthSet attribute.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -6049,7 +6049,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMFailsWithError(c *C) {
 	// TPM fails for some reason.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
@@ -6133,7 +6133,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMBecomesUnavailableAfterL
 	// hierarchy is used with an invalid auth value.
 	required := runChecksHostCapabilityValid
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
-		c.Logf("running with host fixture %q", fixture.name)
+		logRunChecksHostFixture(fixture)
 		fixture.mockRuntimeGOARCH(s)
 
 		errs := s.testRun(c, &testRunChecksContextRunParams{
