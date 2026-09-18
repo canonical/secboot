@@ -20,6 +20,10 @@
 package preinstall_test
 
 import (
+	"fmt"
+	"runtime"
+	"strings"
+
 	. "github.com/snapcore/secboot/efi/preinstall"
 	internal_cpuid "github.com/snapcore/secboot/internal/cpuid"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
@@ -102,6 +106,27 @@ func (f *runChecksHostFixture) newEnvironment(options ...efitest.MockHostEnviron
 
 func (f *runChecksHostFixture) mockRuntimeGOARCH(s interface{ AddCleanup(func()) }) {
 	s.AddCleanup(MockRuntimeGOARCH(f.arch))
+}
+
+// logRunChecksHostFixture prints the fixture with the calling gocheck test's name.
+// It must be called directly from a test method.
+func logRunChecksHostFixture(fixture runChecksHostFixture) {
+	pc, _, _, ok := runtime.Caller(1)
+	if !ok {
+		panic("cannot determine host fixture test")
+	}
+	fn := runtime.FuncForPC(pc)
+	if fn == nil {
+		panic("cannot determine host fixture test function")
+	}
+
+	testName := fn.Name()
+	receiver := strings.LastIndex(testName, ".(*")
+	if receiver < 0 {
+		panic(fmt.Sprintf("cannot parse host fixture test name %q", testName))
+	}
+	testName = strings.Replace(testName[receiver+3:], ").", ".", 1)
+	fmt.Printf("%s: host fixture: %s\n", testName, fixture.name)
 }
 
 // intelDevices builds the mock Intel MEI/IOMMU sysfs topology.
