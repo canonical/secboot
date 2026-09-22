@@ -45,6 +45,8 @@ var (
 	// required features.
 	ErrMissingCryptsetupFeature = luks2.ErrMissingCryptsetupFeature
 
+	ErrKeyslotNameNotExist = errors.New("no key with the specified name exists")
+
 	luks2Activate        = luks2.Activate
 	luks2AddKey          = luks2.AddKey
 	luks2Deactivate      = luks2.Deactivate
@@ -870,7 +872,7 @@ func DeleteLUKS2ContainerKey(devicePath, keyslotName string) error {
 
 	token, id, exists := view.TokenByName(keyslotName)
 	if !exists {
-		return errors.New("no key with the specified name exists")
+		return ErrKeyslotNameNotExist
 	}
 
 	if len(view.TokenNames()) == 1 {
@@ -920,7 +922,7 @@ func renameLUKS2ContainerKey(nonAtomic *nonAtomicOperationAllowedFlag, devicePat
 
 	token, id, exists := view.TokenByName(oldName)
 	if !exists {
-		return errors.New("no key with the specified name exists")
+		return ErrKeyslotNameNotExist
 	}
 
 	if _, _, exists := view.TokenByName(newName); exists {
@@ -1043,4 +1045,20 @@ func NameLegacyLUKS2ContainerKey(devicePath string, keyslot int, newName string)
 // Check if key is valid key for LUKS2 container at devicePath.
 func TestLUKS2ContainerKey(devicePath string, key []byte) bool {
 	return luks2.TestContainerKey(devicePath, key)
+}
+
+// Check if key is valid key for LUKS2 container at devicePath for a specific keyslot.
+func TestLUKS2ContainerKeyForKeyslot(devicePath string, name string, key []byte) (bool, error) {
+	view, err := newLUKSView(context.TODO(), devicePath)
+	if err != nil {
+		return false, xerrors.Errorf("cannot obtain LUKS header view: %w", err)
+	}
+
+	_, id, exists := view.TokenByName(name)
+
+	if !exists {
+		return false, ErrKeyslotNameNotExist
+	}
+
+	return luks2.TestContainerKeyForKeyslot(devicePath, id, key), nil
 }

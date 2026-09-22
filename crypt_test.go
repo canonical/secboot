@@ -4137,3 +4137,41 @@ func (s *cryptSuite) TestNameLegacyLUKS2ContainerKeyNameAlreadyUsed(c *C) {
 	err := NameLegacyLUKS2ContainerKey("/dev/foo1", 0, "already-used")
 	c.Check(err, ErrorMatches, `the new name is already in use`)
 }
+
+func (s *cryptSuiteUnmockedBase) TestTestLUKS2ContainerKeyForKeyslot(c *C) {
+	key := s.newPrimaryKey()
+	path := luks2test.CreateEmptyDiskImage(c, 20)
+
+	initOptions := &InitializeLUKS2ContainerOptions{
+		InitialKeyslotName: "initial",
+	}
+	c.Assert(InitializeLUKS2Container(path, "disk", key, initOptions), IsNil)
+
+	otherKey := s.newPrimaryKey()
+	c.Assert(AddLUKS2ContainerUnlockKey(path, "other", key, otherKey), IsNil)
+
+	recoveryKey := s.newRecoveryKey()
+	c.Assert(AddLUKS2ContainerRecoveryKey(path, "recovery", key, recoveryKey), IsNil)
+
+	check := func (name string, testKey []byte, expected bool) {
+		res, err := TestLUKS2ContainerKeyForKeyslot(path, name, testKey)
+		c.Assert(err, IsNil)
+		c.Check(res, Equals, expected)
+	}
+
+	check("initial", key, true)
+	check("initial", otherKey, false)
+	check("initial", recoveryKey[:], false)
+
+	check("other", key, false)
+	check("other", otherKey, true)
+	check("other", recoveryKey[:], false)
+
+	check("recovery", key, false)
+	check("recovery", otherKey, false)
+	check("recovery", recoveryKey[:], true)
+
+	_, err := TestLUKS2ContainerKeyForKeyslot(path, "non-existent", key)
+	c.Check(err, ErrorMatches, `no key with the specified name exists`)
+	c.Check(errors.Is(err, ErrKeyslotNameNotExist), Equals, true)
+}
