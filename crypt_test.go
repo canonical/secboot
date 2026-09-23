@@ -4153,7 +4153,7 @@ func (s *cryptSuiteUnmockedBase) TestTestLUKS2ContainerKeyForKeyslot(c *C) {
 	recoveryKey := s.newRecoveryKey()
 	c.Assert(AddLUKS2ContainerRecoveryKey(path, "recovery", key, recoveryKey), IsNil)
 
-	check := func (name string, testKey []byte, expected bool) {
+	check := func(name string, testKey []byte, expected bool) {
 		res, err := TestLUKS2ContainerKeyForKeyslot(path, name, testKey)
 		c.Assert(err, IsNil)
 		c.Check(res, Equals, expected)

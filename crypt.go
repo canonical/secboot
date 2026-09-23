@@ -1054,11 +1054,12 @@ func TestLUKS2ContainerKeyForKeyslot(devicePath string, name string, key []byte)
 		return false, xerrors.Errorf("cannot obtain LUKS header view: %w", err)
 	}
 
-	_, id, exists := view.TokenByName(name)
-
+	token, _, exists := view.TokenByName(name)
 	if !exists {
 		return false, ErrKeyslotNameNotExist
 	}
 
-	return luks2.TestContainerKeyForKeyslot(devicePath, id, key), nil
+	keyslotId := token.Keyslots()[0]
+
+	return luks2.TestContainerKeyForKeyslot(devicePath, keyslotId, key), nil
 }
