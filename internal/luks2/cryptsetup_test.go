@@ -20,9 +20,11 @@
 package luks2_test
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -103,6 +105,12 @@ func (s *cryptsetupSuiteBase) mockCryptsetupFeatures(c *C, features Features) (c
 		responses = append(responses, "1")
 	}
 
+	if features&FeatureReencrypt > 0 {
+		responses = append(responses, "0")
+	} else {
+		responses = append(responses, "1")
+	}
+
 	c.Check(ioutil.WriteFile(responsesFile, []byte(strings.Join(responses, "\n")), 0644), IsNil)
 
 	cryptsetupBottom := `
@@ -130,7 +138,8 @@ func (s *cryptsetupSuite) testDetectCryptsetupFeatures(c *C, expected Features) 
 
 	c.Check(mockCryptsetup.Calls(), DeepEquals, [][]string{
 		{"cryptsetup", "--version"},
-		{"cryptsetup", "--test-args", "token", "import", "--token-id", "0", "--token-replace", "/dev/null"}})
+		{"cryptsetup", "--test-args", "token", "import", "--token-id", "0", "--token-replace", "/dev/null"},
+		{"cryptsetup", "--test-args", "reencrypt", "--keys-from-stdin-sizes", "1,2", "--active-name", "some-active-name"}})
 	mockCryptsetup.ForgetCalls()
 
 	features = DetectCryptsetupFeatures()
@@ -139,7 +148,7 @@ func (s *cryptsetupSuite) testDetectCryptsetupFeatures(c *C, expected Features) 
 }
 
 func (s *cryptsetupSuite) TestDetectCryptsetupFeaturesAll(c *C) {
-	s.testDetectCryptsetupFeatures(c, FeatureHeaderSizeSetting|FeatureTokenImport|FeatureTokenReplace)
+	s.testDetectCryptsetupFeatures(c, FeatureHeaderSizeSetting|FeatureTokenImport|FeatureTokenReplace|FeatureReencrypt)
 }
 
 func (s *cryptsetupSuite) TestDetectCryptsetupFeaturesNone(c *C) {
@@ -613,8 +622,159 @@ func (s *cryptsetupSuite) TestFormatWithInlineCryptoEngine(c *C) {
 	err := Format("some-path", "test", key, options)
 	c.Assert(err, IsNil)
 	// feature detection
-	c.Assert(mockCryptsetup.Calls(), HasLen, 3)
-	c.Check(mockCryptsetup.Calls()[2], snapd_testutil.Contains, "--inline-crypto-engine")
+	c.Assert(mockCryptsetup.Calls(), HasLen, 4)
+	c.Check(mockCryptsetup.Calls()[3], snapd_testutil.Contains, "--inline-crypto-engine")
+}
+
+func (s *cryptsetupSuite) TestReencryptInitialize(c *C) {
+	s.cryptsetup.ForgetCalls()
+
+	mockCryptsetup := snapd_testutil.MockCommand(c, "cryptsetup", "echo cryptsetup 2.6.1")
+	defer mockCryptsetup.Restore()
+
+	unlockKeys := [][]byte{
+		{1, 2, 3},
+		{4, 5, 6, 7, 8}}
+	err := ReencryptInitialize(context.Background(), "some-active-name", unlockKeys)
+	c.Assert(err, IsNil)
+	c.Assert(mockCryptsetup.Calls(), HasLen, 1)
+	c.Check(mockCryptsetup.Calls()[0], DeepEquals, []string{
+		"cryptsetup", "reencrypt", "--type", "luks2", "--keys-from-stdin-sizes", "3,5",
+		"--batch-mode", "--init-only", "--active-name", "some-active-name"})
+}
+
+func (s *cryptsetupSuite) TestReencryptInitializeExit1(c *C) {
+	s.cryptsetup.ForgetCalls()
+
+	mockCryptsetup := snapd_testutil.MockCommand(c, "cryptsetup", "exit 1")
+	defer mockCryptsetup.Restore()
+
+	unlockKeys := [][]byte{
+		{1, 2, 3},
+		{4, 5, 6, 7, 8}}
+	err := ReencryptInitialize(context.Background(), "some-active-name", unlockKeys)
+	c.Assert(err, NotNil)
+}
+
+func (s *cryptsetupSuite) TestReencryptResume(c *C) {
+	s.cryptsetup.ForgetCalls()
+
+	mockCryptsetup := snapd_testutil.MockCommand(c, "cryptsetup",
+		`read -r k; echo "unlockkey=$k"; for i in 1 2 3; do echo stdout-$i; echo stderr-$i >&2; done`)
+	defer mockCryptsetup.Restore()
+
+	// The cryptsetup process is launched asynchronously and its output
+	// is collected afterwards.
+	unlockKeys := []byte("0000")
+	cmd, stdoutPipe, stderrPipe, err := ReencryptResume(context.Background(), "some-active-name", unlockKeys)
+	c.Assert(err, IsNil)
+
+	var stdoutLines, stderrLines string
+	readLines := func(pipe io.Reader, lines *string, outputDone chan<- struct{}) {
+		inputReader := bufio.NewReader(pipe)
+		for {
+			line, err := inputReader.ReadString('\n')
+			if err != nil {
+				break
+			}
+			*lines += line
+		}
+		outputDone <- struct{}{} // notify the end to the caller of the goroutine
+	}
+	outputDone := make(chan struct{}, 2)
+	go readLines(stdoutPipe, &stdoutLines, outputDone)
+	go readLines(stderrPipe, &stderrLines, outputDone)
+
+	// Wait for the command to terminate
+	err = cmd.Wait()
+	c.Assert(err, IsNil)
+	c.Assert(mockCryptsetup.Calls(), HasLen, 1)
+	c.Check(mockCryptsetup.Calls()[0], DeepEquals, []string{
+		"cryptsetup", "reencrypt", "--type", "luks2", "--key-file", "-",
+		"--batch-mode", "--resume-only", "--progress-frequency", "1", "--progress-json",
+		"--hotzone-size", "10M", "--active-name", "some-active-name"})
+
+	// Wait for both readers to finish digesting the streams
+	<-outputDone
+	<-outputDone
+	c.Check(stdoutLines, Equals, "unlockkey=0000\nstdout-1\nstdout-2\nstdout-3\n")
+	c.Check(stderrLines, Equals, "stderr-1\nstderr-2\nstderr-3\n")
+}
+
+func (s *cryptsetupSuite) TestReencryptResumeExit1(c *C) {
+	s.cryptsetup.ForgetCalls()
+
+	mockCryptsetup := snapd_testutil.MockCommand(c, "cryptsetup", "exit 1")
+	defer mockCryptsetup.Restore()
+
+	// The cryptsetup process is launched asynchronously and its output
+	// is collected afterwards.
+	unlockKeys := []byte("0000")
+	cmd, stdoutPipe, stderrPipe, err := ReencryptResume(context.Background(), "some-active-name", unlockKeys)
+	c.Assert(err, IsNil)
+
+	var stdoutLines, stderrLines string
+	readLines := func(pipe io.Reader, lines *string, outputDone chan<- struct{}) {
+		inputReader := bufio.NewReader(pipe)
+		for {
+			line, err := inputReader.ReadString('\n')
+			if err != nil {
+				break
+			}
+			*lines += line
+		}
+		outputDone <- struct{}{} // notify the end to the caller of the goroutine
+	}
+	outputDone := make(chan struct{}, 2)
+	go readLines(stdoutPipe, &stdoutLines, outputDone)
+	go readLines(stderrPipe, &stderrLines, outputDone)
+
+	// Wait for the command to terminate
+	err = cmd.Wait()
+	c.Assert(err, NotNil)
+}
+
+func (s *cryptsetupSuite) TestReadCryptsetupStatus(c *C) {
+	s.cryptsetup.ForgetCalls()
+
+	script := `
+	echo "  device:  /dev/sda1"
+	echo "  reencryption:  reenc-xxx"
+	`
+	mockCryptsetup := snapd_testutil.MockCommand(c, "cryptsetup", script)
+	defer mockCryptsetup.Restore()
+
+	status, err := ReadCryptsetupStatus("example-name")
+	c.Assert(err, IsNil)
+	c.Check(status.Device, Equals, "/dev/sda1")
+	c.Check(status.Reencryption, Equals, "reenc-xxx")
+}
+
+func (s *cryptsetupSuite) TestReadCryptsetupStatusMissing(c *C) {
+	s.cryptsetup.ForgetCalls()
+
+	script := `
+	echo "  xdevice:  /dev/sda1"
+	echo "  xreencryption:  reenc-xxx"
+	`
+	mockCryptsetup := snapd_testutil.MockCommand(c, "cryptsetup", script)
+	defer mockCryptsetup.Restore()
+
+	status, err := ReadCryptsetupStatus("example-name")
+	c.Assert(err, IsNil)
+	c.Check(status.Device, Equals, "")
+	c.Check(status.Reencryption, Equals, "")
+}
+
+func (s *cryptsetupSuite) TestReadCryptsetupStatusExit1(c *C) {
+	s.cryptsetup.ForgetCalls()
+
+	mockCryptsetup := snapd_testutil.MockCommand(c, "cryptsetup", "echo 123; exit 1")
+	defer mockCryptsetup.Restore()
+
+	status, err := ReadCryptsetupStatus("example-name")
+	c.Check(err, NotNil)
+	c.Assert(status, IsNil)
 }
 
 type testAddKeyData struct {

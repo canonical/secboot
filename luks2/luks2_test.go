@@ -21,6 +21,7 @@ package luks2_test
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/snapcore/secboot"
@@ -111,8 +112,8 @@ func newMockContainerData() *mockContainerData {
 func newKeyDataToken(name string, slot, priority int, data []byte) *luksview.KeyDataToken {
 	return &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: slot,
-			TokenName:    name,
+			TokenKeyslots: []int{slot},
+			TokenName:     name,
 		},
 		Priority: priority,
 		Data:     data,
@@ -127,8 +128,8 @@ func (v *mockLuksView) TokenByName(name string) (token luksview.NamedToken, id i
 	if id, exists := v.data.recoveryKeyslots[name]; exists {
 		return &luksview.RecoveryToken{
 			TokenBase: luksview.TokenBase{
-				TokenKeyslot: id,
-				TokenName:    name,
+				TokenKeyslots: []int{id},
+				TokenName:     name,
 			},
 		}, 0, true // We return 0 for all token IDs because the test doesn't use it.
 	}
@@ -138,6 +139,22 @@ func (v *mockLuksView) TokenByName(name string) (token luksview.NamedToken, id i
 	}
 
 	return nil, 0, false
+}
+
+func (v *mockLuksView) TokenNamesSortedByKeyslotId() ([]string, error) {
+	if v.data == nil {
+		return nil, errors.New("error while getting token names")
+	}
+
+	names := []string{}
+	for name, _ := range v.data.recoveryKeyslots {
+		names = append(names, name)
+	}
+	for name, _ := range v.data.platformKeyslots {
+		names = append(names, name)
+	}
+
+	return names, nil
 }
 
 func newMockLuksView(data *mockContainerData) LuksView {
