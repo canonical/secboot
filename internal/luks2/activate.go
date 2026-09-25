@@ -24,19 +24,31 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/snapcore/snapd/osutil"
 )
 
 var (
-	systemdCryptsetupPath = "/lib/systemd/systemd-cryptsetup"
+	// getSystemdCryptsetupPath is internal and can be overridden by tests.
+	getSystemdCryptsetupPath = defaultSystemdCryptsetupPath
 )
+
+func defaultSystemdCryptsetupPath() string {
+	root := "/"
+	if p := os.Getenv("SNAP"); p != "" {
+		root = p
+	}
+
+	return filepath.Join(root, "lib", "systemd", "systemd-cryptsetup")
+}
 
 // Activate unlocks the LUKS device at sourceDevicePath using systemd-cryptsetup and creates a device
 // mapping with the supplied volumeName. The device is unlocked using the supplied key. The slot
 // arguments specifies which keyslot ID to use - set this to AnySlot to activate with any keyslot.
 func Activate(volumeName, sourceDevicePath string, key []byte, slot int) error {
-	cmd := exec.Command(systemdCryptsetupPath,
+	systemdCryptsetup := getSystemdCryptsetupPath()
+	cmd := exec.Command(systemdCryptsetup,
 		// attach <sourceDevicePath> to /dev/mapper/<volumeName>
 		"attach", volumeName, sourceDevicePath,
 		// read key from stdin
@@ -56,7 +68,8 @@ func Activate(volumeName, sourceDevicePath string, key []byte, slot int) error {
 
 // Deactivate detaches the LUKS volume with the supplied name.
 func Deactivate(volumeName string) error {
-	cmd := exec.Command(systemdCryptsetupPath, "detach", volumeName)
+	systemdCryptsetup := getSystemdCryptsetupPath()
+	cmd := exec.Command(systemdCryptsetup, "detach", volumeName)
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "SYSTEMD_LOG_TARGET=console")
 
