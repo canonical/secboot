@@ -283,7 +283,7 @@ func (m *shimImageLoadMeasurer) measurePEImageDigest() error {
 func (m *shimImageLoadMeasurer) measureVerification() error {
 	sc := m.ShimContext()
 
-	authority, err := m.DetermineAuthority([]*secureBootDB{sc.VendorDb, m.FwContext().Db}, m.image)
+	authority, err := m.DetermineAuthority([]*secureBootDB{m.FwContext().Db, sc.VendorDb}, m.image)
 	if err != nil {
 		return err
 	}
