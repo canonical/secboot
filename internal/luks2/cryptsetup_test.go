@@ -1339,3 +1339,20 @@ func (s *cipherSuite) TestSelectCipherAndKeysize(c *C) {
 		c.Check(keysize, Equals, tc.expectedKeysize)
 	}
 }
+
+func (s *cryptsetupSuite) TestTestContainerKeyForKeyslot(c *C) {
+	key := make([]byte, 32)
+	rand.Read(key)
+
+	otherKey := make([]byte, 32)
+	rand.Read(otherKey)
+
+	devicePath := luks2test.CreateEmptyDiskImage(c, 20)
+	c.Assert(Format(devicePath, "test", key, &FormatOptions{}), IsNil)
+	c.Assert(AddKey(devicePath, key, otherKey, &AddKeyOptions{Slot: 1}), IsNil)
+
+	c.Check(TestContainerKeyForKeyslot(devicePath, 0, key), Equals, true)
+	c.Check(TestContainerKeyForKeyslot(devicePath, 0, otherKey), Equals, false)
+	c.Check(TestContainerKeyForKeyslot(devicePath, 1, key), Equals, false)
+	c.Check(TestContainerKeyForKeyslot(devicePath, 1, otherKey), Equals, true)
+}
