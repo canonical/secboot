@@ -29,8 +29,10 @@ import (
 
 // Export constants for testing
 const (
+	AMDTSMEEnabledParamKey                     = amdTSMEEnabledParamKey
 	GrubChainloaderUsesShimProtocol            = grubChainloaderUsesShimProtocol
 	KernelConfigPCR                            = kernelConfigPCR
+	IncludeHPPreBootDMAConfigParamKey          = includeHPPreBootDMAConfigParamKey
 	KernelCommandlineParamKey                  = kernelCommandlineParamKey
 	ShimFixVariableAuthorityEventsMatchSpec    = shimFixVariableAuthorityEventsMatchSpec
 	ShimHasSbatRevocationManagement            = shimHasSbatRevocationManagement

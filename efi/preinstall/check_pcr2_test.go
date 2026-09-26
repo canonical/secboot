@@ -40,6 +40,7 @@ var _ = Suite(&pcr2Suite{})
 type testCheckDriversAndAppsMeasurementsParams struct {
 	env            internal_efi.HostEnvironment
 	pcrAlg         tpm2.HashAlgorithmId
+	amdConfig      *AMDPreOSMeasurementConfig
 	expectedResult []*LoadedImageInfo
 }
 
@@ -47,7 +48,7 @@ func (s *pcr2Suite) testCheckDriversAndAppsMeasurements(c *C, params *testCheckD
 	log, err := params.env.ReadEventLog()
 	c.Assert(err, IsNil)
 
-	result, err := CheckDriversAndAppsMeasurements(context.Background(), params.env, log, params.pcrAlg)
+	result, err := CheckDriversAndAppsMeasurementsWithConfig(context.Background(), params.env, log, params.pcrAlg, params.amdConfig)
 	if err != nil {
 		return err
 	}

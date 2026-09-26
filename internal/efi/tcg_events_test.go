@@ -51,6 +51,71 @@ func (*tcgEventsSuite) TestIsVendorEventType(c *C) {
 	}
 }
 
+func (*tcgEventsSuite) TestIsHPPreBootDMAConfigEvent(c *C) {
+	const hpData = `"SVM CPU Virtualization":"Enable";"DMA protection":"Enable";"Pre-boot DMA protection":"All PCIe devices";`
+
+	for _, params := range []struct {
+		event    *tcglog.Event
+		expected bool
+	}{
+		{
+			event: &tcglog.Event{
+				PCRIndex:  7,
+				EventType: tcglog.EventTypeEFIAction,
+				Data:      tcglog.StringEventData(hpData),
+			},
+			expected: true,
+		},
+		{
+			event: &tcglog.Event{
+				PCRIndex:  6,
+				EventType: tcglog.EventTypeEFIAction,
+				Data:      tcglog.StringEventData(hpData),
+			},
+		},
+		{
+			event: &tcglog.Event{
+				PCRIndex:  7,
+				EventType: tcglog.EventTypeEFIPlatformFirmwareBlob,
+				Data:      tcglog.StringEventData(hpData),
+			},
+		},
+		{
+			event: &tcglog.Event{
+				PCRIndex:  7,
+				EventType: tcglog.EventTypeEFIAction,
+				Data:      tcglog.StringEventData("UEFI Debug Mode"),
+			},
+		},
+		{
+			event: &tcglog.Event{
+				PCRIndex:  7,
+				EventType: tcglog.EventTypeEFIAction,
+				Data:      tcglog.StringEventData(hpData + "\x00"),
+			},
+		},
+	} {
+		c.Check(IsHPPreBootDMAConfigEvent(params.event), Equals, params.expected)
+	}
+}
+
+func (*tcgEventsSuite) TestAMDTSMEConfigEvent(c *C) {
+	c.Check(AMDTSMEConfigEventData(false), DeepEquals, []byte{0})
+	c.Check(AMDTSMEConfigEventData(true), DeepEquals, []byte{1})
+
+	for _, params := range []struct {
+		event    *tcglog.Event
+		expected bool
+	}{
+		{event: &tcglog.Event{PCRIndex: DriversAndAppsPCR, EventType: AMDTSMEConfigEventType}, expected: true},
+		{event: &tcglog.Event{PCRIndex: SecureBootPolicyPCR, EventType: AMDTSMEConfigEventType}, expected: true},
+		{event: &tcglog.Event{PCRIndex: PlatformConfigPCR, EventType: AMDTSMEConfigEventType}},
+		{event: &tcglog.Event{PCRIndex: DriversAndAppsPCR, EventType: 0x00008402}},
+	} {
+		c.Check(IsAMDTSMEConfigEvent(params.event), Equals, params.expected)
+	}
+}
+
 type invalidEventData struct {
 	err error
 }
