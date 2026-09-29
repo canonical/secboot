@@ -50,6 +50,7 @@ type cryptsetupSuiteBase struct {
 
 func (s *cryptsetupSuiteBase) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
+	s.AddCleanup(ResetCryptsetupFeatures)
 	s.AddCleanup(pathstest.MockRunDir(c.MkDir()))
 	s.AddCleanup(luks2test.WrapCryptsetup(c))
 
