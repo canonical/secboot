@@ -88,6 +88,9 @@ func (s *containerSuite) SetUpTest(c *C) {
 	})
 	s.AddCleanup(restore)
 
+	restore = MockAcquireSharedLock()
+	s.AddCleanup(restore)
+
 	s.commands = nil
 
 	s.activateErr = nil
