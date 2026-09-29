@@ -23,6 +23,8 @@ import (
 	"context"
 	"os"
 
+	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
+
 	"golang.org/x/sys/unix"
 )
 
@@ -115,6 +117,17 @@ func MockUnixStat(fn func(string, *unix.Stat_t) error) (restore func()) {
 	unixStat = fn
 	return func() {
 		unixStat = orig
+	}
+}
+
+func MockAcquireSharedLock() (restore func()) {
+	origAcquireSharedLock := internal_luks2.AcquireSharedLock
+	internal_luks2.AcquireSharedLock = func(context.Context, string) (func(), error) {
+		return func() {}, nil
+	}
+
+	return func() {
+		internal_luks2.AcquireSharedLock = origAcquireSharedLock
 	}
 }
 

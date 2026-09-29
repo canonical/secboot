@@ -187,10 +187,17 @@ func (c *storageContainerImpl) Deactivate(ctx context.Context) error {
 
 // OpenRead implements [secboot.StorageContainer.OpenRead]
 func (c *storageContainerImpl) OpenRead(ctx context.Context) (secboot.StorageContainerReader, error) {
-	// TODO: Implment locking here, especially when we have the OpenReadWriter API. The locking
-	// must prevent any readers being opened if a read/writer is open, and it must prevent more
-	// than one read/writer being open at a time. Multiple readers can be open in parallel.
+	// Get a shared lock here as we don't want cryptsetup sub-processes to modify
+	// the LUKS2 header while we have a ContainerReader around.
+	releaseLock, err := luks2.AcquireSharedLock(ctx, c.path)
+	if err != nil {
+		return nil, err
+	}
+
 	return &storageContainerReader{
-		impl: &storageContainerReadWriterImpl{container: c},
+		impl: &storageContainerReadWriterImpl{
+			container:         c,
+			releaseReaderLock: releaseLock,
+		},
 	}, nil
 }

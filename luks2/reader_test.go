@@ -59,6 +59,9 @@ func (s *readerSuite) SetUpTest(c *C) {
 		return newMockLuksView(data), nil
 	})
 	s.AddCleanup(restore)
+
+	restore = MockAcquireSharedLock()
+	s.AddCleanup(restore)
 }
 
 func (s *readerSuite) listLUKS2ContainerUnlockKeyNames(devicePath string) ([]string, error) {

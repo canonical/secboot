@@ -45,6 +45,10 @@ type storageContainerReadWriterImpl struct {
 	//   read/write access.
 	// - more than one goroutine at a time to have read/write access.
 	keyslots map[string]*keyslotImpl
+
+	// releaseReaderLock is to be called on Close to release the shared lock
+	// on the underlying LUKS2 container, that was acquired at OpenRead.
+	releaseReaderLock func()
 }
 
 // ensureKeyslotNames ensures that the names of keyslots are cached.
@@ -158,8 +162,8 @@ func (s *storageContainerReadWriterImpl) Container() secboot.StorageContainer {
 }
 
 func (s *storageContainerReadWriterImpl) Close() error {
-	// TODO: This does nothing for now but will eventually release a lock (see the
-	// comment in storageContainer.OpenRead).
+	// Release the lock obtained in storageContainer.OpenRead.
+	s.releaseReaderLock()
 	return nil
 }
 
