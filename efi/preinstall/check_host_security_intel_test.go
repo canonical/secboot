@@ -1,9 +1,7 @@
-//go:build amd64
-
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2024 Canonical Ltd
+ * Copyright (C) 2024-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -28,9 +26,9 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/cpuid"
 	"github.com/canonical/go-tpm2"
 	. "github.com/snapcore/secboot/efi/preinstall"
+	internal_cpuid "github.com/snapcore/secboot/internal/cpuid"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/efitest"
 	"github.com/snapcore/secboot/internal/testutil"
@@ -730,7 +728,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDis
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDisabledMSR(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0x40000000}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{internal_cpuid.FeatureSDBG}, 4, map[uint32]uint64{0xc80: 0x40000000}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -738,7 +736,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDis
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDisabledAvailable(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 0}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{internal_cpuid.FeatureSDBG}, 4, map[uint32]uint64{0xc80: 0}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -746,7 +744,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedDis
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedEnabled(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 4, map[uint32]uint64{0xc80: 1}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{internal_cpuid.FeatureSDBG}, 4, map[uint32]uint64{0xc80: 1}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -754,7 +752,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedEna
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErrMissingMSR(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 4, map[uint32]uint64{}))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{internal_cpuid.FeatureSDBG}, 4, map[uint32]uint64{}))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -764,7 +762,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErr
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErrNoMSRSupport(c *C) {
-	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SDBG}, 0, nil))
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{internal_cpuid.FeatureSDBG}, 0, nil))
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)
 
@@ -775,7 +773,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelCPUDebuggingLockedErr
 
 func (s *hostSecurityIntelSuite) TestRestrictedTPMLocalitiesIntel(c *C) {
 	env := efitest.NewMockHostEnvironmentWithOpts(
-		efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{cpuid.SMX}, 0, nil),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{internal_cpuid.FeatureSMX}, 0, nil),
 	)
 	amd64Env, err := env.AMD64()
 	c.Assert(err, IsNil)

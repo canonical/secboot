@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2024 Canonical Ltd
+ * Copyright (C) 2024-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -74,8 +74,8 @@ type HostEnvironmentAMD64 interface {
 	// CPUFamily returns the CPU family ID.
 	CPUFamily() uint32
 
-	// HasCPUIDFeature returns if feature from FeatureNames map in the
-	// github.com/intel-go/cpuid package is available.
+	// HasCPUIDFeature returns whether the supplied CPUID feature is available.
+	// Callers should use the Feature* constants declared by internal/cpuid.
 	HasCPUIDFeature(feature uint64) bool
 
 	// ReadMSRs reads the value of the specified MSR for all CPUs,
