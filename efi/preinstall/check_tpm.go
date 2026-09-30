@@ -25,6 +25,7 @@ import (
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
+	"github.com/pilebones/go-udev/netlink"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
 )
 
@@ -478,6 +479,8 @@ func isTPMDiscrete(env internal_efi.HostEnvironment) (bool, error) {
 	switch runtimeGOARCH {
 	case "amd64":
 		return isTPMDiscreteAMD64(env)
+	case "arm64":
+		return isTPMDiscreteARM64(env)
 	default:
 		return false, &UnsupportedPlatformError{fmt.Errorf("checking for TPM discreteness is not implemented on %s", runtimeGOARCH)}
 	}
@@ -505,5 +508,62 @@ func isTPMDiscreteAMD64(env internal_efi.HostEnvironment) (bool, error) {
 		return false, &UnsupportedPlatformError{errors.New("cannot check TPM discreteness on AMD systems")}
 	default:
 		panic("not reached")
+	}
+}
+
+// isTPMDiscreteARM64 determines whether the default TPM is discrete. OP-TEE firmware
+// TPMs are identified by their backing kernel driver. Other implementations use
+// platform-specific knowledge.
+func isTPMDiscreteARM64(env internal_efi.HostEnvironment) (bool, error) {
+	isOpteefTPM, err := isTPMFirmwareOptee(env)
+	if err != nil {
+		return false, err
+	}
+	if isOpteefTPM {
+		return false, nil
+	}
+
+	arm64Env, err := env.ARM64()
+	if err != nil {
+		return false, err
+	}
+
+	cpuManufacturer, err := arm64Env.CPUManufacturer()
+	if err != nil {
+		return false, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU manufacturer: %w", err)}
+	}
+
+	return false, &UnsupportedPlatformError{fmt.Errorf("unsupported CPU manufacturer: %s", cpuManufacturer)}
+}
+
+// isTPMFirmwareOptee determines whether the default TPM is an OP-TEE firmware TPM,
+// as identified by its backing kernel driver
+func isTPMFirmwareOptee(env internal_efi.HostEnvironment) (bool, error) {
+	devices, err := env.EnumerateDevices(&netlink.RuleDefinition{
+		Env: map[string]string{
+			"SUBSYSTEM": "tpm",
+			"DEVNAME":   "tpm0",
+		},
+	})
+	if err != nil {
+		return false, fmt.Errorf("cannot enumerate TPM devices: %w", err)
+	}
+	if len(devices) != 1 {
+		return false, fmt.Errorf("internal error: expected one tpm0 device, found %d", len(devices))
+	}
+
+	parent, err := devices[0].Parent()
+	if err != nil {
+		return false, fmt.Errorf("cannot obtain parent of tpm0 device: %w", err)
+	}
+	if parent == nil {
+		return false, fmt.Errorf("internal error: tpm0 device has no parent")
+	}
+
+	switch parent.Properties()["DRIVER"] {
+	case "optee-ftpm", "ftpm-tee":
+		return true, nil
+	default:
+		return false, nil
 	}
 }
