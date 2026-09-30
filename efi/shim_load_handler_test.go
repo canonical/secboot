@@ -602,3 +602,47 @@ func (s *shimLoadHandlerSuite) TestMeasureImageLoadBootManagerCodeProfile2(c *C)
 		},
 	})
 }
+
+func (s *shimLoadHandlerSuite) TestMeasureImageLoadSecureBootPolicyProfile15_7PrefersDb(c *C) {
+	verificationDigest := testutil.DecodeHexString(
+		c,
+		"50ebc322b94d41ad0cff5544d532207ba652eefe8c5d8aa27c2186f152fade9e",
+	)
+
+	s.testMeasureImageLoad(c, &testShimMeasureImageLoadData{
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+
+		db: efi.SignatureDatabase{
+			efitest.NewSignatureListX509(c, canonicalCACert, efi.GUID{}),
+		},
+
+		shimFlags: ShimHasSbatVerification |
+			ShimFixVariableAuthorityEventsMatchSpec |
+			ShimVendorCertContainsDb |
+			ShimHasSbatRevocationManagement,
+
+		vendorDb: &SecureBootDB{
+			Name: efi.VariableDescriptor{
+				Name: "MokListRT",
+				GUID: ShimGuid,
+			},
+			Contents: efi.SignatureDatabase{
+				efitest.NewSignatureListX509(c, canonicalCACert, ShimGuid),
+			},
+		},
+
+		image: newMockImage().appendSignatures(
+			efitest.ReadWinCertificateAuthenticodeDetached(c, grubUbuntuSig3),
+		),
+
+		expectedEvents: []*mockPcrBranchEvent{
+			{
+				pcr:       7,
+				eventType: mockPcrBranchExtendEvent,
+				digest:    verificationDigest,
+			},
+		},
+		verificationDigest: verificationDigest,
+	})
+}
