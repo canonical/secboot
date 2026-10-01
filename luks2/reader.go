@@ -25,7 +25,6 @@ import (
 	"sort"
 
 	"github.com/snapcore/secboot"
-	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
 )
 
@@ -72,7 +71,7 @@ func (s *storageContainerReadWriterImpl) ensureKeyslotNames() error {
 		keyslots[name] = &keyslotImpl{
 			keyslotType: secboot.KeyslotTypePlatform,
 			keyslotName: name,
-			keyslotId:   internal_luks2.AnySlot, // use AnySlot to indicate we haven't filled this Keyslot yet.
+			keyslotIds:  nil, // use nil to indicate we haven't filled this Keyslot yet.
 		}
 	}
 
@@ -87,7 +86,7 @@ func (s *storageContainerReadWriterImpl) ensureKeyslotNames() error {
 		keyslots[name] = &keyslotImpl{
 			keyslotType: secboot.KeyslotTypeRecovery,
 			keyslotName: name,
-			keyslotId:   internal_luks2.AnySlot, // use AnySlot to indicate we haven't filled this Keyslot yet.
+			keyslotIds:  nil, // use nil to indicate we haven't filled this Keyslot yet.
 		}
 	}
 
@@ -115,7 +114,7 @@ func (s *storageContainerReadWriterImpl) ensureKeyslot(ctx context.Context, name
 		return secboot.ErrKeyslotNotFound
 	}
 
-	if ks.keyslotId != internal_luks2.AnySlot {
+	if ks.keyslotIds != nil {
 		// We already have everything for this keyslot.
 		return nil
 	}
@@ -137,7 +136,8 @@ func (s *storageContainerReadWriterImpl) ensureKeyslot(ctx context.Context, name
 	if !inUse {
 		return fmt.Errorf("no metadata for keyslot %q", name)
 	}
-	ks.keyslotId = token.Keyslots()[0] // luksview guarantees there is always 1 keyslot here.
+
+	ks.keyslotIds = token.Keyslots()
 	if ks.keyslotType == secboot.KeyslotTypePlatform {
 		// TODO: Once the functionality of luksview is implemented directly in
 		// this package, we'll give recovery keyslots a priority as well. This
@@ -255,7 +255,7 @@ func (s *storageContainerReader) ListKeyslotNames(ctx context.Context) ([]string
 	return s.impl.ListKeyslotNames(ctx)
 }
 
-// ReadKeyslot implements [secboot.StorageContainerReader.ListKeyslotNames].
+// ReadKeyslot implements [secboot.StorageContainerReader.ReadKeyslot].
 func (s *storageContainerReader) ReadKeyslot(ctx context.Context, name string) (secboot.Keyslot, error) {
 	return s.impl.ReadKeyslot(ctx, name)
 }

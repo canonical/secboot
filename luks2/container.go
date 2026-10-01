@@ -156,7 +156,7 @@ func (c *storageContainerImpl) Activate(ctx context.Context, ks secboot.Keyslot,
 	slot := luks2.AnySlot
 	if ks != nil {
 		if lks, ok := ks.(Keyslot); ok {
-			slot = lks.KeyslotID()
+			slot = lks.PreferredKeyslotId()
 		}
 	}
 

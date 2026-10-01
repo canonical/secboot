@@ -64,8 +64,8 @@ func (s *tokenSuite) checkRecoveryTokenJSON(c *C, data []byte, token *RecoveryTo
 func (s *tokenSuite) TestMarshalRecoveryToken1(c *C) {
 	token := &RecoveryToken{
 		TokenBase: TokenBase{
-			TokenName:    "foo-recovery",
-			TokenKeyslot: 1}}
+			TokenName:     "foo-recovery",
+			TokenKeyslots: []int{1}}}
 	data, err := json.Marshal(token)
 	c.Check(err, IsNil)
 
@@ -75,8 +75,19 @@ func (s *tokenSuite) TestMarshalRecoveryToken1(c *C) {
 func (s *tokenSuite) TestMarshalRecoveryToken2(c *C) {
 	token := &RecoveryToken{
 		TokenBase: TokenBase{
-			TokenName:    "recovery-bar",
-			TokenKeyslot: 7}}
+			TokenName:     "recovery-bar",
+			TokenKeyslots: []int{7}}}
+	data, err := json.Marshal(token)
+	c.Check(err, IsNil)
+
+	s.checkRecoveryTokenJSON(c, data, token)
+}
+
+func (s *tokenSuite) TestMarshalRecoveryToken3(c *C) {
+	token := &RecoveryToken{
+		TokenBase: TokenBase{
+			TokenName:     "recovery-bar",
+			TokenKeyslots: []int{88, 99}}}
 	data, err := json.Marshal(token)
 	c.Check(err, IsNil)
 
@@ -86,8 +97,8 @@ func (s *tokenSuite) TestMarshalRecoveryToken2(c *C) {
 func (s *tokenSuite) TestUnmarshalRecoveryToken1(c *C) {
 	token := &RecoveryToken{
 		TokenBase: TokenBase{
-			TokenName:    "foo-recovery",
-			TokenKeyslot: 1}}
+			TokenName:     "foo-recovery",
+			TokenKeyslots: []int{1}}}
 	data, err := json.Marshal(token)
 	c.Check(err, IsNil)
 
@@ -99,14 +110,55 @@ func (s *tokenSuite) TestUnmarshalRecoveryToken1(c *C) {
 func (s *tokenSuite) TestUnmarshalRecoveryToken2(c *C) {
 	token := &RecoveryToken{
 		TokenBase: TokenBase{
-			TokenName:    "recovery-bar",
-			TokenKeyslot: 7}}
+			TokenName:     "recovery-bar",
+			TokenKeyslots: []int{7}}}
 	data, err := json.Marshal(token)
 	c.Check(err, IsNil)
 
 	var token2 *RecoveryToken
 	c.Check(json.Unmarshal(data, &token2), IsNil)
 	c.Check(token2, DeepEquals, token)
+}
+
+func (s *tokenSuite) TestUnmarshalRecoveryToken3(c *C) {
+	token := &RecoveryToken{
+		TokenBase: TokenBase{
+			TokenName:     "recovery-bar",
+			TokenKeyslots: []int{88, 99}}}
+	data, err := json.Marshal(token)
+	c.Check(err, IsNil)
+
+	var token2 *RecoveryToken
+	c.Check(json.Unmarshal(data, &token2), IsNil)
+	c.Check(token2, DeepEquals, token)
+}
+
+func (s *tokenSuite) TestUnmarshalRecoveryTokenErr(c *C) {
+	token := &RecoveryToken{
+		TokenBase: TokenBase{
+			TokenName:     "recovery-bar",
+			TokenKeyslots: []int{77, 88, 99}}}
+	data, err := json.Marshal(token)
+	c.Check(err, IsNil)
+
+	var token2 *RecoveryToken
+	err = json.Unmarshal(data, &token2)
+	c.Assert(err, NotNil)
+	c.Check(err, ErrorMatches, "invalid named token")
+}
+
+func (s *tokenSuite) TestUnmarshalRecoveryTokenErrOrphaned(c *C) {
+	token := &RecoveryToken{
+		TokenBase: TokenBase{
+			TokenName:     "recovery-bar",
+			TokenKeyslots: []int{}}}
+	data, err := json.Marshal(token)
+	c.Check(err, IsNil)
+
+	var token2 *RecoveryToken
+	err = json.Unmarshal(data, &token2)
+	c.Assert(err, NotNil)
+	c.Check(err, ErrorMatches, "orphaned named token")
 }
 
 func (s *tokenSuite) TestDecodeRecoveryToken(c *C) {
@@ -121,8 +173,8 @@ func (s *tokenSuite) TestDecodeRecoveryToken(c *C) {
 
 	createToken := &RecoveryToken{
 		TokenBase: TokenBase{
-			TokenName:    "recovery",
-			TokenKeyslot: 0}}
+			TokenName:     "recovery",
+			TokenKeyslots: []int{0}}}
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
 
 	header, err := luks2.ReadHeader(context.Background(), path)
@@ -145,8 +197,8 @@ func (s *tokenSuite) TestDecodeOrphanedRecoveryToken(c *C) {
 
 	createToken := &RecoveryToken{
 		TokenBase: TokenBase{
-			TokenName:    "recovery",
-			TokenKeyslot: 0}}
+			TokenName:     "recovery",
+			TokenKeyslots: []int{0}}}
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
 	c.Check(luks2.KillSlot(path, 0), IsNil)
 
@@ -172,7 +224,7 @@ func (s *tokenSuite) TestDecodeInvalidRecoveryToken(c *C) {
 
 	createToken := &RecoveryToken{
 		TokenBase: TokenBase{
-			TokenKeyslot: 0}}
+			TokenKeyslots: []int{0}}}
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
 
 	header, err := luks2.ReadHeader(context.Background(), path)
@@ -214,8 +266,8 @@ func (s *tokenSuite) checkKeyDataTokenJSON(c *C, data []byte, token *KeyDataToke
 func (s *tokenSuite) TestMarshalKeyDataToken1(c *C) {
 	token := &KeyDataToken{
 		TokenBase: TokenBase{
-			TokenName:    "foo",
-			TokenKeyslot: 0}}
+			TokenName:     "foo",
+			TokenKeyslots: []int{0}}}
 	data, err := json.Marshal(token)
 	c.Check(err, IsNil)
 
@@ -225,8 +277,21 @@ func (s *tokenSuite) TestMarshalKeyDataToken1(c *C) {
 func (s *tokenSuite) TestMarshalKeyDataToken2(c *C) {
 	token := &KeyDataToken{
 		TokenBase: TokenBase{
-			TokenName:    "bar",
-			TokenKeyslot: 3},
+			TokenName:     "bar",
+			TokenKeyslots: []int{3}},
+		Priority: 1,
+		Data:     json.RawMessage(`{"key1":"foo","key2":542}`)}
+	data, err := json.Marshal(token)
+	c.Check(err, IsNil)
+
+	s.checkKeyDataTokenJSON(c, data, token)
+}
+
+func (s *tokenSuite) TestMarshalKeyDataToken3(c *C) {
+	token := &KeyDataToken{
+		TokenBase: TokenBase{
+			TokenName:     "bar",
+			TokenKeyslots: []int{88, 99}},
 		Priority: 1,
 		Data:     json.RawMessage(`{"key1":"foo","key2":542}`)}
 	data, err := json.Marshal(token)
@@ -238,8 +303,8 @@ func (s *tokenSuite) TestMarshalKeyDataToken2(c *C) {
 func (s *tokenSuite) TestUnmarshalKeyDataToken1(c *C) {
 	token := &KeyDataToken{
 		TokenBase: TokenBase{
-			TokenName:    "foo",
-			TokenKeyslot: 0}}
+			TokenName:     "foo",
+			TokenKeyslots: []int{0}}}
 	data, err := json.Marshal(token)
 	c.Check(err, IsNil)
 
@@ -251,8 +316,8 @@ func (s *tokenSuite) TestUnmarshalKeyDataToken1(c *C) {
 func (s *tokenSuite) TestUnmarshalKeyDataToken2(c *C) {
 	token := &KeyDataToken{
 		TokenBase: TokenBase{
-			TokenName:    "bar",
-			TokenKeyslot: 3},
+			TokenName:     "bar",
+			TokenKeyslots: []int{3}},
 		Priority: 1,
 		Data:     json.RawMessage(`{"key1":"foo","key2":542}`)}
 	data, err := json.Marshal(token)
@@ -262,6 +327,50 @@ func (s *tokenSuite) TestUnmarshalKeyDataToken2(c *C) {
 	c.Check(json.Unmarshal(data, &token2), IsNil)
 	c.Check(token2, DeepEquals, token)
 	c.Logf("%s\n", token2.Data)
+}
+
+func (s *tokenSuite) TestUnmarshalKeyDataToken3(c *C) {
+	token := &KeyDataToken{
+		TokenBase: TokenBase{
+			TokenName:     "bar",
+			TokenKeyslots: []int{88, 99}},
+		Priority: 1,
+		Data:     json.RawMessage(`{"key1":"foo","key2":542}`)}
+	data, err := json.Marshal(token)
+	c.Check(err, IsNil)
+
+	var token2 *KeyDataToken
+	c.Check(json.Unmarshal(data, &token2), IsNil)
+	c.Check(token2, DeepEquals, token)
+	c.Logf("%s\n", token2.Data)
+}
+
+func (s *tokenSuite) TestUnmarshalKeyDataTokenErr(c *C) {
+	token := &KeyDataToken{
+		TokenBase: TokenBase{
+			TokenName:     "recovery-bar",
+			TokenKeyslots: []int{77, 88, 99}}}
+	data, err := json.Marshal(token)
+	c.Check(err, IsNil)
+
+	var token2 *KeyDataToken
+	err = json.Unmarshal(data, &token2)
+	c.Assert(err, NotNil)
+	c.Check(err, ErrorMatches, "invalid named token")
+}
+
+func (s *tokenSuite) TestUnmarshalKeyDataTokenErrOrphaned(c *C) {
+	token := &KeyDataToken{
+		TokenBase: TokenBase{
+			TokenName:     "recovery-bar",
+			TokenKeyslots: []int{}}}
+	data, err := json.Marshal(token)
+	c.Check(err, IsNil)
+
+	var token2 *KeyDataToken
+	err = json.Unmarshal(data, &token2)
+	c.Assert(err, NotNil)
+	c.Check(err, ErrorMatches, "orphaned named token")
 }
 
 func (s *tokenSuite) TestDecodeKeyDataToken(c *C) {
@@ -276,8 +385,8 @@ func (s *tokenSuite) TestDecodeKeyDataToken(c *C) {
 
 	createToken := &KeyDataToken{
 		TokenBase: TokenBase{
-			TokenName:    "bar",
-			TokenKeyslot: 0},
+			TokenName:     "bar",
+			TokenKeyslots: []int{0}},
 		Priority: 1,
 		Data:     json.RawMessage(`{"key1":"foo","key2":542}`)}
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
@@ -302,8 +411,8 @@ func (s *tokenSuite) TestDecodeOrphanedKeyDataToken(c *C) {
 
 	createToken := &KeyDataToken{
 		TokenBase: TokenBase{
-			TokenName:    "bar",
-			TokenKeyslot: 0}}
+			TokenName:     "bar",
+			TokenKeyslots: []int{0}}}
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
 	c.Check(luks2.KillSlot(path, 0), IsNil)
 
@@ -329,7 +438,7 @@ func (s *tokenSuite) TestDecodeInvalidKeyDataToken(c *C) {
 
 	createToken := &KeyDataToken{
 		TokenBase: TokenBase{
-			TokenKeyslot: 0}}
+			TokenKeyslots: []int{0}}}
 	c.Check(luks2.ImportToken(path, createToken, nil), IsNil)
 
 	header, err := luks2.ReadHeader(context.Background(), path)

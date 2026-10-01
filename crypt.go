@@ -494,7 +494,14 @@ func ActivateVolumeWithKeyData(volumeName, sourceDevicePath string, authRequesto
 				continue
 			}
 
-			candidates = append(candidates, &keyCandidate{KeyData: kd, slot: token.Keyslots()[0]})
+			var slot int
+			if len(token.Keyslots()) == 1 {
+				slot = token.Keyslots()[0]
+			} else {
+				// Two keyslots, typically when reencryption is in progress
+				slot = luks2.AnySlot
+			}
+			candidates = append(candidates, &keyCandidate{KeyData: kd, slot: slot})
 		}
 	}
 
@@ -661,8 +668,8 @@ func InitializeLUKS2Container(devicePath, label string, key DiskUnlockKey, optio
 
 	token := luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: 0,
-			TokenName:    initialKeyslotName}}
+			TokenKeyslots: []int{0},
+			TokenName:     initialKeyslotName}}
 	if err := luks2ImportToken(devicePath, &token, nil); err != nil {
 		return xerrors.Errorf("cannot import token: %w", err)
 	}
@@ -737,8 +744,8 @@ func addLUKS2ContainerKey(devicePath, keyslotName string, existingKey, newKey Di
 	// a single atomic transaction ¯\_(ツ)_/¯
 
 	tokenBase := luksview.TokenBase{
-		TokenName:    keyslotName,
-		TokenKeyslot: freeSlot}
+		TokenName:     keyslotName,
+		TokenKeyslots: []int{freeSlot}}
 	if err := luks2ImportToken(devicePath, newToken(&tokenBase), nil); err != nil {
 		return xerrors.Errorf("cannot import token: %w", err)
 	}
@@ -889,6 +896,10 @@ func DeleteLUKS2ContainerKey(devicePath, keyslotName string) error {
 
 	removeOrphanedTokens(devicePath, view)
 
+	if len(token.Keyslots()) != 1 {
+		return fmt.Errorf("token has %v keyslot(s)", len(token.Keyslots()))
+	}
+
 	slot := token.Keyslots()[0]
 	if err := luks2KillSlot(devicePath, slot); err != nil {
 		return xerrors.Errorf("cannot kill existing slot %d: %w", slot, err)
@@ -939,15 +950,15 @@ func renameLUKS2ContainerKey(nonAtomic *nonAtomicOperationAllowedFlag, devicePat
 	case *luksview.KeyDataToken:
 		newToken = &luksview.KeyDataToken{
 			TokenBase: luksview.TokenBase{
-				TokenKeyslot: t.TokenKeyslot,
-				TokenName:    newName},
+				TokenKeyslots: t.TokenKeyslots,
+				TokenName:     newName},
 			Priority: t.Priority,
 			Data:     t.Data}
 	case *luksview.RecoveryToken:
 		newToken = &luksview.RecoveryToken{
 			TokenBase: luksview.TokenBase{
-				TokenKeyslot: t.TokenKeyslot,
-				TokenName:    newName}}
+				TokenKeyslots: t.TokenKeyslots,
+				TokenName:     newName}}
 	default:
 		return errors.New("cannot rename key with unexpected token type")
 	}
@@ -1034,8 +1045,8 @@ func NameLegacyLUKS2ContainerKey(devicePath string, keyslot int, newName string)
 
 	token := &luksview.RecoveryToken{
 		TokenBase: luksview.TokenBase{
-			TokenName:    newName,
-			TokenKeyslot: keyslot,
+			TokenName:     newName,
+			TokenKeyslots: []int{keyslot},
 		},
 	}
 
@@ -1063,7 +1074,16 @@ func TestLUKS2ContainerKeyForKeyslot(devicePath string, name string, key []byte)
 		return false, ErrKeyslotNameNotExist
 	}
 
-	keyslotId := token.Keyslots()[0]
+	if len(token.Keyslots()) == 0 {
+		return false, xerrors.Errorf("token has no keyslot")
+	}
 
-	return luks2.TestContainerKeyForKeyslot(devicePath, keyslotId, key), nil
+	for _, keyslotId := range token.Keyslots() {
+		keyValid := luks2.TestContainerKeyForKeyslot(devicePath, keyslotId, key)
+		if !keyValid {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }

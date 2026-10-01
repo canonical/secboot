@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 
 	"golang.org/x/xerrors"
 
@@ -37,7 +38,6 @@ import (
 // new write support.
 type LUKS2KeyDataReader struct {
 	name     string
-	slot     int
 	priority int
 	*bytes.Reader
 }
@@ -70,19 +70,12 @@ func NewLUKS2KeyDataReader(devicePath, name string) (*LUKS2KeyDataReader, error)
 
 	return &LUKS2KeyDataReader{
 		name:     devicePath + ":" + name,
-		slot:     token.Keyslots()[0],
 		priority: kdToken.Priority,
 		Reader:   bytes.NewReader(kdToken.Data)}, nil
 }
 
 func (r *LUKS2KeyDataReader) ReadableName() string {
 	return r.name
-}
-
-// KeyslotID indicates the keyslot ID associated with the token from which this
-// KeyData is read.
-func (r *LUKS2KeyDataReader) KeyslotID() int {
-	return r.slot
 }
 
 // Priority indicates the priority of the keyslot associated with the token from
@@ -125,6 +118,11 @@ func NewLUKS2KeyDataWriter(devicePath, name string) (*LUKS2KeyDataWriter, error)
 		return nil, errors.New("named keyslot has the wrong type")
 	}
 
+	if len(token.Keyslots()) != 1 {
+		// When reencryption is in progress, there are 2 keyslots. This is not supported here.
+		return nil, fmt.Errorf("token has %v keyslot(s)", len(token.Keyslots()))
+	}
+
 	return &LUKS2KeyDataWriter{
 		devicePath: devicePath,
 		id:         id,
@@ -137,8 +135,8 @@ func NewLUKS2KeyDataWriter(devicePath, name string) (*LUKS2KeyDataWriter, error)
 func (w *LUKS2KeyDataWriter) Commit() error {
 	token := &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: w.slot,
-			TokenName:    w.name},
+			TokenKeyslots: []int{w.slot},
+			TokenName:     w.name},
 		Priority: w.priority,
 		Data:     w.Bytes()}
 

@@ -31,6 +31,7 @@ import (
 
 	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
 	"github.com/snapcore/secboot/internal/keyring"
+	"github.com/snapcore/secboot/log"
 	"golang.org/x/sys/unix"
 )
 
@@ -433,6 +434,7 @@ func (m *activateOneContainerStateMachine) initKeyslotAttempts(ctx context.Conte
 		return fmt.Errorf("cannot list keyslot names from StorageContainer: %w", err)
 	}
 
+	log.Debugf("keyslot names: %v", names)
 	for _, name := range names {
 		slot, err := r.ReadKeyslot(ctx, name)
 		if err != nil {
@@ -1047,6 +1049,7 @@ func (m *activateOneContainerStateMachine) runNextTask(ctx context.Context) erro
 	}
 
 	current := m.next
+	log.Debugf("running task %v", current.name)
 	if err := current.fn(ctx); err != nil {
 		if !errors.Is(err, ErrCannotActivate) {
 			err = fmt.Errorf("cannot complete state %q: %w", current.name, err)
