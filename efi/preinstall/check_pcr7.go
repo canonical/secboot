@@ -47,7 +47,10 @@ var (
 // the signature databases decode properly.
 //
 // If the supplied parameter is for a signature database, the decoded signature database
-// is returned, else nil is returned
+// is returned, else nil is returned.
+//
+// TODO: This should optionally check the variable data from the log event against the
+// actual variable contents (see https://github.com/canonical/secboot/issues/538).
 func checkSecureBootVariableData(data *tcglog.EFIVariableData) (sigDb efi.SignatureDatabase, err error) {
 	switch data.UnicodeName {
 	case "SecureBoot":
@@ -286,6 +289,49 @@ func handleVariableAuthorityEvent(pcrAlg tpm2.HashAlgorithmId, db efi.SignatureD
 	return matchedEsl.Type, esd.Data, nil
 }
 
+type secureBootVariableDefinition struct {
+	name      efi.VariableDescriptor
+	omitEmpty bool
+}
+
+func checkVariableDriverConfigEventOrdering(expected *[]secureBootVariableDefinition, data *tcglog.EFIVariableData) error {
+	expectedTmp := *expected
+	for len(expectedTmp) > 0 {
+		config := expectedTmp[0]
+		expectedTmp = expectedTmp[1:]
+
+		if data.VariableName == config.GUID && data.UnicodeName == config.Name {
+			*expected = expectedTmp
+			return nil
+		}
+
+		if !e.omitEmpty {
+			return fmt.Errorf("unexpected EV_EFI_VARIABLE_DRIVER_CONFIG event ordering (expected %s-%v, got %s-%v)",
+				config.Name, config.GUID, data.UnicodeName, data.VariableName)
+		}
+
+		// The next expected measurement is one that can be omitted if it is empty.
+		// TODO: Check that the actual variable contents are empty (see
+		// https://github.com/canonical/secboot/issues/538).
+	}
+
+	return fmt.Errorf("unexpected EV_EFI_VARIABLE_DRIVER_CONFIG event ordering (%s-%v)", data.UnicodeName, data.VariableName)
+}
+
+func canRemainingExpectedVariableDriverConfigEventsBeOmitted(expected []secureBootVariableDefinition) bool {
+	for _, e := range expected {
+		if !e.omitEmpty {
+			return false
+		}
+
+		// This measurement is one that can be omitted if it is empty.
+		// TODO: Check that the actual variable contents are empty (see
+		// https://github.com/canonical/secboot/issues/538).
+	}
+
+	return true
+}
+
 type secureBootPolicyResultFlags int
 
 const (
@@ -395,23 +441,10 @@ func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, 
 		}
 	}
 
-	// Make sure this system doesn't support features that affect PCR7 and which we don't
-	// currently support.
+	// Determine whether timestamp revocation and/or OS recovery is supported.
 	osIndicationsSupported, err := efi.ReadOSIndicationsSupportedVariable(varCtx)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read OsIndicationsSupported variable: %w", err)
-	}
-	if osIndicationsSupported&efi.OSIndicationTimestampRevocation > 0 {
-		// Timestamp verification relies on another database (dbt) which we currently don't support
-		// in WithSecureBootPolicyProfile(). It's theoretically possible we might see this in the
-		// wild and might have to add support for it in the future.
-		return nil, errors.New("generating secure boot profiles for systems with timestamp revocation (dbt) support is currently not supported")
-	}
-	if osIndicationsSupported&efi.OSIndicationStartOSRecovery > 0 {
-		// OS recovery relies on another database (dbr) which we currently don't support in
-		// WithSecureBootPolicyProfile(), but given this also depends on EFI_VARIABLE_AUTHENTICATION_3,
-		// it's unlikely we'll ever see this in the wild.
-		return nil, errors.New("generating secure boot profiles for systems with OS recovery support, which requires dbr support, is not supported")
 	}
 	// TODO(chrisccoulson): Not sure if there's any indication that we might get SPDM related measurements,
 	// which our profile generation for PCR7 currently doesn't support.
@@ -419,14 +452,20 @@ func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, 
 	// Make sure that the secure boot config in the log is measured in the
 	// expected order, else WithSecureBootPolicyProfile() will generate an invalid policy,
 	// because we hard code the order. The order here is what we expect to see.
-	configs := []efi.VariableDescriptor{
-		{Name: "SecureBoot", GUID: efi.GlobalVariable},
-		{Name: "PK", GUID: efi.GlobalVariable},
-		{Name: "KEK", GUID: efi.GlobalVariable},
-		{Name: "db", GUID: efi.ImageSecurityDatabaseGuid},
-		{Name: "dbx", GUID: efi.ImageSecurityDatabaseGuid},
-		// TODO: Add optional dbt / SPDM in the future.
+	configs := []secureBootVariableDefinition{
+		{name: {Name: "SecureBoot", GUID: efi.GlobalVariable}},
+		{name: efi.PKVariable},
+		{name: efi.KEKVariable},
+		{name: efi.DbVariable},
+		{name: efi.DbxVariable},
 	}
+	if osIndicationsSupported&efi.OSIndicationTimestampRevocation > 0 {
+		configs = append(configs, secureBootVariableDefinition{name: efi.DbtVariable, omitEmpty: true})
+	}
+	if osIndicationsSupported&efi.OSIndicationStartOSRecovery > 0 {
+		config = append(configs, secureBootVariableDefinition{name: efi.DbrVariable, omitEmpty: true})
+	}
+	// TODO: Add optional SPDM variables in the future.
 
 	var (
 		db                 efi.SignatureDatabase // The authorized signature database from the TCG log.
@@ -501,10 +540,6 @@ NextEvent:
 					return nil, errors.New("unexpected EV_EFI_VARIABLE_DRIVER_CONFIG event: all expected secure boot variable have been measured")
 				}
 
-				// Pop the next secure boot config name
-				config := configs[0]
-				configs = configs[1:]
-
 				data, ok := ev.Data.(*tcglog.EFIVariableData)
 				if !ok {
 					// The data resulting from decode errors are guaranteed to implement the error interface
@@ -512,10 +547,10 @@ NextEvent:
 				}
 				// Make sure this is the event we're expecting to be measured. If they're
 				// measured in an unexpected order, then WithSecureBootPolicyProfile() will
-				// generate an invalid policy.
-				if data.VariableName != config.GUID || data.UnicodeName != config.Name {
-					return nil, fmt.Errorf("unexpected EV_EFI_VARIABLE_DRIVER_CONFIG event ordering (expected %s-%v, got %s-%v)",
-						config.Name, config.GUID, data.UnicodeName, data.VariableName)
+				// generate an invalid policy. This updates configs so that the next expected
+				// event is the first entry.
+				if err := checkVariableDriverConfigEventOrdering(&configs, data); err != nil {
+					return nil, err
 				}
 
 				// Compute the expected digest from the event data in the log and make
@@ -569,9 +604,9 @@ NextEvent:
 				}
 			}
 		case tcglogPhasePreOSThirdPartyDispatch:
-			if len(configs) > 0 {
+			if !canRemainingExpectedVariableDriverConfigEventsBeOmitted(configs) {
 				// We've transitioned to a phase where components can be loaded and verified but we haven't
-				// measured all of the secure boot variables. We'll fail to generate a valid policy with
+				// measured all of the required secure boot variables. We'll fail to generate a valid policy with
 				// WithSecureBootPolicyProfile() in this case.
 				return nil, errors.New("EV_EFI_VARIABLE_DRIVER_CONFIG events for some secure boot variables missing from log")
 			}
@@ -639,9 +674,9 @@ NextEvent:
 				}
 			}
 		case tcglogPhaseOSPresent:
-			if len(configs) > 0 {
+			if !canRemainingExpectedVariableDriverConfigEventsBeOmitted(configs) {
 				// We've transitioned to a phase where components can be loaded and verified but we haven't
-				// measured all of the secure boot variables. We'll fail to generate a valid policy with
+				// measured all of the required secure boot variables. We'll fail to generate a valid policy with
 				// WithSecureBootPolicyProfile() in this case.
 				return nil, errors.New("EV_EFI_VARIABLE_DRIVER_CONFIG events for some secure boot variables missing from log")
 			}
