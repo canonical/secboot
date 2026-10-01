@@ -63,17 +63,17 @@ var testHeader = mockHeaderSource(luks2.HeaderInfo{
 		Tokens: map[int]luks2.Token{
 			0: &KeyDataToken{
 				TokenBase: TokenBase{
-					TokenKeyslot: 0,
-					TokenName:    "foo"},
+					TokenKeyslots: []int{0},
+					TokenName:     "foo"},
 				Priority: 1},
 			1: &RecoveryToken{
 				TokenBase: TokenBase{
-					TokenKeyslot: 1,
-					TokenName:    "recovery"}},
+					TokenKeyslots: []int{1},
+					TokenName:     "recovery"}},
 			2: &KeyDataToken{
 				TokenBase: TokenBase{
-					TokenKeyslot: 2,
-					TokenName:    "bar"}},
+					TokenKeyslots: []int{2},
+					TokenName:     "bar"}},
 			// Test that this token type is ignored.
 			3: &luks2.GenericToken{
 				TokenType:     "luks2-keyring",
@@ -83,15 +83,15 @@ var testHeader = mockHeaderSource(luks2.HeaderInfo{
 			// TokensByPriority is well defined.
 			4: &KeyDataToken{
 				TokenBase: TokenBase{
-					TokenKeyslot: 4,
-					TokenName:    "abc"},
+					TokenKeyslots: []int{4},
+					TokenName:     "abc"},
 				Priority: 1},
 			// Add a token with priority -1 to test that it
 			// is omitted from TokensByPriority.
 			5: &KeyDataToken{
 				TokenBase: TokenBase{
-					TokenKeyslot: 5,
-					TokenName:    "xyz"},
+					TokenKeyslots: []int{5},
+					TokenName:     "xyz"},
 				Priority: -1},
 			// Add a token without a corresponding keyslot
 			// to test OrphanedTokenIds, and to ensure that
@@ -180,15 +180,15 @@ func (s *viewSuite) TestNewView(c *C) {
 
 	token := &KeyDataToken{
 		TokenBase: TokenBase{
-			TokenName:    "default",
-			TokenKeyslot: 0},
+			TokenName:     "default",
+			TokenKeyslots: []int{0}},
 		Priority: 1}
 	c.Check(luks2.ImportToken(path, token, nil), IsNil)
 
 	recoveryToken := &RecoveryToken{
 		TokenBase: TokenBase{
-			TokenName:    "recovery",
-			TokenKeyslot: 0}}
+			TokenName:     "recovery",
+			TokenKeyslots: []int{0}}}
 	c.Check(luks2.ImportToken(path, recoveryToken, nil), IsNil)
 
 	view, err := NewView(context.Background(), path)
@@ -221,8 +221,8 @@ func (s *viewSuite) TestViewReread(c *C) {
 
 	token := &KeyDataToken{
 		TokenBase: TokenBase{
-			TokenName:    "default",
-			TokenKeyslot: 0},
+			TokenName:     "default",
+			TokenKeyslots: []int{0}},
 		Priority: 1}
 	c.Check(luks2.ImportToken(path, token, nil), IsNil)
 
@@ -233,23 +233,23 @@ func (s *viewSuite) TestViewReread(c *C) {
 
 	token = &KeyDataToken{
 		TokenBase: TokenBase{
-			TokenName:    "default",
-			TokenKeyslot: 0},
+			TokenName:     "default",
+			TokenKeyslots: []int{0}},
 		Priority: 2}
 	c.Check(luks2.ImportToken(path, token, &luks2.ImportTokenOptions{Replace: true, Id: 0}), IsNil)
 
 	c.Check(luks2.AddKey(path, make([]byte, 32), make([]byte, 32), &luks2.AddKeyOptions{KDFOptions: options, Slot: luks2.AnySlot}), IsNil)
 	recoveryToken := &RecoveryToken{
 		TokenBase: TokenBase{
-			TokenName:    "recovery",
-			TokenKeyslot: 1}}
+			TokenName:     "recovery",
+			TokenKeyslots: []int{1}}}
 	c.Check(luks2.ImportToken(path, recoveryToken, nil), IsNil)
 
 	c.Check(luks2.AddKey(path, make([]byte, 32), make([]byte, 32), &luks2.AddKeyOptions{KDFOptions: options, Slot: luks2.AnySlot}), IsNil)
 	token2 := &RecoveryToken{
 		TokenBase: TokenBase{
-			TokenName:    "foo",
-			TokenKeyslot: 2}}
+			TokenName:     "foo",
+			TokenKeyslots: []int{2}}}
 	c.Check(luks2.ImportToken(path, token2, nil), IsNil)
 	c.Check(luks2.KillSlot(path, 2), IsNil)
 
@@ -272,4 +272,115 @@ func (s *viewSuite) TestViewReread(c *C) {
 
 	c.Check(view.UsedKeyslots(), DeepEquals, []int{0, 1})
 	c.Check(view.OrphanedTokenIds(), DeepEquals, []int{2})
+}
+
+func (s *viewSuite) TestTokenNamesSortedByKeyslotId(c *C) {
+	var testHeaderLocal = mockHeaderSource(luks2.HeaderInfo{
+		Metadata: luks2.Metadata{
+			Keyslots: map[int]*luks2.Keyslot{},
+			Tokens: map[int]luks2.Token{
+				0: &KeyDataToken{TokenBase: TokenBase{TokenKeyslots: []int{0}, TokenName: "token-slot0"}},
+				1: &RecoveryToken{TokenBase: TokenBase{TokenKeyslots: []int{2}, TokenName: "token-slot2"}},
+				3: &luks2.GenericToken{TokenType: "luks2-keyring", TokenKeyslots: []int{3, 4}}, // will be ignored
+				2: &KeyDataToken{TokenBase: TokenBase{TokenKeyslots: []int{8}, TokenName: "token-slot8"}},
+				4: &KeyDataToken{TokenBase: TokenBase{TokenKeyslots: []int{1}, TokenName: "token-slot1"}},
+			}}})
+
+	view, err := NewViewFromCustomHeaderSource(testHeaderLocal)
+	c.Assert(err, IsNil)
+	names, err := view.TokenNamesSortedByKeyslotId()
+	c.Check(names, DeepEquals, []string{"token-slot0", "token-slot1", "token-slot2", "token-slot8"})
+	c.Check(err, IsNil)
+}
+
+func (s *viewSuite) TestTokenNamesSortedByKeyslotIdErrDuplicateKeyslot(c *C) {
+	var testHeaderLocal = mockHeaderSource(luks2.HeaderInfo{
+		Metadata: luks2.Metadata{
+			Keyslots: map[int]*luks2.Keyslot{},
+			Tokens: map[int]luks2.Token{
+				0: &KeyDataToken{TokenBase: TokenBase{TokenKeyslots: []int{0}, TokenName: "token-slot0"}},
+				1: &RecoveryToken{TokenBase: TokenBase{TokenKeyslots: []int{2}, TokenName: "token-slot2a"}},
+				3: &luks2.GenericToken{TokenType: "luks2-keyring", TokenKeyslots: []int{3, 4}}, // will be ignored
+				2: &KeyDataToken{TokenBase: TokenBase{TokenKeyslots: []int{2}, TokenName: "token-slot2b"}},
+				4: &KeyDataToken{TokenBase: TokenBase{TokenKeyslots: []int{1}, TokenName: "token-slot1"}},
+			}}})
+
+	view, err := NewViewFromCustomHeaderSource(testHeaderLocal)
+	c.Assert(err, IsNil)
+	_, err = view.TokenNamesSortedByKeyslotId()
+	c.Check(err, NotNil)
+}
+
+func (s *viewSuite) TestIsReencryptionInProgressFalse(c *C) {
+	var testHeaderLocal mockHeaderSource
+	var view *View
+	var err error
+	var inprogress bool
+
+	// Test with value "example"
+	testHeaderLocal = mockHeaderSource(luks2.HeaderInfo{
+		Metadata: luks2.Metadata{
+			Config: luks2.Config{
+				Requirements: &luks2.Requirements{Mandatory: []string{"example"}},
+			}}})
+
+	view, err = NewViewFromCustomHeaderSource(testHeaderLocal)
+	c.Assert(err, IsNil)
+	inprogress = view.IsReencryptionInProgress()
+	c.Check(inprogress, Equals, false)
+
+	// Test with value "online-reencrypt-v1"
+	testHeaderLocal = mockHeaderSource(luks2.HeaderInfo{
+		Metadata: luks2.Metadata{
+			Config: luks2.Config{
+				Requirements: &luks2.Requirements{Mandatory: []string{"online-reencrypt-v1"}},
+			}}})
+
+	view, err = NewViewFromCustomHeaderSource(testHeaderLocal)
+	c.Assert(err, IsNil)
+	inprogress = view.IsReencryptionInProgress()
+	c.Check(inprogress, Equals, false)
+}
+
+func (s *viewSuite) TestIsReencryptionInProgressTrue(c *C) {
+	var testHeaderLocal mockHeaderSource
+	var view *View
+	var err error
+	var inprogress bool
+
+	// Test 1
+	testHeaderLocal = mockHeaderSource(luks2.HeaderInfo{
+		Metadata: luks2.Metadata{
+			Config: luks2.Config{
+				Requirements: &luks2.Requirements{Mandatory: []string{"online-reencrypt"}},
+			}}})
+
+	view, err = NewViewFromCustomHeaderSource(testHeaderLocal)
+	c.Assert(err, IsNil)
+	inprogress = view.IsReencryptionInProgress()
+	c.Check(inprogress, Equals, true)
+
+	// Test 2
+	testHeaderLocal = mockHeaderSource(luks2.HeaderInfo{
+		Metadata: luks2.Metadata{
+			Config: luks2.Config{
+				Requirements: &luks2.Requirements{Mandatory: []string{"online-reencrypt-v2"}},
+			}}})
+
+	view, err = NewViewFromCustomHeaderSource(testHeaderLocal)
+	c.Assert(err, IsNil)
+	inprogress = view.IsReencryptionInProgress()
+	c.Check(inprogress, Equals, true)
+
+	// Test 3
+	testHeaderLocal = mockHeaderSource(luks2.HeaderInfo{
+		Metadata: luks2.Metadata{
+			Config: luks2.Config{
+				Requirements: &luks2.Requirements{Mandatory: []string{"online-reencrypt-v3"}},
+			}}})
+
+	view, err = NewViewFromCustomHeaderSource(testHeaderLocal)
+	c.Assert(err, IsNil)
+	inprogress = view.IsReencryptionInProgress()
+	c.Check(inprogress, Equals, true)
 }

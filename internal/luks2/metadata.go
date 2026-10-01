@@ -41,13 +41,15 @@ import (
 	"time"
 
 	"github.com/snapcore/secboot/internal/paths"
+	"github.com/snapcore/secboot/log"
 
 	"golang.org/x/sys/unix"
 	"golang.org/x/xerrors"
 )
 
 var (
-	dataDeviceFstat = unix.Fstat
+	AcquireSharedLock = acquireSharedLock
+	dataDeviceFstat   = unix.Fstat
 )
 
 func cryptsetupLockDir() string {
@@ -58,7 +60,7 @@ var isBlockDevice = func(mode os.FileMode) bool {
 	return mode&os.ModeDevice > 0 && mode&os.ModeCharDevice == 0
 }
 
-// acquireSharedLock acquires an advisory shared lock on the LUKS volume associated with the
+// AcquireSharedLock acquires an advisory shared lock on the LUKS volume associated with the
 // specified path. The path can either be a block device or file containing a LUKS2 volume with
 // an integral header, or a detached header file associated with a LUKS device.
 //
@@ -68,6 +70,10 @@ var isBlockDevice = func(mode os.FileMode) bool {
 // A shared lock is for read-only access. There can be multiple parallel shared lock holders.
 // Shared and exclusive locks are mutually exclusive, and there can only ever be a single
 // exclusive lock acqired at any time.
+//
+// The lock acquired by this function remains active until the returned release function
+// is called or garbage collected (in the latter case, the file descriptor holding the lock
+// is closed, which releases the lock).
 //
 // This function does not provide a way to acquire an advisory exclusive lock - this would only
 // be required if we add functionality that performs writes to the LUKS header without delegating
@@ -147,7 +153,9 @@ func acquireSharedLock(ctx context.Context, path string) (release func(), err er
 		}
 		lockPath = filepath.Join(cryptsetupLockDir(), fmt.Sprintf("L_%d:%d", unix.Major(st.Rdev), unix.Minor(st.Rdev)))
 		openFlags = os.O_RDWR | os.O_CREATE
+		log.Debugf("Placing shared lock on block device %v (lock file %v)", path, lockPath)
 	case fi.Mode().IsRegular():
+		log.Debugf("Placing shared lock on regular file %v", path)
 		// For regular files, libcryptsetup uses an advisory lock directly on the file.
 		lockPath = path
 		openFlags = os.O_RDWR
@@ -164,6 +172,7 @@ func acquireSharedLock(ctx context.Context, path string) (release func(), err er
 
 	// Define a mechanism to release the lock.
 	internalRelease := func() {
+		log.Debugf("Removing shared lock on %v", lockPath)
 		// Ensure multiple calls are benign
 		if lockFile == nil {
 			return
@@ -1056,7 +1065,7 @@ func decodeAndCheckHeader(r io.ReadSeeker, offset int64, primary bool) (*binaryH
 // a deadline of provide a mechanism for cancellation. If a lock isn't acquired before the supplied
 // context is canceled or expires, the reason is returned as an error.
 func ReadHeader(ctx context.Context, path string) (*HeaderInfo, error) {
-	releaseLock, err := acquireSharedLock(ctx, path)
+	releaseLock, err := AcquireSharedLock(ctx, path)
 	if err != nil {
 		return nil, xerrors.Errorf("cannot acquire shared lock: %w", err)
 	}
