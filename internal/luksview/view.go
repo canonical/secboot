@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/log"
@@ -239,26 +240,23 @@ func (v *View) TokenNamesSortedByKeyslotId() ([]string, error) {
 // ReencryptionStatus tells if reencryption is in progress on the related
 // LUKS container.
 //
-// The algorithm is based on the implementation of 'cryptsetup status', which
-// relies on the CRYPT_REQUIREMENT_ONLINE_REENCRYPT flag.
+// Reencryption is considered in progress if the LUKS2 JSON meta-data contains:
 //
-// The possible values in cryptsetup 2.8.4 are:
+//	"config": { "requirements": { "mandatory": [ PATTERN ] } }
 //
-//	{ CRYPT_REQUIREMENT_ONLINE_REENCRYPT, 2, "online-reencrypt-v2" },
-//	{ CRYPT_REQUIREMENT_ONLINE_REENCRYPT, 3, "online-reencrypt-v3" },
-//	{ CRYPT_REQUIREMENT_ONLINE_REENCRYPT, 1, "online-reencrypt" },
+// where PATTERN is:
+// - "online-reencrypt" or
+// - starting with "online-reencrypt-v"
 func (v *View) IsReencryptionInProgress() bool {
 	if v.hdr.Metadata.Config.Requirements == nil {
 		return false
 	}
 	// Look if at least 1 requirement indicates reencryption
 	for _, value := range v.hdr.Metadata.Config.Requirements.Mandatory {
-		switch string(value) {
-		case "online-reencrypt":
-			fallthrough
-		case "online-reencrypt-v2":
-			fallthrough
-		case "online-reencrypt-v3":
+		switch {
+		case string(value) == "online-reencrypt":
+			return true
+		case strings.Index(value, "online-reencrypt-v") == 0:
 			return true
 		default:
 			continue
