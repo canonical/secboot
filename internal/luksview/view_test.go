@@ -333,13 +333,26 @@ func (s *viewSuite) TestIsReencryptionInProgressFalse(c *C) {
 	testHeaderLocal = mockHeaderSource(luks2.HeaderInfo{
 		Metadata: luks2.Metadata{
 			Config: luks2.Config{
-				Requirements: &luks2.Requirements{Mandatory: []string{"online-reencrypt-v1"}},
+				Requirements: &luks2.Requirements{Mandatory: []string{"xonline-reencrypt-v1"}},
 			}}})
 
 	view, err = NewViewFromCustomHeaderSource(testHeaderLocal)
 	c.Assert(err, IsNil)
 	inprogress = view.IsReencryptionInProgress()
 	c.Check(inprogress, Equals, false)
+
+	// Test with nil value for Requirements
+	testHeaderLocal = mockHeaderSource(luks2.HeaderInfo{
+		Metadata: luks2.Metadata{
+			Config: luks2.Config{
+				Requirements: nil,
+			}}})
+
+	view, err = NewViewFromCustomHeaderSource(testHeaderLocal)
+	c.Assert(err, IsNil)
+	inprogress = view.IsReencryptionInProgress()
+	c.Check(inprogress, Equals, false)
+
 }
 
 func (s *viewSuite) TestIsReencryptionInProgressTrue(c *C) {
@@ -377,6 +390,18 @@ func (s *viewSuite) TestIsReencryptionInProgressTrue(c *C) {
 		Metadata: luks2.Metadata{
 			Config: luks2.Config{
 				Requirements: &luks2.Requirements{Mandatory: []string{"online-reencrypt-v3"}},
+			}}})
+
+	view, err = NewViewFromCustomHeaderSource(testHeaderLocal)
+	c.Assert(err, IsNil)
+	inprogress = view.IsReencryptionInProgress()
+	c.Check(inprogress, Equals, true)
+
+	// Test 4
+	testHeaderLocal = mockHeaderSource(luks2.HeaderInfo{
+		Metadata: luks2.Metadata{
+			Config: luks2.Config{
+				Requirements: &luks2.Requirements{Mandatory: []string{"online-reencrypt-v999"}},
 			}}})
 
 	view, err = NewViewFromCustomHeaderSource(testHeaderLocal)
