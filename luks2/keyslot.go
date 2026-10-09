@@ -48,6 +48,8 @@ func (i *keyslotImpl) Data() secboot.KeyDataReader {
 	return i.keyslotData
 }
 
+// PreferredKeyslotId returns the LUKS2 keyslot identifier if there is only one
+// or AnySlot otherwise.
 func (i *keyslotImpl) PreferredKeyslotId() int {
 	if len(i.keyslotIds) == 1 {
 		return i.keyslotIds[0]
