@@ -5736,7 +5736,7 @@ func (s *activateSuite) TestActivateContainerAuthModePINAuthRequestorOnlyReturns
 	c.Check(err, IsNil)
 }
 
-func (s *activateSuite) TestDeactivateContainer(c *C) {
+func (s *activateSuite) TestDeactivateContainerByName(c *C) {
 	state := &ActivateState{
 		Activations: map[string]*ContainerActivateState{
 			"sda1": {
@@ -5751,10 +5751,18 @@ func (s *activateSuite) TestDeactivateContainer(c *C) {
 	expectedState := state.Copy()
 	expectedState.Activations["sda1"].Status = ActivationDeactivated
 	expectedState.Activations["sda1"].Keyslot = ""
+	expectedState.Activations["sda1"].DeactivateReason = "testing"
 	expectedContainerState := state.Activations["sda1"]
 
 	ctx, err := NewActivateContext(context.Background(), state)
 	c.Assert(err, IsNil)
+
+	var volumeNames []string
+	restore := MockLUKS2Deactivate(func(volumeName string) error {
+		volumeNames = append(volumeNames, volumeName)
+		return nil
+	})
+	defer restore()
 
 	container := newMockStorageContainer(
 		withStorageContainerPath("/dev/sda1"),
@@ -5762,21 +5770,23 @@ func (s *activateSuite) TestDeactivateContainer(c *C) {
 		withStorageContainerActivated(),
 	)
 
-	c.Check(ctx.DeactivateContainer(context.Background(), container, ""), IsNil)
-	c.Check(container.isActivated(), testutil.IsFalse)
+	backend := newMockStorageContainerBackend()
+	backend.addActivatedContainer("/dev/mapper/crypt02", container)
+	RegisterStorageContainerBackend("mock", backend)
+	defer RegisterStorageContainerBackend("mock", nil)
+
+	c.Check(ctx.DeactivateContainerByName(context.Background(), "crypt02", "testing"), IsNil)
+	c.Check(volumeNames, DeepEquals, []string{"crypt02"})
 	c.Check(ctx.State(), DeepEquals, expectedState)
 	c.Check(ctx.State().Activations["sda1"], Equals, expectedContainerState)
 }
 
-func (s *activateSuite) TestDeactivateContainerError(c *C) {
+func (s *activateSuite) TestDeactivateContainerByNameError(c *C) {
 	state := &ActivateState{
 		Activations: map[string]*ContainerActivateState{
 			"sda1": {
 				Status:  ActivationSucceededWithRecoveryKey,
 				Keyslot: "default-recovery",
-				KeyslotErrors: map[string]KeyslotErrorType{
-					"default": KeyslotErrorInvalidKeyData,
-				},
 			},
 		},
 	}
@@ -5785,68 +5795,62 @@ func (s *activateSuite) TestDeactivateContainerError(c *C) {
 	ctx, err := NewActivateContext(context.Background(), state)
 	c.Assert(err, IsNil)
 
+	restore := MockLUKS2Deactivate(func(volumeName string) error {
+		return errors.New("some error")
+	})
+	defer restore()
+
 	container := newMockStorageContainer(
 		withStorageContainerPath("/dev/sda1"),
 		withStorageContainerCredentialName("sda1"),
+		withStorageContainerActivated(),
 	)
 
-	c.Check(ctx.DeactivateContainer(context.Background(), container, ""), Equals, ErrStorageContainerNotActive)
+	backend := newMockStorageContainerBackend()
+	backend.addActivatedContainer("/dev/mapper/crypt02", container)
+	RegisterStorageContainerBackend("mock", backend)
+	defer RegisterStorageContainerBackend("mock", nil)
+
+	err = ctx.DeactivateContainerByName(context.Background(), "crypt02", "")
+	c.Check(err, ErrorMatches, `cannot deactivate volume "crypt02": some error`)
 	c.Check(ctx.State(), DeepEquals, expectedState)
 }
 
-func (s *activateSuite) TestDeactivateContainerContext(c *C) {
+func (s *activateSuite) TestDeactivateContainerByNameLookupError(c *C) {
 	state := &ActivateState{
 		Activations: map[string]*ContainerActivateState{
 			"sda1": {
 				Status:  ActivationSucceededWithRecoveryKey,
 				Keyslot: "default-recovery",
-				KeyslotErrors: map[string]KeyslotErrorType{
-					"default": KeyslotErrorInvalidKeyData,
-				},
 			},
 		},
 	}
 	expectedState := state.Copy()
-	expectedState.Activations["sda1"].Status = ActivationDeactivated
-	expectedState.Activations["sda1"].Keyslot = ""
-	expectedContainerState := state.Activations["sda1"]
-
 	ctx, err := NewActivateContext(context.Background(), state)
 	c.Assert(err, IsNil)
 
-	expectedCtx := context.WithValue(context.Background(), "foo", "bar")
+	deactivated := false
+	restore := MockLUKS2Deactivate(func(volumeName string) error {
+		deactivated = true
+		return nil
+	})
+	defer restore()
 
-	container := newMockStorageContainer(
-		withStorageContainerPath("/dev/sda1"),
-		withStorageContainerCredentialName("sda1"),
-		withStorageContainerActivated(),
-		withStorageContainerExpectedContext(expectedCtx),
-	)
+	backend := newMockStorageContainerBackend()
+	RegisterStorageContainerBackend("mock", backend)
+	defer RegisterStorageContainerBackend("mock", nil)
 
-	c.Check(ctx.DeactivateContainer(expectedCtx, container, ""), IsNil)
-	c.Check(container.isActivated(), testutil.IsFalse)
+	err = ctx.DeactivateContainerByName(context.Background(), "crypt02", "")
+	c.Check(err, ErrorMatches, `cannot find storage container for volume "crypt02": no storage container for path`)
+	c.Check(errors.Is(err, ErrNoStorageContainer), testutil.IsTrue)
+	c.Check(deactivated, testutil.IsFalse)
 	c.Check(ctx.State(), DeepEquals, expectedState)
-	c.Check(ctx.State().Activations["sda1"], Equals, expectedContainerState)
-}
 
-func (s *activateSuite) TestDeactivateContainerNoProvidedState(c *C) {
-	expectedState := &ActivateState{
-		Activations: map[string]*ContainerActivateState{
-			"sda1": {Status: ActivationDeactivated},
-		},
-	}
-
-	ctx, err := NewActivateContext(context.Background(), nil)
-	c.Assert(err, IsNil)
-
-	container := newMockStorageContainer(
-		withStorageContainerPath("/dev/sda1"),
-		withStorageContainerCredentialName("sda1"),
-		withStorageContainerActivated(),
-	)
-
-	c.Check(ctx.DeactivateContainer(context.Background(), container, ""), IsNil)
-	c.Check(container.isActivated(), testutil.IsFalse)
+	probeErr := errors.New("some error")
+	backend.setProbeActivatedErr(probeErr)
+	err = ctx.DeactivateContainerByName(context.Background(), "crypt02", "")
+	c.Check(errors.Is(err, probeErr), testutil.IsTrue)
+	c.Check(deactivated, testutil.IsFalse)
 	c.Check(ctx.State(), DeepEquals, expectedState)
 }
 
