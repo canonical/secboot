@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 
 	internal_bootscope "github.com/snapcore/secboot/internal/bootscope"
@@ -1288,13 +1289,20 @@ func (c *ActivateContext) updateStateOnDeactivation(container StorageContainer, 
 	state.DeactivateReason = reason
 }
 
-// DeactivateContainer locks the supplied [StorageContainer]. The caller can supply a reason
-// for the container being locked again which will be added to the state.
-func (c *ActivateContext) DeactivateContainer(ctx context.Context, container StorageContainer, reason DeactivationReason) error {
+// DeactivateContainerByName locks the storage container backing the active volume
+// named volumeName, which is the name shown in /dev/mapper. The container is found
+// using [FindActivatedStorageContainer] before the volume is deactivated. The caller
+// can supply a reason for the container being locked again which will be added to the state.
+func (c *ActivateContext) DeactivateContainerByName(ctx context.Context, volumeName string, reason DeactivationReason) error {
 	// TODO: This should remove any keys added to the keyring.
 
-	if err := container.Deactivate(ctx); err != nil {
-		return err
+	container, err := FindActivatedStorageContainer(ctx, filepath.Join("/dev/mapper", volumeName))
+	if err != nil {
+		return fmt.Errorf("cannot find storage container for volume %q: %w", volumeName, err)
+	}
+
+	if err := DeactivateVolume(volumeName); err != nil {
+		return fmt.Errorf("cannot deactivate volume %q: %w", volumeName, err)
 	}
 	c.updateStateOnDeactivation(container, reason)
 
@@ -1303,7 +1311,7 @@ func (c *ActivateContext) DeactivateContainer(ctx context.Context, container Sto
 
 // State returns a pointer to the current state. Note that this is a pointer
 // to the state object used by this context, so it will be updated by calls
-// to ActivateContainer and DeactivateContainer.
+// to ActivateContainer and DeactivateContainerByName.
 func (c *ActivateContext) State() *ActivateState {
 	return c.state
 }

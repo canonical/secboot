@@ -47,8 +47,8 @@ func (o volumeNameOption) ApplyOptionToConfig(config secboot.ActivateConfig) {
 // XXX: It is mandatory for now for any [StorageContainer] managed by this
 // package. A future revision may relax this requirement and support a
 // mode where the volume name is created automatically, perhaps based on
-// the UUID of the LUKS2 container. An automatically generated volume name
-// can be retrieved afterwards using [StorageContainer.ActiveVolumeName].
+// the UUID of the LUKS2 container. Such a generated volume name would need
+// to be retrieved by other means.
 func WithVolumeName(name string) secboot.ActivateOption {
 	return volumeNameOption(name)
 }
