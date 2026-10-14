@@ -11,7 +11,7 @@ import (
 )
 
 const UsageDeactivate = `
-usage: secboot-tool deactivate [<options>] <device> <active-name>
+usage: secboot-tool deactivate [<options>] <active-name>
 
 Deactivate an active encrypted container.
 
@@ -20,11 +20,10 @@ Options:
   -v, --verbose  Be verbose
 
 Arguments:
-  <device>         Path to an encrypted container
   <active-name>    Name of the active volume as shown in /dev/mapper
 
 Examples:
-  secboot-tool deactivate /dev/sda1 crypt02
+  secboot-tool deactivate crypt02
 `
 
 var optsDeactivate struct {
@@ -52,23 +51,17 @@ func cmdDeactivateContainer(args []string) error {
 		log.SetLogLevel(log.LogLevelInfo)
 	}
 
-	if len(positionalArgs) != 2 {
+	if len(positionalArgs) != 1 {
 		return fmt.Errorf("bad argument count")
 	}
-	devicePath := positionalArgs[0]
-	activeName := positionalArgs[1]
-
-	container, err := secboot.FindStorageContainer(context.Background(), devicePath)
-	if err != nil {
-		return fmt.Errorf("findStorageContainer error: %w", err)
-	}
+	activeName := positionalArgs[0]
 
 	activateContext, err := secboot.NewActivateContext(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("NewActivateContext error: %w", err)
 	}
 
-	err = activateContext.DeactivateContainerByName(context.Background(), container, activeName, "secboot-tool")
+	err = activateContext.DeactivateContainerByName(context.Background(), activeName, "secboot-tool")
 	if err != nil {
 		return fmt.Errorf("DeactivateContainerByName error: %w", err)
 	}
