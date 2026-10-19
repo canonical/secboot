@@ -43,6 +43,12 @@ var (
 
 	// Dbx is the identity of the forbidden signature database.
 	Dbx = efi.VariableDescriptor{Name: "dbx", GUID: efi.ImageSecurityDatabaseGuid}
+
+	// Dbt is the identity of the timestamp signature database.
+	Dbt = efi.VariableDescriptor{Name: "dbt", GUID: efi.ImageSecurityDatabaseGuid}
+
+	// Dbr is the identity of the recovery signature database.
+	Dbr = efi.VariableDescriptor{Name: "dbr", GUID: efi.ImageSecurityDatabaseGuid}
 )
 
 // SignatureDBUpdate corresponds to an update to a signature database, such as dbx.
