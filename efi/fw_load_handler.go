@@ -246,7 +246,7 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// Other implementations don't measure dbt even when it exists, so the presence of the
 	// variable can't be used to predict whether it will be measured. Like the other
 	// signature databases, the current variable contents are measured.
-	for _, name := range []efi.VariableDescriptor{Dbt, Dbr} {
+	for _, name := range []efi.VariableDescriptor{dbt, dbr} {
 		if !h.isSecureBootConfigVariableMeasured(name) {
 			continue
 		}
