@@ -33,16 +33,22 @@ import (
 
 var (
 	// PK is the identity of the Platform Key variable.
-	PK = efi.VariableDescriptor{Name: "PK", GUID: efi.GlobalVariable}
+	PK = efi.PKVariable
 
 	// KEK is the identity of the Key Exchange Key database.
-	KEK = efi.VariableDescriptor{Name: "KEK", GUID: efi.GlobalVariable}
+	KEK = efi.KEKVariable
 
 	// Db is the identity of the authorized signature database.
-	Db = efi.VariableDescriptor{Name: "db", GUID: efi.ImageSecurityDatabaseGuid}
+	Db = efi.DbVariable
 
 	// Dbx is the identity of the forbidden signature database.
-	Dbx = efi.VariableDescriptor{Name: "dbx", GUID: efi.ImageSecurityDatabaseGuid}
+	Dbx = efi.DbxVariable
+
+	// Dbt is the identity of the authorized timestamp signature database.
+	Dbt = efi.DbtVariable
+
+	// Dbr is the identity of the authorized recovery signature database.
+	Dbr = efi.DbrVariable
 )
 
 // SignatureDBUpdate corresponds to an update to a signature database, such as dbx.
