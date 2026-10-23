@@ -533,7 +533,12 @@ func isTPMDiscreteARM64(env internal_efi.HostEnvironment) (bool, error) {
 		return false, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU manufacturer: %w", err)}
 	}
 
-	return false, &UnsupportedPlatformError{fmt.Errorf("unsupported CPU manufacturer: %s", cpuManufacturer)}
+	switch cpuManufacturer {
+	case "NVIDIA":
+		return isTPMDiscreteNvidia(arm64Env)
+	default:
+		return false, &UnsupportedPlatformError{fmt.Errorf("unsupported CPU manufacturer: %s", cpuManufacturer)}
+	}
 }
 
 // isTPMFirmwareOptee determines whether the default TPM is an OP-TEE firmware TPM,
