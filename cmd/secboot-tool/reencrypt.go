@@ -15,15 +15,15 @@ import (
 
 const UsageReencrypt = `
 usage: secboot-tool reencrypt [<options>] <active-name>
-                              [<keyslot-name>:<unlock-key-hex> ...] [<unlock-key-hex>]
 
 Reencrypt an active encrypted container.
 
-To initialize reencryption, the unlock keys of all keyslots must be given,
-with the name of their keyslot.
+To initialize reencryption, the unlock keys of all keyslots must be given on stdin,
+with the name of their keyslot. The format shall be <keyslot-name>:<unlock-key-hex>
+with each unlock key given on a separate line.
 
 For resuming an already initialized reencryption, one <unlock-key-hex>
-must be given.
+must be given on stdin.
 
 Options:
   --initialize   Only initialize reencryption
@@ -35,15 +35,14 @@ Options:
 
 Arguments:
   <active-name>    Name of the active volume as shown in /dev/mapper
-  <keyslot-name>  Name of the keyslot, as managed by secboot
-  <unlock-key-hex> Unlock key (hexadecimal)
+  <keyslot-name>   Name of the keyslot, as managed by secboot
 
 Examples:
   cryptsetup open /dev/vda5 crypt01
-  secboot-tool reencrypt crypt01 default-recovery:010203 default:00112233
+  (echo default:00112233; echo default-recovery:010203) | secboot-tool reencrypt crypt01
   secboot-tool reencrypt --status crypt01
-  secboot-tool reencrypt --initialize crypt01 default-recovery:010203 default:00112233
-  secboot-tool reencrypt --resume crypt01 010203
+  (echo default:00112233; echo default-recovery:010203) | secboot-tool reencrypt --initialize crypt01
+  echo 010203 | secboot-tool reencrypt --resume crypt01
 `
 
 var optsReencrypt struct {
@@ -105,20 +104,23 @@ func splitUnlockKeySpec(s string) (string, string, error) {
 
 func reencryptInitResume(args ...string) error {
 
-	if len(args) < 2 {
-		return fmt.Errorf("reencrypt: not enough arguments")
+	if len(args) != 1 {
+		return fmt.Errorf("reencrypt: bad argument count")
 	}
 	activeName := args[0]
-	unlockKeysHex := args[1:] // remaining arguments
-
-	log.Debugf("reencrypt %v with %v key(s)", activeName, len(unlockKeysHex))
-
-	err := reencryptStatus(activeName)
+	unlockKeysHex, err := getLinesFromStdin()
 	if err != nil {
 		return err
 	}
 
-	err = reencryptInitialize(append([]string{activeName}, unlockKeysHex...)...)
+	log.Debugf("reencrypt %v with %v key(s)", activeName, len(unlockKeysHex))
+
+	err = reencryptStatus(activeName)
+	if err != nil {
+		return err
+	}
+
+	err = reencryptInitializeInternal(activeName, unlockKeysHex)
 	if err != nil {
 		fmt.Printf("Cannot initialize reencryption of %v: %v\n", activeName, err)
 		return err
@@ -130,7 +132,7 @@ func reencryptInitResume(args ...string) error {
 		// Should not happen, as already validated in initialize above
 		return err
 	}
-	err = reencryptResume(activeName, unlockKey)
+	err = reencryptResumeInternal(activeName, unlockKey)
 	if err != nil {
 		fmt.Printf("Cannot resume reencryption of %v: %v\n", activeName, err)
 		return err
@@ -160,13 +162,18 @@ func reencryptStatus(args ...string) error {
 }
 
 func reencryptInitialize(args ...string) error {
-	if len(args) < 2 {
+	if len(args) != 1 {
 		return fmt.Errorf("initialize: missing argument")
 	}
-
 	activeName := args[0]
-	unlockKeysHex := args[1:] // remaining arguments
+	unlockKeysHex, err := getLinesFromStdin()
+	if err != nil {
+		return err
+	}
+	return reencryptInitializeInternal(activeName, unlockKeysHex)
+}
 
+func reencryptInitializeInternal(activeName string, unlockKeysHex []string) error {
 	log.Infof("reencrypt initialize %v", activeName)
 
 	reencryption, err := secboot.ReencryptionForActiveVolume(activeName)
@@ -204,13 +211,21 @@ func reencryptInitialize(args ...string) error {
 }
 
 func reencryptResume(args ...string) error {
-	if len(args) != 2 {
+	if len(args) != 1 {
 		return fmt.Errorf("resume: bad argument count")
 	}
-
 	activeName := args[0]
-	unlockKeyHex := args[1]
+	lines, err := getLinesFromStdin()
+	if err != nil {
+		return fmt.Errorf("cannot get key from stdin: %w", err)
+	}
+	if len(lines) == 0 {
+		return fmt.Errorf("cannot get key from stdin (empty)")
+	}
+	return reencryptResumeInternal(activeName, lines[0])
+}
 
+func reencryptResumeInternal(activeName string, unlockKeyHex string) error {
 	log.Infof("reencrypt resume %v", activeName)
 	unlockKey, err := hex.DecodeString(unlockKeyHex)
 	if err != nil {
