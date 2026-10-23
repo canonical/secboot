@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2019-2024 Canonical Ltd
+ * Copyright (C) 2019-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -72,5 +72,21 @@ func MockOsReadlink(fn func(string) (string, error)) (restore func()) {
 	osReadlink = fn
 	return func() {
 		osReadlink = orig
+	}
+}
+
+func MockDevcpuPath(path string) (restore func()) {
+	orig := devcpuPath
+	devcpuPath = path
+	return func() {
+		devcpuPath = orig
+	}
+}
+
+func MockRuntimeGOARCH(arch string) (restore func()) {
+	orig := runtimeGOARCH
+	runtimeGOARCH = arch
+	return func() {
+		runtimeGOARCH = orig
 	}
 }
