@@ -90,16 +90,43 @@ func (h *fwLoadHandler) measureAuthorizedSignatureDb(ctx pcrBranchContext) error
 	return nil
 }
 
+// isSecureBootConfigVariableMeasured indicates whether the firmware measured the specified
+// variable as part of the secure boot configuration during the current boot.
+func (h *fwLoadHandler) isSecureBootConfigVariableMeasured(name efi.VariableDescriptor) bool {
+	for _, e := range h.log.Events {
+		if e.PCRIndex != internal_efi.SecureBootPolicyPCR {
+			continue
+		}
+
+		switch e.EventType {
+		case tcglog.EventTypeEFIVariableDriverConfig:
+			data, ok := e.Data.(*tcglog.EFIVariableData)
+			if ok && data.VariableName == name.GUID && data.UnicodeName == name.Name {
+				return true
+			}
+		case tcglog.EventTypeEFIVariableAuthority, tcglog.EventTypeSeparator:
+			// We've reached the end of the secure boot configuration.
+			return false
+		}
+	}
+
+	return false
+}
+
 func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error {
 	// This hard-codes a profile that will only work on devices with secure boot enabled,
 	// deployed mode on (where UEFI >= 2.5), without a UEFI debugger enabled and which
 	// measure events in the correct order.
 	//
-	// It doesn't support firmware that implements timestamp revocation (there will be a
-	// dbt variable that needs to be measured), OS recovery (which implies a dbr variable,
-	// to be measured, but we'll likely never encounter this) or where secure boot is
-	// enabled but the platform is in user mode rather than deployed mode. User mode and
-	// dbt will be supported in the future.
+	// It doesn't support platforms where secure boot is enabled but the platform is in
+	// user mode rather than deployed mode, unless this is explicitly permitted with
+	// WithAllowSecureBootUserMode.
+	//
+	// Firmware that implements timestamp revocation may measure the timestamp signature
+	// database (dbt) after dbx, and firmware that supports OS recovery may measure the
+	// recovery signature database (dbr). Whether these are measured differs between
+	// firmware implementations, so the profile only includes them if the firmware measured
+	// them during the current boot.
 	//
 	// We do permit the presence of an EV_EFI_ACTION event that indicates that pre-boot DMA
 	// protection was disabled if the appropriate options are supplied. However, this event
@@ -214,7 +241,19 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 		return xerrors.Errorf("cannot measure dbx: %w", err)
 	}
 
-	// TODO: Support optional dbt/dbr database
+	// Measure the optional dbt and dbr databases if the firmware measured them during
+	// the current boot. EDK2 measures dbt only if it exists, and doesn't measure dbr at all.
+	// Other implementations don't measure dbt even when it exists, so the presence of the
+	// variable can't be used to predict whether it will be measured. Like the other
+	// signature databases, the current variable contents are measured.
+	for _, name := range []efi.VariableDescriptor{dbt, dbr} {
+		if !h.isSecureBootConfigVariableMeasured(name) {
+			continue
+		}
+		if _, err := h.readAndMeasureSignatureDb(ctx, name); err != nil {
+			return fmt.Errorf("cannot measure %s: %w", name.Name, err)
+		}
+	}
 
 	// Include the user mode related measurements if the system is in user mode, it is
 	// permitted with the WithSecureBootUserMode option and they are being included in this

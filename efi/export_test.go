@@ -49,6 +49,8 @@ const (
 // Export variables and unexported functions for testing
 var (
 	ApplySignatureDBUpdate                      = applySignatureDBUpdate
+	Dbr                                         = dbr
+	Dbt                                         = dbt
 	ErrNoHandler                                = errNoHandler
 	ImageAlwaysMatches                          = imageAlwaysMatches
 	ImageDigestMatches                          = imageDigestMatches

@@ -147,3 +147,13 @@ func (v MockVars) SetDbx(c *C, dbx efi.SignatureDatabase) MockVars {
 func (v MockVars) AppendDbx(c *C, dbx efi.SignatureDatabase) MockVars {
 	return v.AppendVar("dbx", efi.ImageSecurityDatabaseGuid, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess, MakeVarPayload(c, dbx))
 }
+
+// SetDbt sets the dbt timestamp signature database variable.
+func (v MockVars) SetDbt(c *C, dbt efi.SignatureDatabase) MockVars {
+	return v.AddVar("dbt", efi.ImageSecurityDatabaseGuid, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess, MakeVarPayload(c, dbt))
+}
+
+// SetDbr sets the dbr recovery signature database variable.
+func (v MockVars) SetDbr(c *C, dbr efi.SignatureDatabase) MockVars {
+	return v.AddVar("dbr", efi.ImageSecurityDatabaseGuid, efi.AttributeNonVolatile|efi.AttributeBootserviceAccess|efi.AttributeRuntimeAccess|efi.AttributeTimeBasedAuthenticatedWriteAccess, MakeVarPayload(c, dbr))
+}
