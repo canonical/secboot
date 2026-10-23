@@ -159,7 +159,7 @@ func (s *runChecksSuite) TestRunChecksGood(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 3)
@@ -222,7 +222,7 @@ func (s *runChecksSuite) TestRunChecksGoodSHA384(c *C) {
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA384,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 3)
@@ -282,7 +282,7 @@ func (s *runChecksSuite) TestRunChecksGoodSHA1(c *C) {
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA1,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 3)
@@ -332,7 +332,7 @@ func (s *runChecksSuite) TestRunChecksGoodEmptySHA384(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -387,7 +387,7 @@ func (s *runChecksSuite) TestRunChecksGoodPostInstall(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 3)
@@ -493,7 +493,7 @@ func (s *runChecksSuite) TestRunChecksGoodDiscreteTPMDetected(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -553,7 +553,7 @@ func (s *runChecksSuite) TestRunChecksGoodDiscreteTPMDetectedSL3(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 3)
@@ -607,7 +607,7 @@ func (s *runChecksSuite) TestRunChecksGoodDiscreteTPMDetectedSL3NotProtected(c *
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -667,7 +667,7 @@ func (s *runChecksSuite) TestRunChecksGoodDiscreteTPMDetectedHCRTM(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | RequestPartialDiscreteTPMResetAttackMitigation | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 3)
@@ -721,7 +721,7 @@ func (s *runChecksSuite) TestRunChecksGoodDiscreteTPMDetectedHCRTMLocality4NotPr
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -780,7 +780,7 @@ func (s *runChecksSuite) TestRunChecksGoodInvalidPCR0Value(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformFirmwareProfileSupport | NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformFirmwareProfileSupport | NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -839,7 +839,7 @@ func (s *runChecksSuite) TestRunChecksGoodInvalidPCR0ValueWithDiscreteTPM(c *C) 
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformFirmwareProfileSupport | NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformFirmwareProfileSupport | NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 5)
@@ -905,7 +905,7 @@ func (s *runChecksSuite) TestRunChecksGoodInvalidPCR2Value(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -965,7 +965,7 @@ func (s *runChecksSuite) TestRunChecksGoodInvalidPCR4Value(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -1024,7 +1024,7 @@ func (s *runChecksSuite) TestRunChecksGoodInvalidPCR7Value(c *C) {
 			flags:                     PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport | PermitNoSecureBootPolicyProfileSupport,
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport | fixture.additionalExpectedFlags,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
 		})
 		c.Assert(err, IsNil)
@@ -1082,7 +1082,7 @@ func (s *runChecksSuite) TestRunChecksGoodAddonDriversPresent(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -1169,7 +1169,7 @@ func (s *runChecksSuite) TestRunChecksGoodVARDriversPresentWithInvalidPCR2Value(
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 5)
@@ -1271,7 +1271,7 @@ func (s *runChecksSuite) TestRunChecksGoodSysPrepAppsPresent(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -1377,7 +1377,7 @@ func (s *runChecksSuite) TestRunChecksGoodSysPrepAppsPresentWithInvalidPCR4Value
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoBootManagerCodeProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoBootManagerCodeProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 5)
@@ -1470,7 +1470,7 @@ func (s *runChecksSuite) TestRunChecksGoodAbsoluteActive(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -1529,7 +1529,7 @@ func (s *runChecksSuite) TestRunChecksGoodAbsoluteActiveWithInvalidPCR4Value(c *
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 5)
@@ -1601,7 +1601,7 @@ func (s *runChecksSuite) TestRunChecksGoodNoBootManagerCodeProfileSupport(c *C) 
 			},
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerCodeProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -1659,7 +1659,7 @@ func (s *runChecksSuite) TestRunChecksGoodPreOSSecureBootAuthByEnrolledDigests(c
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 5)
@@ -1750,7 +1750,7 @@ func (s *runChecksSuite) TestRunChecksGoodPreOSSecureBootAuthByEnrolledDigestsWi
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 6)
@@ -1842,7 +1842,7 @@ func (s *runChecksSuite) TestRunChecksGoodWeakSecureBootAlgs(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 6)
@@ -1936,7 +1936,7 @@ func (s *runChecksSuite) TestRunChecksGoodWeakSecureBootAlgsWithInvalidPCR7Value
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 7)
@@ -2026,7 +2026,7 @@ func (s *runChecksSuite) TestRunChecksGoodNoSecureBootPolicyProfileSupport(c *C)
 			flags:          PermitNoPlatformConfigProfileSupport | PermitNoDriversAndAppsConfigProfileSupport | PermitNoBootManagerConfigProfileSupport | PermitNoSecureBootPolicyProfileSupport,
 			loadedImages:   efiImagesDefault(),
 			expectedPcrAlg: tpm2.HashAlgorithmSHA256,
-			expectedFlags:  NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport,
+			expectedFlags:  NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | NoSecureBootPolicyProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -2081,7 +2081,7 @@ func (s *runChecksSuite) TestRunChecksGoodNoSecureBootDeployedMode(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -2140,7 +2140,7 @@ func (s *runChecksSuite) TestRunChecksGoodTPMLockout(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -2199,7 +2199,7 @@ func (s *runChecksSuite) TestRunChecksGoodPostInstallLockoutAvailabilityCheckSki
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
@@ -3553,7 +3553,7 @@ func (s *runChecksSuite) TestRunChecksAllowInsufficientDMAProtection(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 5)
@@ -3610,7 +3610,7 @@ func (s *runChecksSuite) TestRunChecksAllowNoHardwareRootOfTrust(c *C) {
 			loadedImages:              efiImagesDefault(),
 			expectedPcrAlg:            tpm2.HashAlgorithmSHA256,
 			expectedUsedSecureBootCAs: []*X509CertificateID{NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert))},
-			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport,
+			expectedFlags:             NoPlatformConfigProfileSupport | NoDriversAndAppsConfigProfileSupport | NoBootManagerConfigProfileSupport | fixture.additionalExpectedFlags,
 		})
 		c.Assert(err, IsNil)
 		c.Assert(warnings, HasLen, 4)
