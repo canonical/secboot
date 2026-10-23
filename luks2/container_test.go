@@ -27,7 +27,6 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/snapcore/secboot"
 	"github.com/snapcore/secboot/internal/testutil"
 	. "github.com/snapcore/secboot/luks2"
 	snapd_testutil "github.com/snapcore/snapd/testutil"
@@ -46,14 +45,12 @@ type containerSuite struct {
 
 	commands []string
 
-	activateErr   error
-	deactivateErr error
+	activateErr error
 }
 
 func (s *containerSuite) SetUpTest(c *C) {
 	restore := MockLUKS2Ops(&Luks2Api{
-		Activate:   s.activate,
-		Deactivate: s.deactivate,
+		Activate: s.activate,
 	})
 	s.AddCleanup(restore)
 
@@ -94,17 +91,11 @@ func (s *containerSuite) SetUpTest(c *C) {
 	s.commands = nil
 
 	s.activateErr = nil
-	s.deactivateErr = nil
 }
 
 func (s *containerSuite) activate(volumeName, sourceDevicePath string, key []byte, slot int) error {
 	s.commands = append(s.commands, fmt.Sprintf("Activate(%s,%s,%x,%d)", volumeName, sourceDevicePath, key, slot))
 	return s.activateErr
-}
-
-func (s *containerSuite) deactivate(volumeName string) error {
-	s.commands = append(s.commands, fmt.Sprintf("Deactivate(%s)", volumeName))
-	return s.deactivateErr
 }
 
 func (s *containerSuite) addDMDeviceErr(c *C, num int, e error) {
@@ -272,166 +263,5 @@ func (s *containerSuite) TestContainerActivateError(c *C) {
 	c.Check(err, ErrorMatches, `cannot activate container /dev/nvme0n1p3 with volume name "data": some error`)
 	c.Check(s.commands, DeepEquals, []string{
 		"Activate(data,/dev/nvme0n1p3,a7bfa9a642b897bc13c58b84cf8237d7d1b224b2e63cb3dc10414ff1f9052c56,2)",
-	})
-}
-
-func (s *containerSuite) TestContainerActiveVolumeName(c *C) {
-	// Test that StorageContainer.ActiveVolumeName works.
-	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-
-	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
-	name, err := container.ActiveVolumeName(context.Background())
-	c.Check(err, IsNil)
-	c.Check(name, Equals, "data")
-}
-
-func (s *containerSuite) TestContainerActiveVolumeNameDifferentName(c *C) {
-	// Test that StorageContainer.ActiveVolumeName works with
-	// a different volume name.
-	s.addDMDevice(c, 0, "save", "/dev/nvme0n1p3")
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-
-	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
-	name, err := container.ActiveVolumeName(context.Background())
-	c.Check(err, IsNil)
-	c.Check(name, Equals, "save")
-}
-
-func (s *containerSuite) TestContainerActiveVolumeNameDifferentDMDevice(c *C) {
-	// Test that StorageContainer.ActiveVolumeName works with
-	// a different DM volume path
-	s.addDMDevice(c, 1, "data", "/dev/nvme0n1p3")
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-
-	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
-	name, err := container.ActiveVolumeName(context.Background())
-	c.Check(err, IsNil)
-	c.Check(name, Equals, "data")
-}
-
-func (s *containerSuite) TestContainerActiveVolumeNameIgnoreUnrelatedDMDevice1(c *C) {
-	// Test that StorageContainer.ActivateVolumeName ignores unrelated DM volumes.
-	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
-	s.addDMDevice(c, 1, "bar", "/dev/sda1")
-	s.addFileInfo("/dev/sda1", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(8, 1)})
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-
-	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
-	name, err := container.ActiveVolumeName(context.Background())
-	c.Check(err, IsNil)
-	c.Check(name, Equals, "data")
-}
-
-func (s *containerSuite) TestContainerActiveVolumeNameIgnoreUnrelatedDMDevices2(c *C) {
-	// Test that StorageContainer.ActivateVolumeName ignores unrelated DM volumes.
-	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
-	s.addDMDevice(c, 1, "bar", "/dev/sda1")
-	s.addFileInfo("/dev/sda1", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(8, 1)})
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-
-	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
-	name, err := container.ActiveVolumeName(context.Background())
-	c.Check(err, IsNil)
-	c.Check(name, Equals, "bar")
-}
-
-func (s *containerSuite) TestContainerActiveVolumeNameSourceDeviceforDMDeviceUnexpectedErr(c *C) {
-	// Test that StorageContainer.ActiveVolumeName returns an appropriate error
-	// if sourceDeviceForDMDevice returns an unexpected error.
-	s.addDMDeviceErr(c, 0, errors.New("some error"))
-	s.addDMDevice(c, 1, "data", "/dev/nvme0n1p3")
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-
-	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
-	_, err := container.ActiveVolumeName(context.Background())
-	c.Check(err, ErrorMatches, `cannot obtain source device path for dm volume /.*/dm-0: some error`)
-}
-
-func (s *containerSuite) TestContainerActiveVolumeNameSourceDeviceforDMDeviceUnsupportedTarget(c *C) {
-	// Test that StorageContainer.ActiveVolumeName ignores errors from sourceDeviceForDMDevice
-	// that indicate an unrecognized target type.
-	s.addDMDeviceErr(c, 0, ErrUnsupportedTargetType)
-	s.addDMDevice(c, 1, "data", "/dev/nvme0n1p3")
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-
-	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
-	name, err := container.ActiveVolumeName(context.Background())
-	c.Check(err, IsNil)
-	c.Check(name, Equals, "data")
-}
-
-func (s *containerSuite) TestContainerActiveVolumeNameInactive(c *C) {
-	// Test that StorageContainer.ActiveVolumeName returns an appropriate
-	// error if it isn't active.
-	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-
-	container := NewStorageContainer("/dev/sda1", unix.Mkdev(8, 1))
-	_, err := container.ActiveVolumeName(context.Background())
-	c.Check(err, Equals, secboot.ErrStorageContainerNotActive)
-}
-
-func (s *containerSuite) TestContainerDeactivate(c *C) {
-	// Test that StorageContainer.Deactivate works.
-	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-
-	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
-	c.Check(container.Deactivate(context.Background()), IsNil)
-	c.Check(s.commands, DeepEquals, []string{
-		"Deactivate(data)",
-	})
-}
-
-func (s *containerSuite) TestContainerDeactivateDifferentVolumeName(c *C) {
-	// Test that StorageContainer.Deactivate works with a different volume name
-	s.addDMDevice(c, 0, "save", "/dev/nvme0n1p3")
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-
-	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
-	c.Check(container.Deactivate(context.Background()), IsNil)
-	c.Check(s.commands, DeepEquals, []string{
-		"Deactivate(save)",
-	})
-}
-
-func (s *containerSuite) TestContainerDeactivateNoActiveDevice(c *C) {
-	// Test that StorageContainer.Deactivate returns an appropriate error
-	// if there is nothing to deactivate.
-	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
-	s.addDMDevice(c, 1, "bar", "/dev/sda1")
-	s.addFileInfo("/dev/sda1", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(8, 1)})
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-	s.addFileInfo("/dev/nvme0n1p2", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 2)})
-
-	container := NewStorageContainer("/dev/nvme0n1p2", unix.Mkdev(259, 2))
-	err := container.Deactivate(context.Background())
-	c.Check(err, ErrorMatches, `cannot obtain volume name: storage container is not active`)
-	c.Check(errors.Is(err, secboot.ErrStorageContainerNotActive), testutil.IsTrue)
-	c.Check(s.commands, DeepEquals, []string(nil))
-}
-
-func (s *containerSuite) TestContainerDeactivateActiveVolumeNameErr(c *C) {
-	// Test that StorageContainer.Deactivate returns an appropriate
-	// error if ActiveVolumeName fails.
-	s.addDMDeviceErr(c, 0, errors.New("some error"))
-	s.addDMDevice(c, 1, "data", "/dev/nvme0n1p3")
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-
-	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
-	c.Check(container.Deactivate(context.Background()), ErrorMatches, `cannot obtain volume name: cannot obtain source device path for dm volume /.*/dm-0: some error`)
-	c.Check(s.commands, DeepEquals, []string(nil))
-}
-
-func (s *containerSuite) TestContainerDeactivateErr(c *C) {
-	s.addDMDevice(c, 0, "data", "/dev/nvme0n1p3")
-	s.addFileInfo("/dev/nvme0n1p3", unix.Stat_t{Mode: unix.S_IFBLK, Rdev: unix.Mkdev(259, 3)})
-	s.deactivateErr = errors.New("some error")
-
-	container := NewStorageContainer("/dev/nvme0n1p3", unix.Mkdev(259, 3))
-	c.Check(container.Deactivate(context.Background()), ErrorMatches, `cannot deactivate volume "data": some error`)
-	c.Check(s.commands, DeepEquals, []string{
-		"Deactivate(data)",
 	})
 }
