@@ -126,12 +126,12 @@ type tokenBaseRaw struct {
 
 // TokenBase provides the fields that are common to all tokens created by secboot.
 type TokenBase struct {
-	TokenKeyslot int    // The ID of the keyslot associated with this token
-	TokenName    string // The name of the keyslot that this token is associated with
+	TokenKeyslots []int  // The ID of keyslots associated with this token (1 most of the time, 2 when reencryption)
+	TokenName     string // The name of the keyslot that this token is associated with
 }
 
 func (t *TokenBase) Keyslots() []int {
-	return []int{t.TokenKeyslot}
+	return t.TokenKeyslots
 }
 
 func (t *TokenBase) Name() string {
@@ -156,7 +156,7 @@ func (t *RecoveryToken) MarshalJSON() ([]byte, error) {
 	raw := &recoveryTokenRaw{
 		tokenBaseRaw: tokenBaseRaw{
 			Type:     RecoveryTokenType,
-			Keyslots: tokenKeyslots{t.TokenKeyslot},
+			Keyslots: t.TokenKeyslots,
 			Name:     t.TokenName}}
 	return json.Marshal(raw)
 }
@@ -168,7 +168,7 @@ func (t *RecoveryToken) UnmarshalJSON(data []byte) error {
 	}
 
 	switch {
-	case raw.Name == "" || len(raw.Keyslots) > 1:
+	case raw.Name == "" || len(raw.Keyslots) > 2:
 		return errInvalidNamedToken
 	case len(raw.Keyslots) == 0:
 		// Cryptsetup removes the keyslot ID from associated tokens
@@ -179,8 +179,8 @@ func (t *RecoveryToken) UnmarshalJSON(data []byte) error {
 
 	*t = RecoveryToken{
 		TokenBase: TokenBase{
-			TokenKeyslot: int(raw.Keyslots[0]),
-			TokenName:    raw.Name}}
+			TokenKeyslots: raw.Keyslots,
+			TokenName:     raw.Name}}
 	return nil
 }
 
@@ -214,7 +214,7 @@ func (t *KeyDataToken) MarshalJSON() ([]byte, error) {
 	raw := &keyDataTokenRaw{
 		tokenBaseRaw: tokenBaseRaw{
 			Type:     KeyDataTokenType,
-			Keyslots: tokenKeyslots{t.TokenKeyslot},
+			Keyslots: t.TokenKeyslots,
 			Name:     t.TokenName},
 		Priority: t.Priority,
 		Data:     t.Data}
@@ -228,7 +228,7 @@ func (t *KeyDataToken) UnmarshalJSON(data []byte) error {
 	}
 
 	switch {
-	case raw.Name == "" || len(raw.Keyslots) > 1:
+	case raw.Name == "" || len(raw.Keyslots) > 2:
 		return errInvalidNamedToken
 	case len(raw.Keyslots) == 0:
 		// Cryptsetup removes the keyslot ID from associated tokens
@@ -239,8 +239,8 @@ func (t *KeyDataToken) UnmarshalJSON(data []byte) error {
 
 	*t = KeyDataToken{
 		TokenBase: TokenBase{
-			TokenKeyslot: int(raw.Keyslots[0]),
-			TokenName:    raw.Name},
+			TokenKeyslots: raw.Keyslots,
+			TokenName:     raw.Name},
 		Priority: raw.Priority,
 		Data:     raw.Data}
 	return nil

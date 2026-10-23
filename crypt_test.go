@@ -905,8 +905,8 @@ func (s *cryptSuite) testActivateVolumeWithKeyData(c *C, data *testActivateVolum
 
 		token := &luksview.KeyDataToken{
 			TokenBase: luksview.TokenBase{
-				TokenKeyslot: slot,
-				TokenName:    data.tokenName,
+				TokenKeyslots: []int{slot},
+				TokenName:     data.tokenName,
 			},
 			Data: w.final.Bytes(),
 		}
@@ -1508,8 +1508,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData11(c *C) {
 
 		token := &luksview.KeyDataToken{
 			TokenBase: luksview.TokenBase{
-				TokenKeyslot: i,
-				TokenName:    fmt.Sprintf("default%d", i),
+				TokenKeyslots: []int{i},
+				TokenName:     fmt.Sprintf("default%d", i),
 			},
 			Data:     w.final.Bytes(),
 			Priority: i}
@@ -1534,8 +1534,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData13(c *C) {
 
 	token := &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: 0,
-			TokenName:    "default",
+			TokenKeyslots: []int{0},
+			TokenName:     "default",
 		},
 		Data: w.final.Bytes()}
 	s.addMockToken("/dev/sda1", token)
@@ -1556,8 +1556,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData15(c *C) {
 
 	token := &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: slot,
-			TokenName:    "empty"}}
+			TokenKeyslots: []int{slot},
+			TokenName:     "empty"}}
 	s.addMockToken("/dev/sda1", token)
 
 	keyData, key, auxKey := s.newNamedKeyData(c, "")
@@ -1577,8 +1577,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData16(c *C) {
 	// prints "Cannot read keydata from token" to os.Stderr
 	token := &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: 1,
-			TokenName:    "default",
+			TokenKeyslots: []int{1},
+			TokenName:     "default",
 		},
 		Data: json.RawMessage("foo")}
 	s.addMockToken("/dev/sda1", token)
@@ -1614,8 +1614,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData17(c *C) {
 
 		token := &luksview.KeyDataToken{
 			TokenBase: luksview.TokenBase{
-				TokenName:    fmt.Sprintf("default%d", i),
-				TokenKeyslot: i,
+				TokenName:     fmt.Sprintf("default%d", i),
+				TokenKeyslots: []int{i},
 			},
 			Data:     w.final.Bytes(),
 			Priority: 0}
@@ -1641,8 +1641,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleKeyData18(c *C) {
 
 	token := &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenName:    "default",
-			TokenKeyslot: 0,
+			TokenName:     "default",
+			TokenKeyslots: []int{0},
 		},
 		Data:     w.final.Bytes(),
 		Priority: 0}
@@ -2028,8 +2028,8 @@ func (s *cryptSuite) testInitializeLUKS2Container(c *C, data *testInitializeLUKS
 
 	var expectedToken luks2.Token = &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: 0,
-			TokenName:    keyslotName}}
+			TokenKeyslots: []int{0},
+			TokenName:     keyslotName}}
 	c.Check(dev.tokens[0], DeepEquals, expectedToken)
 }
 
@@ -2149,8 +2149,8 @@ func (s *cryptSuite) testAddLUKS2ContainerUnlockKey(c *C, data *testAddLUKS2Cont
 
 	var expectedToken luks2.Token = &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: data.expectedOptions.Slot,
-			TokenName:    keyslotName}}
+			TokenKeyslots: []int{data.expectedOptions.Slot},
+			TokenName:     keyslotName}}
 	c.Check(data.dev.tokens[data.expectedTokenId], DeepEquals, expectedToken)
 }
 
@@ -2163,8 +2163,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerUnlockKey(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 			},
 			keyslots: map[int][]byte{0: existingKey},
 		},
@@ -2185,8 +2185,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerUnlockKeyDifferentPath(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 			},
 			keyslots: map[int][]byte{0: existingKey},
 		},
@@ -2207,8 +2207,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerUnlockKeyDifferentName(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 			},
 			keyslots: map[int][]byte{0: existingKey},
 		},
@@ -2229,8 +2229,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerUnlockKeyNoName(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "foo"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "foo"}},
 			},
 			keyslots: map[int][]byte{0: existingKey},
 		},
@@ -2250,8 +2250,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerUnlockKeyWithOrphanedTokens(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 				1: luksview.MockOrphanedToken(luksview.KeyDataTokenType, "bar"),
 			},
 			keyslots: map[int][]byte{0: existingKey},
@@ -2273,8 +2273,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerUnlockKeyWithExternalKeyslots(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 			},
 			keyslots: map[int][]byte{
 				0:  existingKey,
@@ -2299,12 +2299,12 @@ func (s *cryptSuite) TestAddLUKS2ContainerUnlockKeyNameInUse(c *C) {
 		tokens: map[int]luks2.Token{
 			0: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 0,
-					TokenName:    "default"}},
+					TokenKeyslots: []int{0},
+					TokenName:     "default"}},
 			1: &luksview.RecoveryToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 1,
-					TokenName:    "recovery"}},
+					TokenKeyslots: []int{1},
+					TokenName:     "recovery"}},
 		},
 		keyslots: map[int][]byte{
 			0: nil,
@@ -2319,16 +2319,16 @@ func (s *cryptSuite) TestListLUKS2ContainerKeyNames(c *C) {
 		tokens: map[int]luks2.Token{
 			0: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 0,
-					TokenName:    "default"}},
+					TokenKeyslots: []int{0},
+					TokenName:     "default"}},
 			1: &luksview.RecoveryToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 1,
-					TokenName:    "recovery"}},
+					TokenKeyslots: []int{1},
+					TokenName:     "recovery"}},
 			2: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 2,
-					TokenName:    "foo"}},
+					TokenKeyslots: []int{2},
+					TokenName:     "foo"}},
 			3: luksview.MockOrphanedToken(luksview.KeyDataTokenType, "orphaned"),
 		},
 		keyslots: map[int][]byte{
@@ -2397,8 +2397,8 @@ func (s *cryptSuite) testAddLUKS2ContainerRecoveryKey(c *C, data *testAddLUKS2Co
 
 	var expectedToken luks2.Token = &luksview.RecoveryToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: data.expectedOptions.Slot,
-			TokenName:    keyslotName}}
+			TokenKeyslots: []int{data.expectedOptions.Slot},
+			TokenName:     keyslotName}}
 	c.Check(data.dev.tokens[data.expectedTokenId], DeepEquals, expectedToken)
 }
 
@@ -2411,8 +2411,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerRecoveryKey(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 			},
 			keyslots: map[int][]byte{0: existingKey},
 		},
@@ -2433,8 +2433,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerRecoveryKeyDifferentPath(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 			},
 			keyslots: map[int][]byte{0: existingKey},
 		},
@@ -2455,8 +2455,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerRecoveryKeyDifferentName(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 			},
 			keyslots: map[int][]byte{0: existingKey},
 		},
@@ -2477,8 +2477,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerRecoveryKeyNoName(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 			},
 			keyslots: map[int][]byte{0: existingKey},
 		},
@@ -2498,8 +2498,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerRecoveryKeyWithOrphanedTokens(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 				1: luksview.MockOrphanedToken(luksview.RecoveryTokenType, "recovery"),
 			},
 			keyslots: map[int][]byte{0: existingKey},
@@ -2521,8 +2521,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerRecoveryKeyWithExternalKeyslots(c *C) 
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 			},
 			keyslots: map[int][]byte{
 				0: existingKey,
@@ -2551,8 +2551,8 @@ func (s *cryptSuite) TestAddLUKS2ContainerRecoveryKeyDifferentSlot(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 			},
 			keyslots: map[int][]byte{
 				0: existingKey,
@@ -2574,12 +2574,12 @@ func (s *cryptSuite) TestAddLUKS2ContainerRecoveryKeyNameInUse(c *C) {
 		tokens: map[int]luks2.Token{
 			0: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 0,
-					TokenName:    "default"}},
+					TokenKeyslots: []int{0},
+					TokenName:     "default"}},
 			1: &luksview.RecoveryToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 1,
-					TokenName:    "recovery"}},
+					TokenKeyslots: []int{1},
+					TokenName:     "recovery"}},
 		},
 		keyslots: map[int][]byte{
 			0: existingKey,
@@ -2616,12 +2616,12 @@ func (s *cryptSuite) TestDeleteLUKS2ContainerKey(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 				1: &luksview.RecoveryToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 1,
-						TokenName:    "default-recovery"}},
+						TokenKeyslots: []int{1},
+						TokenName:     "default-recovery"}},
 			},
 			keyslots: map[int][]byte{
 				0: nil,
@@ -2641,12 +2641,12 @@ func (s *cryptSuite) TestDeleteLUKS2ContainerKeyDifferentPath(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 				1: &luksview.RecoveryToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 1,
-						TokenName:    "default-recovery"}},
+						TokenKeyslots: []int{1},
+						TokenName:     "default-recovery"}},
 			},
 			keyslots: map[int][]byte{
 				0: nil,
@@ -2666,12 +2666,12 @@ func (s *cryptSuite) TestDeleteLUKS2ContainerKeyDifferentName(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 				1: &luksview.RecoveryToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 1,
-						TokenName:    "foo"}},
+						TokenKeyslots: []int{1},
+						TokenName:     "foo"}},
 			},
 			keyslots: map[int][]byte{
 				0: nil,
@@ -2691,12 +2691,12 @@ func (s *cryptSuite) TestDeleteLUKS2ContainerKeyDifferentKeyslot(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 				1: &luksview.RecoveryToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 2,
-						TokenName:    "default-recovery"}},
+						TokenKeyslots: []int{2},
+						TokenName:     "default-recovery"}},
 			},
 			keyslots: map[int][]byte{
 				0: nil,
@@ -2716,12 +2716,12 @@ func (s *cryptSuite) TestDeleteLUKS2ContainerKeyDifferentTokenId(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"}},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"}},
 				4: &luksview.RecoveryToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 1,
-						TokenName:    "default-recovery"}},
+						TokenKeyslots: []int{1},
+						TokenName:     "default-recovery"}},
 			},
 			keyslots: map[int][]byte{
 				0: nil,
@@ -2739,8 +2739,8 @@ func (s *cryptSuite) TestDeleteLUKS2ContainerKeyLastSlot(c *C) {
 		tokens: map[int]luks2.Token{
 			0: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 0,
-					TokenName:    "default"}},
+					TokenKeyslots: []int{0},
+					TokenName:     "default"}},
 		},
 		keyslots: map[int][]byte{0: nil},
 	}
@@ -2782,14 +2782,14 @@ func (s *cryptSuite) TestRenameLUKS2ContainerKeyKeyData(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "foo"},
+						TokenKeyslots: []int{0},
+						TokenName:     "foo"},
 					Priority: 10,
 					Data:     json.RawMessage("1234567890")},
 				1: &luksview.RecoveryToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 1,
-						TokenName:    "default-recovery"}},
+						TokenKeyslots: []int{1},
+						TokenName:     "default-recovery"}},
 			},
 			keyslots: map[int][]byte{
 				0: nil,
@@ -2801,8 +2801,8 @@ func (s *cryptSuite) TestRenameLUKS2ContainerKeyKeyData(c *C) {
 		tokenId: 0,
 		expectedToken: &luksview.KeyDataToken{
 			TokenBase: luksview.TokenBase{
-				TokenKeyslot: 0,
-				TokenName:    "bar"},
+				TokenKeyslots: []int{0},
+				TokenName:     "bar"},
 			Priority: 10,
 			Data:     json.RawMessage("1234567890")}})
 }
@@ -2814,14 +2814,14 @@ func (s *cryptSuite) TestRenameLUKS2ContainerKeyRecovery(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "default"},
+						TokenKeyslots: []int{0},
+						TokenName:     "default"},
 					Priority: 10,
 					Data:     json.RawMessage("1234567890")},
 				1: &luksview.RecoveryToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 1,
-						TokenName:    "foo"}},
+						TokenKeyslots: []int{1},
+						TokenName:     "foo"}},
 			},
 			keyslots: map[int][]byte{
 				0: nil,
@@ -2833,8 +2833,8 @@ func (s *cryptSuite) TestRenameLUKS2ContainerKeyRecovery(c *C) {
 		tokenId: 1,
 		expectedToken: &luksview.RecoveryToken{
 			TokenBase: luksview.TokenBase{
-				TokenKeyslot: 1,
-				TokenName:    "bar"}}})
+				TokenKeyslots: []int{1},
+				TokenName:     "bar"}}})
 }
 
 func (s *cryptSuite) TestRenameLUKS2ContainerKeyDifferentPath(c *C) {
@@ -2844,14 +2844,14 @@ func (s *cryptSuite) TestRenameLUKS2ContainerKeyDifferentPath(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "foo"},
+						TokenKeyslots: []int{0},
+						TokenName:     "foo"},
 					Priority: 10,
 					Data:     json.RawMessage("1234567890")},
 				1: &luksview.RecoveryToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 1,
-						TokenName:    "default-recovery"}},
+						TokenKeyslots: []int{1},
+						TokenName:     "default-recovery"}},
 			},
 			keyslots: map[int][]byte{
 				0: nil,
@@ -2863,8 +2863,8 @@ func (s *cryptSuite) TestRenameLUKS2ContainerKeyDifferentPath(c *C) {
 		tokenId: 0,
 		expectedToken: &luksview.KeyDataToken{
 			TokenBase: luksview.TokenBase{
-				TokenKeyslot: 0,
-				TokenName:    "bar"},
+				TokenKeyslots: []int{0},
+				TokenName:     "bar"},
 			Priority: 10,
 			Data:     json.RawMessage("1234567890")}})
 }
@@ -2876,14 +2876,14 @@ func (s *cryptSuite) TestRenameLUKS2ContainerKeyDifferentNames(c *C) {
 			tokens: map[int]luks2.Token{
 				0: &luksview.KeyDataToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 0,
-						TokenName:    "bar"},
+						TokenKeyslots: []int{0},
+						TokenName:     "bar"},
 					Priority: 10,
 					Data:     json.RawMessage("1234567890")},
 				1: &luksview.RecoveryToken{
 					TokenBase: luksview.TokenBase{
-						TokenKeyslot: 1,
-						TokenName:    "default-recovery"}},
+						TokenKeyslots: []int{1},
+						TokenName:     "default-recovery"}},
 			},
 			keyslots: map[int][]byte{
 				0: nil,
@@ -2895,8 +2895,8 @@ func (s *cryptSuite) TestRenameLUKS2ContainerKeyDifferentNames(c *C) {
 		tokenId: 0,
 		expectedToken: &luksview.KeyDataToken{
 			TokenBase: luksview.TokenBase{
-				TokenKeyslot: 0,
-				TokenName:    "foo"},
+				TokenKeyslots: []int{0},
+				TokenName:     "foo"},
 			Priority: 10,
 			Data:     json.RawMessage("1234567890")}})
 }
@@ -2906,8 +2906,8 @@ func (s *cryptSuite) TestRenameLUKS2ContainerKeyNonExistant(c *C) {
 		tokens: map[int]luks2.Token{
 			0: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 0,
-					TokenName:    "foo"}},
+					TokenKeyslots: []int{0},
+					TokenName:     "foo"}},
 		},
 		keyslots: map[int][]byte{
 			0: nil,
@@ -2922,12 +2922,12 @@ func (s *cryptSuite) TestRenameLUKS2ContainerKeyNameInUse(c *C) {
 		tokens: map[int]luks2.Token{
 			0: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 0,
-					TokenName:    "foo"}},
+					TokenKeyslots: []int{0},
+					TokenName:     "foo"}},
 			1: &luksview.RecoveryToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 1,
-					TokenName:    "bar"}},
+					TokenKeyslots: []int{1},
+					TokenName:     "bar"}},
 		},
 		keyslots: map[int][]byte{
 			0: nil,
@@ -2943,14 +2943,14 @@ func (s *cryptSuite) TestCopyAndRemoveLUKS2ContainerKey(c *C) {
 		tokens: map[int]luks2.Token{
 			0: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 0,
-					TokenName:    "foo"},
+					TokenKeyslots: []int{0},
+					TokenName:     "foo"},
 				Priority: 10,
 				Data:     json.RawMessage("1234567890")},
 			1: &luksview.RecoveryToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 1,
-					TokenName:    "default-recovery"}},
+					TokenKeyslots: []int{1},
+					TokenName:     "default-recovery"}},
 		},
 		keyslots: map[int][]byte{
 			0: nil,
@@ -2972,8 +2972,8 @@ func (s *cryptSuite) TestCopyAndRemoveLUKS2ContainerKey(c *C) {
 	c.Assert(ok, testutil.IsTrue)
 	c.Check(newToken, DeepEquals, &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: 0,
-			TokenName:    "bar",
+			TokenKeyslots: []int{0},
+			TokenName:     "bar",
 		},
 		Priority: 10,
 		Data:     json.RawMessage("1234567890"),
@@ -2985,14 +2985,14 @@ func (s *cryptSuite) TestCopyAndRemoveLUKS2ContainerKeyPrevented(c *C) {
 		tokens: map[int]luks2.Token{
 			0: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 0,
-					TokenName:    "foo"},
+					TokenKeyslots: []int{0},
+					TokenName:     "foo"},
 				Priority: 10,
 				Data:     json.RawMessage("1234567890")},
 			1: &luksview.RecoveryToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 1,
-					TokenName:    "default-recovery"}},
+					TokenKeyslots: []int{1},
+					TokenName:     "default-recovery"}},
 		},
 		keyslots: map[int][]byte{
 			0: nil,
@@ -3073,8 +3073,8 @@ func (s *cryptSuiteUnmockedBase) testInitializeLUKS2Container(c *C, options *Ini
 	c.Check(info.Metadata.Tokens, HasLen, 1)
 	c.Check(info.Metadata.Tokens[0], DeepEquals, luks2.Token(&luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: 0,
-			TokenName:    expectedName},
+			TokenKeyslots: []int{0},
+			TokenName:     expectedName},
 		Priority: 0}))
 
 	expectedMetadataSize := uint64(16 * 1024)
@@ -3143,8 +3143,8 @@ func (s *cryptSuiteUnmockedBase) testAddLUKS2ContainerUnlockKey(c *C, keyslotNam
 	c.Check(info.Metadata.Tokens, HasLen, 2)
 	c.Check(info.Metadata.Tokens[1], DeepEquals, luks2.Token(&luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: 1,
-			TokenName:    expectedName},
+			TokenKeyslots: []int{1},
+			TokenName:     expectedName},
 		Priority: 0}))
 
 	c.Check(keyslot.KDF.Type, Equals, luks2.KDFTypePBKDF2)
@@ -3189,8 +3189,8 @@ func (s *cryptSuiteUnmockedBase) testAddLUKS2ContainerRecoveryKey(c *C, keyslotN
 	c.Check(info.Metadata.Tokens, HasLen, 2)
 	c.Check(info.Metadata.Tokens[1], DeepEquals, luks2.Token(&luksview.RecoveryToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: 1,
-			TokenName:    expectedName}}))
+			TokenKeyslots: []int{1},
+			TokenName:     expectedName}}))
 
 	c.Check(keyslot.KDF.Type, Equals, luks2.KDFTypePBKDF2)
 	c.Check(keyslot.KDF.Iterations, Equals, 600000)
@@ -3278,8 +3278,8 @@ func (s *cryptSuiteUnmocked) TestDeleteLUKS2ContainerKey1(c *C) {
 		expectedRecoveryNames: []string{"default-recovery"},
 		expectedToken: &luksview.RecoveryToken{
 			TokenBase: luksview.TokenBase{
-				TokenName:    "default-recovery",
-				TokenKeyslot: 1}}})
+				TokenName:     "default-recovery",
+				TokenKeyslots: []int{1}}}})
 }
 
 func (s *cryptSuiteUnmocked) TestDeleteLUKS2ContainerKey2(c *C) {
@@ -3288,8 +3288,8 @@ func (s *cryptSuiteUnmocked) TestDeleteLUKS2ContainerKey2(c *C) {
 		expectedUnlockNames: []string{"default"},
 		expectedToken: &luksview.KeyDataToken{
 			TokenBase: luksview.TokenBase{
-				TokenName:    "default",
-				TokenKeyslot: 0}}})
+				TokenName:     "default",
+				TokenKeyslots: []int{0}}}})
 }
 
 type testRenameLUKS2ContainerKeyUnmockedData struct {
@@ -3353,8 +3353,8 @@ func (s *cryptSuiteUnmocked) TestRenameLUKS2ContainerUnlockKey(c *C) {
 		expectedRecoveryName: "default-recovery",
 		expectedToken: &luksview.KeyDataToken{
 			TokenBase: luksview.TokenBase{
-				TokenName:    "foo",
-				TokenKeyslot: 0}}})
+				TokenName:     "foo",
+				TokenKeyslots: []int{0}}}})
 }
 
 func (s *cryptSuiteUnmocked) TestRenameLUKS2ContainerRecoveryKey(c *C) {
@@ -3365,8 +3365,8 @@ func (s *cryptSuiteUnmocked) TestRenameLUKS2ContainerRecoveryKey(c *C) {
 		expectedRecoveryName: "bar",
 		expectedToken: &luksview.RecoveryToken{
 			TokenBase: luksview.TokenBase{
-				TokenName:    "bar",
-				TokenKeyslot: 1}}})
+				TokenName:     "bar",
+				TokenKeyslots: []int{1}}}})
 }
 
 // Legacy
@@ -3800,8 +3800,8 @@ func (s *cryptSuite) TestActivateVolumeWithMultipleLegacyKeyData14(c *C) {
 
 	token := &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: 0,
-			TokenName:    "default",
+			TokenKeyslots: []int{0},
+			TokenName:     "default",
 		},
 		Data: w.final.Bytes()}
 	s.addMockToken("/dev/sda1", token)
@@ -4069,8 +4069,8 @@ func (s *cryptSuite) TestNameLegacyLUKS2ContainerKey(c *C) {
 	c.Assert(hasToken, Equals, true)
 	c.Check(token, DeepEquals, &luksview.RecoveryToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: 0,
-			TokenName:    "some-name",
+			TokenKeyslots: []int{0},
+			TokenName:     "some-name",
 		},
 	})
 
@@ -4081,8 +4081,8 @@ func (s *cryptSuite) TestNameLegacyLUKS2ContainerKey(c *C) {
 	c.Assert(hasToken, Equals, true)
 	c.Check(token, DeepEquals, &luksview.RecoveryToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: 1,
-			TokenName:    "some-other-name",
+			TokenKeyslots: []int{1},
+			TokenName:     "some-other-name",
 		},
 	})
 }
@@ -4095,8 +4095,8 @@ func (s *cryptSuite) TestNameLegacyLUKS2ContainerKeyNameExists(c *C) {
 		tokens: map[int]luks2.Token{
 			1: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 1,
-					TokenName:    "already",
+					TokenKeyslots: []int{1},
+					TokenName:     "already",
 				},
 			},
 		},
@@ -4121,8 +4121,8 @@ func (s *cryptSuite) TestNameLegacyLUKS2ContainerKeyNameAlreadyUsed(c *C) {
 		tokens: map[int]luks2.Token{
 			1: &luksview.KeyDataToken{
 				TokenBase: luksview.TokenBase{
-					TokenKeyslot: 1,
-					TokenName:    "already-used",
+					TokenKeyslots: []int{1},
+					TokenName:     "already-used",
 				},
 			},
 		},

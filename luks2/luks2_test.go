@@ -21,9 +21,12 @@ package luks2_test
 
 import (
 	"bytes"
+	"errors"
+	"sort"
 	"testing"
 
 	"github.com/snapcore/secboot"
+	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
 	"github.com/snapcore/secboot/internal/luksview"
 	. "github.com/snapcore/secboot/luks2"
 	. "gopkg.in/check.v1"
@@ -55,7 +58,7 @@ type mockKeyslot struct {
 	keyslotName     string
 	keyslotPriority int
 	keyslotData     secboot.KeyDataReader
-	keyslotId       int
+	keyslotIds      []int
 }
 
 func (i *mockKeyslot) Type() secboot.KeyslotType {
@@ -74,8 +77,12 @@ func (i *mockKeyslot) Data() secboot.KeyDataReader {
 	return i.keyslotData
 }
 
-func (i *mockKeyslot) KeyslotID() int {
-	return i.keyslotId
+func (i *mockKeyslot) PreferredKeyslotId() int {
+	if len(i.keyslotIds) == 1 {
+		return i.keyslotIds[0]
+	} else {
+		return internal_luks2.AnySlot
+	}
 }
 
 type mockLuks2KeyDataReader struct {
@@ -111,8 +118,8 @@ func newMockContainerData() *mockContainerData {
 func newKeyDataToken(name string, slot, priority int, data []byte) *luksview.KeyDataToken {
 	return &luksview.KeyDataToken{
 		TokenBase: luksview.TokenBase{
-			TokenKeyslot: slot,
-			TokenName:    name,
+			TokenKeyslots: []int{slot},
+			TokenName:     name,
 		},
 		Priority: priority,
 		Data:     data,
@@ -127,8 +134,8 @@ func (v *mockLuksView) TokenByName(name string) (token luksview.NamedToken, id i
 	if id, exists := v.data.recoveryKeyslots[name]; exists {
 		return &luksview.RecoveryToken{
 			TokenBase: luksview.TokenBase{
-				TokenKeyslot: id,
-				TokenName:    name,
+				TokenKeyslots: []int{id},
+				TokenName:     name,
 			},
 		}, 0, true // We return 0 for all token IDs because the test doesn't use it.
 	}
@@ -138,6 +145,24 @@ func (v *mockLuksView) TokenByName(name string) (token luksview.NamedToken, id i
 	}
 
 	return nil, 0, false
+}
+
+// This mocked function sorts by token name (instead of by keyslot id)
+func (v *mockLuksView) TokenNamesSortedByKeyslotId() ([]string, error) {
+	if v.data == nil {
+		return nil, errors.New("error while getting token names")
+	}
+
+	names := []string{}
+	for name, _ := range v.data.recoveryKeyslots {
+		names = append(names, name)
+	}
+	for name, _ := range v.data.platformKeyslots {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+	return names, nil
 }
 
 func newMockLuksView(data *mockContainerData) LuksView {
