@@ -26,7 +26,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/pilebones/go-udev/netlink"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
@@ -45,6 +47,88 @@ func readAMDPSPBooleanAttribute(dev internal_efi.SysfsDevice, name string) (bool
 	}
 
 	return strconv.ParseBool(string(bytes.TrimSuffix(data, []byte("\n"))))
+}
+
+func readSysfsDeviceStringAttribute(dev internal_efi.SysfsDevice, name string) (string, error) {
+	rc, err := dev.AttributeReader(name)
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(string(data), "\n"), nil
+}
+
+func detectAMDPreOSMeasurementConfig(env internal_efi.HostEnvironment) (*amdPreOSMeasurementConfig, error) {
+	devices, err := env.EnumerateDevices(&netlink.RuleDefinition{
+		Env: map[string]string{
+			"SUBSYSTEM": "pci",
+			"DRIVER":    "ccp",
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cannot obtain PCI devices that are bound to the ccp driver: %w", err)
+	}
+	if len(devices) == 0 {
+		return nil, &UnsupportedPlatformError{errors.New("no PSP PCI device")}
+	}
+
+	tsmeEnabled, err := readAMDPSPBooleanAttribute(devices[0], "tsme_status")
+	if err != nil {
+		return nil, fmt.Errorf("cannot determine TSME status: %w", err)
+	}
+	// The ccp driver does not expose the HSTI TSME measurement-support bit,
+	// so the event log checks cannot determine whether the TSME event must be
+	// present. They can still validate its value against this status when it is
+	// present and policy generation can derive its digest from this status.
+	config := &amdPreOSMeasurementConfig{TSMEEnabled: tsmeEnabled}
+
+	devices, err = env.EnumerateDevices(&netlink.RuleDefinition{
+		Env: map[string]string{"SUBSYSTEM": "firmware-attributes"},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cannot enumerate firmware attributes devices: %w", err)
+	}
+	for _, device := range devices {
+		if filepath.Base(device.Path()) != "hp-bioscfg" {
+			continue
+		}
+
+		const attrPrefix = "attributes/"
+		measureTo, err := readSysfsDeviceStringAttribute(device, attrPrefix+"Measure Additional DMA Settings/current_value")
+		if err != nil {
+			return nil, fmt.Errorf("cannot read HP Measure Additional DMA Settings firmware attribute: %w", err)
+		}
+		if measureTo != "PCR7" {
+			return config, nil
+		}
+
+		for _, setting := range []struct {
+			name     string
+			expected string
+		}{
+			{name: "SVM CPU Virtualization", expected: "Enable"},
+			{name: "DMA Protection", expected: "Enable"},
+			{name: "Pre-boot DMA Protection", expected: "All PCIe Devices"},
+		} {
+			value, err := readSysfsDeviceStringAttribute(device, attrPrefix+setting.name+"/current_value")
+			if err != nil {
+				return nil, fmt.Errorf("cannot read HP %s firmware attribute: %w", setting.name, err)
+			}
+			if value != setting.expected {
+				return nil, &UnsupportedPlatformError{fmt.Errorf("unsupported HP %s firmware setting %q", setting.name, value)}
+			}
+		}
+
+		config.HPPreBootDMAConfigEnabled = true
+		return config, nil
+	}
+
+	return config, nil
 }
 
 func checkHostSecurityAMDPSP(env internal_efi.HostEnvironment) (platformFirmwareIntegrityConfig, error) {

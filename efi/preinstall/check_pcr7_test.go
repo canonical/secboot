@@ -56,6 +56,7 @@ type testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams struct {
 	pcrAlg                      tpm2.HashAlgorithmId
 	iblImage                    secboot_efi.Image
 	permitDMAProtectionDisabled bool
+	amdConfig                   *AMDPreOSMeasurementConfig
 
 	expectedFlags           SecureBootPolicyResultFlags
 	expectedUsedAuthorities []*X509CertificateID
@@ -95,7 +96,7 @@ func (s *pcr7Suite) testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c 
 	log, err := params.env.ReadEventLog()
 	c.Assert(err, IsNil)
 
-	result, err := CheckSecureBootPolicyMeasurementsAndObtainAuthorities(context.Background(), params.env, log, params.pcrAlg, params.iblImage, params.permitDMAProtectionDisabled)
+	result, err := CheckSecureBootPolicyMeasurementsAndObtainAuthoritiesWithConfig(context.Background(), params.env, log, params.pcrAlg, params.iblImage, params.permitDMAProtectionDisabled, params.amdConfig)
 	if err != nil {
 		return err
 	}

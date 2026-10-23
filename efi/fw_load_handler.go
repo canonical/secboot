@@ -148,6 +148,8 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// EV_EFI_ACTION event in the profile if it is present.
 	includeThunderboltSecurityLevel0 := boolParamOrFalse(ctx.Params(), includeThunderboltSecurityLevel0ParamKey)
 
+	includeHPPreBootDMAConfig := boolParamOrFalse(ctx.Params(), includeHPPreBootDMAConfigParamKey)
+
 	// Wind the log forward to the first EV_EFI_VARIABLE_DRIVER_CONFIG event, including
 	// any EV_EFI_ACTION "DMA Protection Disabled" measurement before this in the target
 	// profile, if this measurement is encountered and the supplied options permit it.
@@ -157,6 +159,10 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	// enabled. A firmware debugger permits an adversary with local access to control
 	// firmware execution, bypassing any protections offered by measuredboot or verified
 	// boot, and the presence of one should prevent FDE from being enabled.
+	var (
+		measuredHPPreBootDMAConfig bool
+		measuredAMDTSMEConfig      bool
+	)
 	for len(events) > 0 {
 		e := events[0]
 		events = events[1:]
@@ -166,15 +172,31 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			continue
 		}
 
+		if handled, err := h.measureAMDTSMEConfigEvent(ctx, e, &measuredAMDTSMEConfig); handled {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
 		if e.EventType == tcglog.EventTypeEFIVariableDriverConfig {
-			// This is the first secure boot configuration measurement. In most
-			// circumstances, this will be the first measurement to PCR7. Only
-			// in the case where the first event is a EV_EFI_ACTION "DMA Protection
-			// Disabled" event will this not be true.
+			// This is the first secure boot configuration measurement. It is
+			// generally the first measurement to PCR7, although supported
+			// pre-configuration action or vendor events may precede it.
+			if includeHPPreBootDMAConfig && !measuredHPPreBootDMAConfig {
+				return errors.New("missing expected HP pre-boot DMA configuration event")
+			}
 			break
 		}
 
 		switch {
+		case internal_efi.IsHPPreBootDMAConfigEvent(e) && includeHPPreBootDMAConfig && !measuredHPPreBootDMAConfig:
+			expectedDigest := tcglog.ComputeStringEventDigest(ctx.PCRAlg().GetHash(), internal_efi.HPPreBootDMAConfigEventData())
+			if !bytes.Equal(e.Digests[ctx.PCRAlg()], expectedDigest) {
+				return errors.New("invalid digest for HP pre-boot DMA configuration event")
+			}
+			ctx.ExtendPCR(internal_efi.SecureBootPolicyPCR, expectedDigest)
+			measuredHPPreBootDMAConfig = true
 		case e.EventType == tcglog.EventTypeEFIAction &&
 			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) || bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))) &&
 			allowInsufficientDMAProtection:
@@ -259,9 +281,22 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 	foundOsPresent := false              // true when we enounter the first EV_SEPARATOR in PCRs 0-6.
 	measuredSecureBootSeparator := false // true when we encounter the EV_SEPARATOR in PCR7.
 	measuredPreOSVerification := false   // true when we encounter a EV_EFI_VARIABLE_AUTHORITY event.
+	remainingSecureBootConfigEvents := 4 // PK, KEK, db and dbx (SecureBoot was consumed above).
 	for len(events) > 0 {
 		e := events[0]
 		events = events[1:]
+
+		if e.PCRIndex == internal_efi.SecureBootPolicyPCR {
+			if internal_efi.IsAMDTSMEConfigEvent(e) && remainingSecureBootConfigEvents > 0 {
+				return errors.New("unexpected AMD TSME configuration event whilst measuring secure boot configuration")
+			}
+			if handled, err := h.measureAMDTSMEConfigEvent(ctx, e, &measuredAMDTSMEConfig); handled {
+				if err != nil {
+					return err
+				}
+				continue
+			}
+		}
 
 		switch {
 		case e.PCRIndex < internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeSeparator:
@@ -295,6 +330,9 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			// once we've encountered the first EV_EFI_VARIABLE_AUTHORITY event and
 			// we'll likely generate an invalid profile if we do. The preinstall
 			// checks will catch this.
+			if remainingSecureBootConfigEvents > 0 {
+				remainingSecureBootConfigEvents--
+			}
 		case e.PCRIndex == internal_efi.SecureBootPolicyPCR && e.EventType == tcglog.EventTypeEFIAction &&
 			(bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabled)) || bytes.Equal(e.Data.Bytes(), []byte(dmaProtectionDisabledNul))) &&
 			allowInsufficientDMAProtection:
@@ -364,6 +402,13 @@ func (h *fwLoadHandler) measureSecureBootPolicyPreOS(ctx pcrBranchContext) error
 			continue
 		}
 
+		if handled, err := h.measureAMDTSMEConfigEvent(ctx, e, &measuredAMDTSMEConfig); handled {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
 		if e.EventType == tcglog.EventTypeEFIVariableAuthority {
 			break
 		}
@@ -385,6 +430,33 @@ func boolParamOrFalse(loadParams loadParams, key loadParamsKey) bool {
 		return false
 	}
 	return val.(bool)
+}
+
+func (h *fwLoadHandler) measureAMDTSMEConfigEvent(ctx pcrBranchContext, event *tcglog.Event, seen *bool) (bool, error) {
+	if !internal_efi.IsAMDTSMEConfigEvent(event) {
+		return false, nil
+	}
+
+	value, ok := ctx.Params()[amdTSMEEnabledParamKey]
+	if !ok {
+		return true, errors.New("encountered AMD TSME configuration event without expected platform configuration")
+	}
+	if *seen {
+		return true, errors.New("encountered duplicate AMD TSME configuration event")
+	}
+
+	expectedData := internal_efi.AMDTSMEConfigEventData(value.(bool))
+	if !bytes.Equal(event.Data.Bytes(), expectedData) {
+		return true, fmt.Errorf("AMD TSME configuration event data does not match expected TSME status (expected %#x, got %#x)", expectedData, event.Data.Bytes())
+	}
+	expectedDigest := tcglog.ComputeEventDigest(ctx.PCRAlg().GetHash(), expectedData)
+	if !bytes.Equal(event.Digests[ctx.PCRAlg()], expectedDigest) {
+		return true, errors.New("invalid digest for AMD TSME configuration event")
+	}
+
+	ctx.ExtendPCR(event.PCRIndex, expectedDigest)
+	*seen = true
+	return true, nil
 }
 
 func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
@@ -423,18 +495,56 @@ func (h *fwLoadHandler) measurePlatformFirmware(ctx pcrBranchContext) error {
 }
 
 func (h *fwLoadHandler) measureDriversAndApps(ctx pcrBranchContext) error {
+	var (
+		seenSeparator     bool
+		seenAMDTSMEConfig bool
+	)
+
 	for _, event := range h.log.Events {
+		// AMD firmware may extend the TSME configuration event into PCR2 after
+		// the separator but before authorizing or launching the initial OS
+		// loader. Retain that event, but do not copy any PCR2 measurements made
+		// once OS image processing has begun.
+		if seenSeparator &&
+			((event.PCRIndex == internal_efi.SecureBootPolicyPCR &&
+				event.EventType == tcglog.EventTypeEFIVariableAuthority) ||
+				(event.PCRIndex == internal_efi.BootManagerCodePCR &&
+					event.EventType == tcglog.EventTypeEFIBootServicesApplication)) {
+			return nil
+		}
+
 		if event.PCRIndex != internal_efi.DriversAndAppsPCR {
 			continue
 		}
 
-		if event.EventType == tcglog.EventTypeSeparator {
-			return h.measureSeparator(ctx, internal_efi.DriversAndAppsPCR, event)
+		if handled, err := h.measureAMDTSMEConfigEvent(ctx, event, &seenAMDTSMEConfig); handled {
+			if err != nil {
+				return err
+			}
+			continue
 		}
-		ctx.ExtendPCR(internal_efi.DriversAndAppsPCR, event.Digests[ctx.PCRAlg()])
+
+		if !seenSeparator {
+			if event.EventType == tcglog.EventTypeSeparator {
+				if err := h.measureSeparator(ctx, internal_efi.DriversAndAppsPCR, event); err != nil {
+					return err
+				}
+				seenSeparator = true
+				continue
+			}
+			ctx.ExtendPCR(internal_efi.DriversAndAppsPCR, event.Digests[ctx.PCRAlg()])
+			continue
+		}
+
+		return fmt.Errorf(
+			"unexpected post-separator event type %v found in PCR %d",
+			event.EventType, internal_efi.DriversAndAppsPCR)
 	}
 
-	return errors.New("missing separator in log")
+	if !seenSeparator {
+		return errors.New("missing separator in log")
+	}
+	return errors.New("reached end of log before encountering initial OS authorization or launch")
 }
 
 func (h *fwLoadHandler) measureBootManagerCodePreOS(ctx pcrBranchContext) error {

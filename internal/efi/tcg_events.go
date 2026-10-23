@@ -20,12 +20,19 @@
 package efi
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
 	efi "github.com/canonical/go-efilib"
 	"github.com/canonical/tcglog-parser"
 )
+
+const hpPreBootDMAConfigEventData = `"SVM CPU Virtualization":"Enable";"DMA protection":"Enable";"Pre-boot DMA protection":"All PCIe devices";`
+
+// AMDTSMEConfigEventType is the vendor-defined event type used by AMD AGESA
+// to measure the TSME status.
+const AMDTSMEConfigEventType tcglog.EventType = 0x00008401
 
 // IsVendorEventType indicates whether the supplied event type is vendor
 // defined. Officially, this applies to any event type that is not within the
@@ -40,6 +47,38 @@ func IsVendorEventType(t tcglog.EventType) bool {
 	default:
 		return t > 0x7fff
 	}
+}
+
+// AMDTSMEConfigEventData returns the event data measured by AMD AGESA for the
+// supplied TSME status.
+func AMDTSMEConfigEventData(enabled bool) []byte {
+	if enabled {
+		return []byte{1}
+	}
+	return []byte{0}
+}
+
+// IsAMDTSMEConfigEvent indicates whether the supplied event is an AMD AGESA
+// TSME status measurement. AGESA measures this to PCR2 and, when TSME is
+// disabled, may additionally measure it to PCR7.
+func IsAMDTSMEConfigEvent(ev *tcglog.Event) bool {
+	return (ev.PCRIndex == DriversAndAppsPCR || ev.PCRIndex == SecureBootPolicyPCR) &&
+		ev.EventType == AMDTSMEConfigEventType
+}
+
+// HPPreBootDMAConfigEventData returns the expected event data for HP's
+// enabled SVM and DMA protection configuration.
+func HPPreBootDMAConfigEventData() string {
+	return hpPreBootDMAConfigEventData
+}
+
+// IsHPPreBootDMAConfigEvent indicates whether the supplied event is the exact
+// virtualization and pre-boot DMA configuration measurement produced by HP
+// firmware when "Measure Additional DMA Settings" is directed to PCR7.
+func IsHPPreBootDMAConfigEvent(ev *tcglog.Event) bool {
+	return ev.PCRIndex == SecureBootPolicyPCR &&
+		ev.EventType == tcglog.EventTypeEFIAction &&
+		bytes.Equal(ev.Data.Bytes(), []byte(hpPreBootDMAConfigEventData))
 }
 
 // IsLaunchedFromFirmwareVolume indicates that the supplied event is associated

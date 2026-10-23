@@ -311,7 +311,8 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 
 	if virtMode == detectVirtNone {
 		// Only run host security checks if we are not in a VM
-		fwIntegrity, err := checkHostSecurity(runChecksEnv, log)
+		fwIntegrity, amdConfig, err := checkHostSecurityAndAMDPreOSMeasurements(runChecksEnv, log)
+		result.amdPreOSMeasurementConfig = amdConfig
 
 		if err != nil {
 			// Either a simple error or a compound error
@@ -369,7 +370,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 	}
 
 	// Check PCR2 for addon drivers.
-	switch addonDrivers, err := checkDriversAndAppsMeasurements(ctx, runChecksEnv, log, result.PCRAlg); {
+	switch addonDrivers, err := checkDriversAndAppsMeasurementsWithConfig(ctx, runChecksEnv, log, result.PCRAlg, result.amdPreOSMeasurementConfig); {
 	case err != nil && !logResults.Lookup(internal_efi.DriversAndAppsPCR).Ok():
 		// Don't record another error for this PCR
 	case err != nil && flags&PermitNoDriversAndAppsProfileSupport == 0:
@@ -430,7 +431,7 @@ func RunChecks(ctx context.Context, flags CheckFlags, loadedImages []secboot_efi
 		iblImage = loadedImages[0]
 	}
 	permitDMAProtectionDisabledEvent := flags&PermitInsufficientDMAProtection > 0
-	pcr7Result, err := checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx, runChecksEnv, log, result.PCRAlg, iblImage, permitDMAProtectionDisabledEvent)
+	pcr7Result, err := checkSecureBootPolicyMeasurementsAndObtainAuthoritiesWithConfig(ctx, runChecksEnv, log, result.PCRAlg, iblImage, permitDMAProtectionDisabledEvent, result.amdPreOSMeasurementConfig)
 	switch {
 	case isEFIVariableAccessError(err):
 		// Always return EFI variable access errors.
