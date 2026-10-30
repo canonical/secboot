@@ -6002,7 +6002,7 @@ func (s *runChecksContextSuite) TestRunChecksActionProceedUnsupportedArgumentTyp
 		expectedPcrAlg: tpm2.HashAlgorithmSHA256,
 	})
 	c.Assert(errs, HasLen, 1)
-	c.Check(errs[0], ErrorMatches, `cannot deserialize argument map from JSON to type preinstall.ActionProceedArgs: json: cannot unmarshal number into Go value of type \[\]preinstall.ErrorKind`)
+	c.Check(errs[0], ErrorMatches, `cannot deserialize argument map from JSON to type preinstall.ActionProceedArgs: json: cannot unmarshal number into Go (?:value of type \[\]preinstall.ErrorKind|struct field \.error-kinds of type \[\]preinstall.ErrorKind)`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInvalidArgument,
 		InvalidActionArgumentDetails{
@@ -6888,7 +6888,7 @@ func (s *runChecksContextSuite) TestRunBadActionClearTPMInvalidAuthValueArgument
 	})
 	c.Assert(errs, HasLen, 1)
 
-	c.Check(errs[0], ErrorMatches, `cannot deserialize argument map from JSON to type preinstall.TPMAuthValueArg: json: cannot unmarshal number into Go value of type \[\]uint8`)
+	c.Check(errs[0], ErrorMatches, `cannot deserialize argument map from JSON to type preinstall.TPMAuthValueArg: json: cannot unmarshal number into Go (?:value of type \[\]uint8|struct field \.auth-value of type \[\]uint8)`)
 	c.Check(errs[0], DeepEquals, NewWithKindAndActionsError(
 		ErrorKindInvalidArgument,
 		InvalidActionArgumentDetails{
