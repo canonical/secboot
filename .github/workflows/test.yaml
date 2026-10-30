@@ -10,13 +10,8 @@ jobs:
     strategy:
       matrix:
         goversion:
-          - 1.18
-# The unit tests currently fail against the new stable go
-# version (1.24). This needs investigating and resolving,
-# but in the meantime, we'll do tests against 1.23.
-# See https://github.com/canonical/secboot/issues/383
-#         - stable
-          - 1.23
+          - '1.18'
+          - stable
     steps:
     - name: Set up Go ${{ matrix.goversion }}
       uses: actions/setup-go@v4
