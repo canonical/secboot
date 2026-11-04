@@ -39,7 +39,7 @@ import (
 
 // checkScope verifies KeyDataScope for the supplied boot environment.
 // The signature is verified against the public key in want,
-// instead of byte for byte comparision, as ECDSA signatures are not
+// instead of byte for byte comparison, as ECDSA signatures are not
 // a stable output across Go releases.
 //
 // See: https://github.com/canonical/secboot/issues/383

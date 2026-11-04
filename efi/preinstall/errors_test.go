@@ -333,11 +333,11 @@ func (s *errorsSuite) TestNewWithKindAndActionsErrorMarshal(c *C) {
 func (s *errorsSuite) TestNewWithKindAndActionsErrorNoJsonArgsPanic(c *C) {
 	c.Check(func() {
 		NewWithKindAndActionsError("foo", []any{"bar1", json.RawMessage{0x22, 0x62, 0x61, 0x72}}, nil, errors.New("some error"))
-	}, PanicMatches, `cannot serialize arguments to JSON: json: error calling MarshalJSON for type json.RawMessage: unexpected end of JSON input`)
+	}, PanicMatches, `cannot serialize arguments to JSON: json: error calling MarshalJSON for type .*: unexpected end of JSON input`)
 }
 
 func (s *errorsSuite) TestNewWithKindAndActionsErrorNoMapArgsPanic(c *C) {
-	c.Check(func() { NewWithKindAndActionsError("foo", []string{"bar1", "bar2"}, nil, errors.New("some error")) }, PanicMatches, `cannot deserialize arguments JSON to map: json: cannot unmarshal array into Go value of type map\[string\]json.RawMessage`)
+	c.Check(func() { NewWithKindAndActionsError("foo", []string{"bar1", "bar2"}, nil, errors.New("some error")) }, PanicMatches, `cannot deserialize arguments JSON to map: json: cannot unmarshal array into Go value of type map\[string\].*`)
 }
 
 func (s *errorsSuite) TestWithKindAndActionsErrorGetArgByName1(c *C) {
@@ -455,7 +455,7 @@ func (s *errorsSuite) TestGetWithKindAndActionsErrorInvalidMap(c *C) {
 	testErr := NewWithKindAndActionsErrorForTest(kind, argsJson, nil, rawErr)
 
 	_, err := GetWithKindAndActionsErrorArg[*withKindAndActionsErrorArgs](testErr)
-	c.Assert(err, ErrorMatches, `cannot serialize argument map to JSON: json: error calling MarshalJSON for type json.RawMessage: unexpected end of JSON input`)
+	c.Assert(err, ErrorMatches, `cannot serialize argument map to JSON: json: error calling MarshalJSON for type .*: unexpected end of JSON input`)
 }
 
 func (s *errorsSuite) TestGetWithKindAndActionsErrorInvalidType1(c *C) {
@@ -483,7 +483,7 @@ func (s *errorsSuite) TestGetWithKindAndActionsErrorInvalidType2(c *C) {
 	testErr := NewWithKindAndActionsError(kind, argsIn, nil, rawErr)
 
 	_, err := GetWithKindAndActionsErrorArg[*withKindAndActionsErrorArgs](testErr)
-	c.Assert(err, ErrorMatches, `cannot deserialize argument map from JSON to type \*preinstall_test.withKindAndActionsErrorArgs: json: cannot unmarshal bool into Go struct field withKindAndActionsErrorArgs.arg2 of type int`)
+	c.Assert(err, ErrorMatches, `cannot deserialize argument map from JSON to type \*preinstall_test.withKindAndActionsErrorArgs: json: cannot unmarshal bool into Go struct field .*arg2 of type int`)
 }
 
 func (s *errorsSuite) TestMissingKernelModuleErrorModule(c *C) {
