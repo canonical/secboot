@@ -11,6 +11,7 @@ jobs:
       matrix:
         goversion:
           - '1.18'
+          - '1.23'
           - stable
     steps:
     - name: Set up Go ${{ matrix.goversion }}
