@@ -30,7 +30,7 @@ import (
 
 // This contains some test parameters that affect bootscope signatures.
 // The hardcoded signatures are only used for key recovery tests, where
-// verification is done, rather than byte comparision.
+// verification is done, rather than byte comparison.
 var (
 	model1 = testutil.MustMakeMockCore20ModelAssertion(map[string]interface{}{
 		"authority-id": "fake-brand",
