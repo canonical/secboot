@@ -137,8 +137,13 @@ func run() int {
 		outputPath = filepath.Join(outputDir, "NVChip")
 	}
 
-	cleanupTpmSimulator, err := tpm2_testutil.LaunchTPMSimulator(
-		&tpm2_testutil.TPMSimulatorOptions{SourcePath: outputPath, Manufacture: true, SavePersistent: true})
+	opts := tpm2_testutil.TPMSimulatorOptions{
+		Manufacture:    true,
+		SavePersistent: true,
+		SourcePath:     outputPath,
+		WorkDir:        testutil.GetTpmSimulatorWorkDir(),
+	}
+	cleanupTpmSimulator, err := tpm2_testutil.LaunchTPMSimulator(&opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot launch TPM simulator: %v\n", err)
 		return 1

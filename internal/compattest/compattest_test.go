@@ -37,6 +37,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	"github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/testutil"
 	"github.com/snapcore/secboot/internal/tpm2test"
 	secboot_tpm2 "github.com/snapcore/secboot/tpm2"
 )
@@ -89,7 +90,11 @@ func (s *compatTestSuiteBase) SetUpTest(c *C) {
 		}()
 	}
 
-	simulatorShutdown, err := tpm2_testutil.LaunchTPMSimulator(&tpm2_testutil.TPMSimulatorOptions{SourcePath: s.dataPath + "/NVChip"})
+	opts := tpm2_testutil.TPMSimulatorOptions{
+		SourcePath: s.dataPath + "/NVChip",
+		WorkDir:    testutil.GetTpmSimulatorWorkDir(),
+	}
+	simulatorShutdown, err := tpm2_testutil.LaunchTPMSimulator(&opts)
 	c.Assert(err, IsNil)
 
 	s.InitCleanup(c)
