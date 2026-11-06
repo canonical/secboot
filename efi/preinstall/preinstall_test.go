@@ -158,7 +158,10 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	os.Exit(func() int {
 		if tpm2_testutil.TPMBackend == tpm2_testutil.TPMBackendMssim {
-			simulatorCleanup, err := tpm2_testutil.LaunchTPMSimulator(nil)
+			opts := tpm2_testutil.TPMSimulatorOptions{
+				WorkDir: testutil.GetTpmSimulatorWorkDir(),
+			}
+			simulatorCleanup, err := tpm2_testutil.LaunchTPMSimulator(&opts)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Cannot launch TPM simulator: %v\n", err)
 				return 1
