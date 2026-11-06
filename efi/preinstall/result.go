@@ -214,10 +214,21 @@ func (f CheckResultFlags) String() string {
 }
 
 type checkResultJSON struct {
-	PCRAlg            hashAlgorithmId               `json:"pcr-alg"`
-	UsedSecureBootCAs []*X509CertificateID          `json:"used-secure-boot-cas"`
-	Flags             CheckResultFlags              `json:"flags"`
-	AcceptedErrors    map[ErrorKind]json.RawMessage `json:"accepted-errors,omitempty"`
+	PCRAlg                    hashAlgorithmId               `json:"pcr-alg"`
+	UsedSecureBootCAs         []*X509CertificateID          `json:"used-secure-boot-cas"`
+	Flags                     CheckResultFlags              `json:"flags"`
+	AcceptedErrors            map[ErrorKind]json.RawMessage `json:"accepted-errors,omitempty"`
+	AMDPreOSMeasurementConfig *amdPreOSMeasurementConfig    `json:"amd-pre-os-measurement-config,omitempty"`
+}
+
+// amdPreOSMeasurementConfig contains platform configuration obtained from
+// sources that are independent of the TCG event log.
+type amdPreOSMeasurementConfig struct {
+	// Linux exposes the TSME status, but not the HSTI bit that indicates
+	// whether firmware measures it. This supplies the expected payload when
+	// the event is present; its presence cannot currently be required.
+	TSMEEnabled               bool `json:"tsme-enabled"`
+	HPPreBootDMAConfigEnabled bool `json:"hp-pre-boot-dma-config-enabled,omitempty"`
 }
 
 // CheckResult is returned from [RunChecks] when it completes successfully.
@@ -240,6 +251,8 @@ type CheckResult struct {
 	// for future proofing.
 	AcceptedErrors map[ErrorKind]json.RawMessage
 
+	amdPreOSMeasurementConfig *amdPreOSMeasurementConfig
+
 	// Warnings contains any non-fatal errors that were detected when running the tests
 	// on the current platform with the specified configuration. Note that this field is
 	// not serialized.
@@ -249,10 +262,11 @@ type CheckResult struct {
 // MarshalJSON implements [json.Marshaler].
 func (r CheckResult) MarshalJSON() ([]byte, error) {
 	res := &checkResultJSON{
-		PCRAlg:            hashAlgorithmId(r.PCRAlg),
-		UsedSecureBootCAs: r.UsedSecureBootCAs,
-		Flags:             r.Flags,
-		AcceptedErrors:    r.AcceptedErrors,
+		PCRAlg:                    hashAlgorithmId(r.PCRAlg),
+		UsedSecureBootCAs:         r.UsedSecureBootCAs,
+		Flags:                     r.Flags,
+		AcceptedErrors:            r.AcceptedErrors,
+		AMDPreOSMeasurementConfig: r.amdPreOSMeasurementConfig,
 	}
 	return json.Marshal(res)
 }
@@ -265,10 +279,11 @@ func (r *CheckResult) UnmarshalJSON(data []byte) error {
 	}
 
 	*r = CheckResult{
-		PCRAlg:            tpm2.HashAlgorithmId(res.PCRAlg),
-		UsedSecureBootCAs: res.UsedSecureBootCAs,
-		Flags:             res.Flags,
-		AcceptedErrors:    res.AcceptedErrors,
+		PCRAlg:                    tpm2.HashAlgorithmId(res.PCRAlg),
+		UsedSecureBootCAs:         res.UsedSecureBootCAs,
+		Flags:                     res.Flags,
+		AcceptedErrors:            res.AcceptedErrors,
+		amdPreOSMeasurementConfig: res.AMDPreOSMeasurementConfig,
 	}
 	if r.Flags&insufficientDMAProtectionDetected > 0 {
 		if r.AcceptedErrors == nil {
