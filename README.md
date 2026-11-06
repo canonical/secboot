@@ -23,6 +23,23 @@ A Go library for managing TPM-backed encrypted disks on Linux operating systems.
     * Access to UEFI variables PK, KEK, Db, Dbx
 
 
+## Build
+
+Prerequisites:
+- go1.23 or later
+- libkeyutils-dev
+
+Build the standalone executables:
+```
+make build
+```
+
+## Test
+
+```
+make check
+```
+
 ## License
 
 Secboot is licensed under the GNU General Public License version 3.

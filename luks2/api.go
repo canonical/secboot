@@ -29,6 +29,7 @@ import (
 
 type luksView interface {
 	TokenByName(name string) (token luksview.NamedToken, id int, inUse bool)
+	TokenNamesSortedByKeyslotId() ([]string, error)
 }
 
 var newLuksView = func(ctx context.Context, path string) (luksView, error) {
