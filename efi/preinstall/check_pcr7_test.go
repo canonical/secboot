@@ -680,7 +680,8 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 	c.Check(err, Equals, ErrNoSecureBoot)
 }
 
-func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadFWSupportsDBT(c *C) {
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoodFWSupportsDBT(c *C) {
+	// Test with firmware that supports timestamp revocation but doesn't measure dbt.
 	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
@@ -698,11 +699,16 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			},
 			digest: shimDigestDefault,
 		},
+		expectedFlags: SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
 	})
-	c.Check(err, ErrorMatches, `generating secure boot profiles for systems with timestamp revocation \(dbt\) support is currently not supported`)
+	c.Check(err, IsNil)
 }
 
-func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadFWSupportsDBR(c *C) {
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoodFWSupportsDBR(c *C) {
+	// Test with firmware that supports OS recovery but doesn't measure dbr.
 	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
 		env: efitest.NewMockHostEnvironmentWithOpts(
 			efitest.WithMockVars(efitest.MockVars{
@@ -720,8 +726,330 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 			},
 			digest: shimDigestDefault,
 		},
+		expectedFlags: SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
 	})
-	c.Check(err, ErrorMatches, `generating secure boot profiles for systems with OS recovery support, which requires dbr support, is not supported`)
+	c.Check(err, IsNil)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoodWithDbt(c *C) {
+	// Test with firmware that measures dbt after dbx.
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				IncludeDbt: true,
+			})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: shimDigestDefault,
+		},
+		expectedFlags: SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoodWithDbr(c *C) {
+	// Test with firmware that measures dbr after dbx.
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x61, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				IncludeDbr: true,
+			})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: shimDigestDefault,
+		},
+		expectedFlags: SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoodWithDbtAndDbr(c *C) {
+	// Test with firmware that measures dbt and dbr after dbx.
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x63, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				IncludeDbt: true,
+				IncludeDbr: true,
+			})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: shimDigestDefault,
+		},
+		expectedFlags: SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesGoodWithDbtAndPermittedDMAProtectionDisabled(c *C) {
+	// Test with firmware that measures dbt followed by a "DMA Protection Disabled" event.
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{
+				Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+				IncludeDbt:    true,
+				DMAProtection: efitest.DMAProtectionDisabled,
+			})),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: shimDigestDefault,
+		},
+		permitDMAProtectionDisabled: true,
+		expectedFlags:               SecureBootPolicyResultFlags(0),
+		expectedUsedAuthorities: []*X509CertificateID{
+			NewX509CertificateID(testutil.ParseCertificate(c, msUefiCACert)),
+		},
+	})
+	c.Check(err, IsNil)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadDbtBeforeDbx(c *C) {
+	// Test that dbt must be measured after dbx.
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		IncludeDbt: true,
+	})
+	var eventsCopy []*tcglog.Event
+	for _, ev := range log.Events {
+		eventsCopy = append(eventsCopy, ev)
+
+		if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {
+			continue
+		}
+		if ev.EventType != tcglog.EventTypeEFIVariableDriverConfig {
+			continue
+		}
+		data, ok := ev.Data.(*tcglog.EFIVariableData)
+		c.Assert(ok, testutil.IsTrue)
+		if data.UnicodeName != "dbt" {
+			continue
+		}
+
+		// Swap this event with the previous one
+		eventsCopy[len(eventsCopy)-1] = eventsCopy[len(eventsCopy)-2]
+		eventsCopy[len(eventsCopy)-2] = ev
+	}
+	log.Events = eventsCopy
+
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(log),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: shimDigestDefault,
+		},
+	})
+	c.Check(err, ErrorMatches, `unexpected EV_EFI_VARIABLE_DRIVER_CONFIG event ordering \(expected dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f, got dbt-d719b2cb-3d3a-4596-a3bc-dad00e67656f\)`)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadDbrBeforeDbt(c *C) {
+	// Test that dbr must be measured after dbt.
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		IncludeDbt: true,
+		IncludeDbr: true,
+	})
+	var eventsCopy []*tcglog.Event
+	for _, ev := range log.Events {
+		eventsCopy = append(eventsCopy, ev)
+
+		if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {
+			continue
+		}
+		if ev.EventType != tcglog.EventTypeEFIVariableDriverConfig {
+			continue
+		}
+		data, ok := ev.Data.(*tcglog.EFIVariableData)
+		c.Assert(ok, testutil.IsTrue)
+		if data.UnicodeName != "dbr" {
+			continue
+		}
+
+		// Swap this event with the previous one
+		eventsCopy[len(eventsCopy)-1] = eventsCopy[len(eventsCopy)-2]
+		eventsCopy[len(eventsCopy)-2] = ev
+	}
+	log.Events = eventsCopy
+
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x63, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(log),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: shimDigestDefault,
+		},
+	})
+	c.Check(err, ErrorMatches, `unexpected EV_EFI_VARIABLE_DRIVER_CONFIG event: all expected secure boot variable have been measured`)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadDbtAfterPermittedDMAProtectionDisabled(c *C) {
+	// Test that dbt can't be measured after a permitted "DMA Protection Disabled" event, as
+	// WithSecureBootPolicyProfile always measures dbt before it.
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms:    []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		IncludeDbt:    true,
+		DMAProtection: efitest.DMAProtectionDisabled,
+	})
+	var eventsCopy []*tcglog.Event
+	for _, ev := range log.Events {
+		eventsCopy = append(eventsCopy, ev)
+
+		if ev.PCRIndex != internal_efi.SecureBootPolicyPCR {
+			continue
+		}
+		if ev.EventType != tcglog.EventTypeEFIAction {
+			continue
+		}
+
+		// Swap this event with the previous one
+		eventsCopy[len(eventsCopy)-1] = eventsCopy[len(eventsCopy)-2]
+		eventsCopy[len(eventsCopy)-2] = ev
+	}
+	log.Events = eventsCopy
+
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(log),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: shimDigestDefault,
+		},
+		permitDMAProtectionDisabled: true,
+	})
+	c.Check(err, ErrorMatches, `unexpected EV_EFI_VARIABLE_DRIVER_CONFIG event: all expected secure boot variable have been measured`)
+}
+
+func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadDbtAfterVendorEvent(c *C) {
+	// Test that dbt can't be measured after a vendor event that follows dbx, as
+	// WithSecureBootPolicyProfile always measures dbt before it.
+	log := efitest.NewLog(c, &efitest.LogOptions{
+		Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
+		IncludeDbt: true,
+	})
+	var eventsCopy []*tcglog.Event
+	for _, ev := range log.Events {
+		if ev.PCRIndex == internal_efi.SecureBootPolicyPCR && ev.EventType == tcglog.EventTypeEFIVariableDriverConfig {
+			data, ok := ev.Data.(*tcglog.EFIVariableData)
+			c.Assert(ok, testutil.IsTrue)
+			if data.UnicodeName == "dbt" {
+				eventsCopy = append(eventsCopy, &tcglog.Event{
+					PCRIndex:  internal_efi.SecureBootPolicyPCR,
+					EventType: 0x8041,
+					Digests: tcglog.DigestMap{
+						tpm2.HashAlgorithmSHA256: testutil.DecodeHexString(c, "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"),
+					},
+					Data: tcglog.OpaqueEventData{0},
+				})
+			}
+		}
+
+		eventsCopy = append(eventsCopy, ev)
+	}
+	log.Events = eventsCopy
+
+	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
+		env: efitest.NewMockHostEnvironmentWithOpts(
+			efitest.WithMockVars(efitest.MockVars{
+				{Name: "AuditMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "DeployedMode", GUID: efi.GlobalVariable}:           &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
+				{Name: "SetupMode", GUID: efi.GlobalVariable}:              &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
+				{Name: "OsIndicationsSupported", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
+			efitest.WithLog(log),
+		),
+		pcrAlg: tpm2.HashAlgorithmSHA256,
+		iblImage: &mockImage{
+			signatures: []*efi.WinCertificateAuthenticode{
+				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
+			},
+			digest: shimDigestDefault,
+		},
+	})
+	c.Check(err, ErrorMatches, `unexpected EV_EFI_VARIABLE_DRIVER_CONFIG event: all expected secure boot variable have been measured`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadUnexpectedConfigMeasurement(c *C) {
@@ -1378,27 +1706,6 @@ func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBad
 		},
 	})
 	c.Check(err, ErrorMatches, `cannot compute secure boot mode: inconsistent secure boot mode: firmware indicates audit mode is enabled when not in setup mode`)
-}
-
-func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadMissingOsIndications(c *C) {
-	err := s.testCheckSecureBootPolicyMeasurementsAndObtainAuthorities(c, &testCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesParams{
-		env: efitest.NewMockHostEnvironmentWithOpts(
-			efitest.WithMockVars(efitest.MockVars{
-				{Name: "AuditMode", GUID: efi.GlobalVariable}:    &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-				{Name: "DeployedMode", GUID: efi.GlobalVariable}: &efitest.VarEntry{Attrs: efi.AttributeNonVolatile | efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x1}},
-				{Name: "SetupMode", GUID: efi.GlobalVariable}:    &efitest.VarEntry{Attrs: efi.AttributeBootserviceAccess | efi.AttributeRuntimeAccess, Payload: []byte{0x0}},
-			}.SetSecureBoot(true).SetPK(c, efitest.NewSignatureListX509(c, snakeoilCert, efi.MakeGUID(0x03f66fa4, 0x5eee, 0x479c, 0xa408, [...]uint8{0xc4, 0xdc, 0x0a, 0x33, 0xfc, 0xde})))),
-			efitest.WithLog(efitest.NewLog(c, &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256}})),
-		),
-		pcrAlg: tpm2.HashAlgorithmSHA256,
-		iblImage: &mockImage{
-			signatures: []*efi.WinCertificateAuthenticode{
-				efitest.ReadWinCertificateAuthenticodeDetached(c, shimUbuntuSig4),
-			},
-			digest: shimDigestDefault,
-		},
-	})
-	c.Check(err, ErrorMatches, `cannot read OsIndicationsSupported variable: variable does not exist`)
 }
 
 func (s *pcr7Suite) TestCheckSecureBootPolicyMeasurementsAndObtainAuthoritiesBadMissingIBL(c *C) {
