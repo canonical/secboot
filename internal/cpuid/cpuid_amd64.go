@@ -1,9 +1,7 @@
-//go:build !amd64
-
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2024 Canonical Ltd
+ * Copyright (C) 2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -19,15 +17,23 @@
  *
  */
 
-package preinstall
+package cpuid
 
 import (
-	"fmt"
-	"runtime"
-
-	internal_efi "github.com/snapcore/secboot/internal/efi"
+	upstream_cpuid "github.com/canonical/cpuid"
 )
 
-func isTPMDiscrete(env internal_efi.HostEnvironment) (bool, error) {
-	return false, &UnsupportedPlatformError{fmt.Errorf("checking for TPM discreteness is not implemented on %s", runtime.GOARCH)}
+// VendorIdentificator returns the CPU vendor identificator string, e.g. "GenuineIntel".
+func VendorIdentificator() string {
+	return upstream_cpuid.VendorIdentificatorString
+}
+
+// Family returns the CPU display family ID.
+func Family() uint32 {
+	return upstream_cpuid.DisplayFamily
+}
+
+// HasFeature returns whether the supplied CPUID feature bit is set.
+func HasFeature(feature uint64) bool {
+	return upstream_cpuid.HasFeature(feature)
 }
