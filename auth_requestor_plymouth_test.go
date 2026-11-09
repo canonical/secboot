@@ -83,6 +83,8 @@ type authRequestorPlymouthSuite struct {
 }
 
 func (s *authRequestorPlymouthSuite) SetUpTest(c *C) {
+	s.BaseTest.SetUpTest(c)
+
 	s.AddCleanup(s.authRequestorPlymouthTestMixin.setUpTest(c))
 }
 

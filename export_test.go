@@ -70,18 +70,20 @@ var (
 )
 
 type (
-	ActivateConfigImpl                    = activateConfig
-	ActivateConfigKey                     = activateConfigKey
-	ActivateOneContainerStateMachine      = activateOneContainerStateMachine
-	ActivateOneContainerStateMachineFlags = activateOneContainerStateMachineFlags
-	AutoAuthRequestor                     = autoAuthRequestor
-	ExternalKeyData                       = externalKeyData
-	ExternalUnlockKey                     = externalUnlockKey
-	KdfParams                             = kdfParams
-	PlymouthAuthRequestor                 = plymouthAuthRequestor
-	PlymouthRequestUserCredentialContext  = plymouthRequestUserCredentialContext
-	ProtectedKeys                         = protectedKeys
-	SystemdAuthRequestor                  = systemdAuthRequestor
+	ActivateConfigImpl                       = activateConfig
+	ActivateConfigKey                        = activateConfigKey
+	ActivateOneContainerStateMachine         = activateOneContainerStateMachine
+	ActivateOneContainerStateMachineFlags    = activateOneContainerStateMachineFlags
+	AutoAuthRequestor                        = autoAuthRequestor
+	ExternalKeyData                          = externalKeyData
+	ExternalUnlockKey                        = externalUnlockKey
+	KdfParams                                = kdfParams
+	PlymouthAuthRequestor                    = plymouthAuthRequestor
+	PlymouthRequestUserCredentialContext     = plymouthRequestUserCredentialContext
+	ProtectedKeys                            = protectedKeys
+	SystemdAuthRequestor                     = systemdAuthRequestor
+	SystemdCredsAuthRequestor                = systemdCredsAuthRequestor
+	SystemdCredsRequestUserCredentialContext = systemdCredsRequestUserCredentialContext
 )
 
 func KDFOptionsKdfParams(opts KDFOptions, defaultTargetDuration time.Duration, keyLen uint32) (*KdfParams, error) {
@@ -280,6 +282,14 @@ func MockNewSystemdAuthRequestor(fn func(io.Writer, SystemdAuthRequestorStringFn
 	}
 }
 
+func MockNewSystemdCredsAuthRequestor(fn func(io.Writer, string) (AuthRequestor, error)) (restore func()) {
+	orig := newSystemdCredsAuthRequestor
+	newSystemdCredsAuthRequestor = fn
+	return func() {
+		newSystemdCredsAuthRequestor = orig
+	}
+}
+
 func MockPBKDF2Benchmark(fn func(time.Duration, crypto.Hash) (uint, error)) (restore func()) {
 	orig := pbkdf2Benchmark
 	pbkdf2Benchmark = fn
@@ -367,6 +377,19 @@ func NewSystemdAuthRequestorForTesting(console io.Writer, stringFn SystemdAuthRe
 		console:                       console,
 		stringFn:                      stringFn,
 		lastRequestUserCredentialPath: lastRequestUserCredentialPath,
+	}
+}
+
+func (r *systemdCredsAuthRequestor) LastRequestUserCredentialCtx() systemdCredsRequestUserCredentialContext {
+	return r.lastRequestUserCredentialCtx
+}
+
+func NewSystemdCredsAuthRequestorForTesting(console io.Writer, prefix, credsDir string, lastRequestUserCredentialCtx *systemdCredsRequestUserCredentialContext) *systemdCredsAuthRequestor {
+	return &systemdCredsAuthRequestor{
+		console:                      console,
+		prefix:                       prefix,
+		credsDir:                     credsDir,
+		lastRequestUserCredentialCtx: *lastRequestUserCredentialCtx,
 	}
 }
 
