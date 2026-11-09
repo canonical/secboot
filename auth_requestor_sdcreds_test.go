@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	. "gopkg.in/check.v1"
 
@@ -47,14 +46,20 @@ func (m *authRequestorSdCredsTestMixin) setUpTest(c *C) (restore func()) {
 	c.Assert(os.Setenv(name, m.credsDir), IsNil)
 	return func() {
 		if !set {
-			return
+			c.Assert(os.Unsetenv(name), IsNil)
+		} else {
+			c.Assert(os.Setenv(name, orig), IsNil)
 		}
-		c.Assert(os.Setenv(name, orig), IsNil)
 	}
 }
 
-func (m *authRequestorSdCredsTestMixin) writeCred(c *C, prefix, path, cred, credType string) string {
-	name := filepath.Join(m.credsDir, fmt.Sprintf("%s.%s.%s", prefix, strings.ReplaceAll(path[1:], "/", "-"), credType))
+func (m *authRequestorSdCredsTestMixin) writeCred(c *C, prefix, uuid, cred, credType string) string {
+	var name string
+	if len(uuid) > 0 {
+		name = filepath.Join(m.credsDir, fmt.Sprintf("%s.%s.%s", prefix, credType, uuid))
+	} else {
+		name = filepath.Join(m.credsDir, fmt.Sprintf("%s.%s", prefix, credType))
+	}
 	c.Assert(os.WriteFile(name, []byte(cred), 0644), IsNil)
 	return name
 }
@@ -68,6 +73,11 @@ func (s *authRequestorSdCredsSuite) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
 
 	s.AddCleanup(s.authRequestorSdCredsTestMixin.setUpTest(c))
+
+	s.AddCleanup(MockLuks2LuksUUID(func(devicePath string) (string, error) {
+		c.Errorf("unexpected call")
+		return "", fmt.Errorf("unexpected call")
+	}))
 }
 
 var _ = Suite(&authRequestorSdCredsSuite{})
@@ -79,17 +89,32 @@ type testSdCredsRequestUserCredentialParams struct {
 	prefix string
 
 	path      string
+	uuid      string
 	authTypes UserAuthType
+	matchAny  bool
 
 	expectedAuthType UserAuthType
 }
 
 func (s *authRequestorSdCredsSuite) testRequestUserCredential(c *C, params *testSdCredsRequestUserCredentialParams) {
+	defer MockLuks2LuksUUID(func(devicePath string) (string, error) {
+		c.Check(devicePath, Equals, params.path)
+		if params.uuid == "" {
+			return "", fmt.Errorf("NO UUID")
+		}
+		return params.uuid, nil
+	})()
+
 	prefix := params.prefix
 	if prefix == "" {
 		prefix = "ubuntu-fde"
 	}
-	credPath := s.writeCred(c, prefix, params.path, params.passphrase, params.passphraseType)
+	var credPath string
+	if params.matchAny {
+		credPath = s.writeCred(c, prefix, "", params.passphrase, params.passphraseType)
+	} else {
+		credPath = s.writeCred(c, prefix, params.uuid, params.passphrase, params.passphraseType)
+	}
 
 	requestor, err := NewSystemdCredsAuthRequestor(nil, params.prefix)
 	c.Assert(err, IsNil)
@@ -111,6 +136,30 @@ func (s *authRequestorSdCredsSuite) TestRequestUserCredential(c *C) {
 		passphrase:       "password",
 		passphraseType:   "passphrase",
 		path:             "/dev/sda1",
+		uuid:             "c629f6fc-081d-40b9-b7f9-dcc574f1fa79",
+		authTypes:        UserAuthTypePassphrase,
+		expectedAuthType: UserAuthTypePassphrase,
+	})
+}
+
+func (s *authRequestorSdCredsSuite) TestRequestUserCredentialMatchAny(c *C) {
+	s.testRequestUserCredential(c, &testSdCredsRequestUserCredentialParams{
+		passphrase:       "password",
+		passphraseType:   "passphrase",
+		path:             "/dev/sda1",
+		uuid:             "c629f6fc-081d-40b9-b7f9-dcc574f1fa79",
+		matchAny:         true,
+		authTypes:        UserAuthTypePassphrase,
+		expectedAuthType: UserAuthTypePassphrase,
+	})
+}
+
+func (s *authRequestorSdCredsSuite) TestRequestUserCredentialMatchAnyNoUUID(c *C) {
+	s.testRequestUserCredential(c, &testSdCredsRequestUserCredentialParams{
+		passphrase:       "password",
+		passphraseType:   "passphrase",
+		path:             "/dev/sda1",
+		matchAny:         true,
 		authTypes:        UserAuthTypePassphrase,
 		expectedAuthType: UserAuthTypePassphrase,
 	})
@@ -121,6 +170,7 @@ func (s *authRequestorSdCredsSuite) TestRequestUserCredentialDifferentPassphrase
 		passphrase:       "1234",
 		passphraseType:   "passphrase",
 		path:             "/dev/sda1",
+		uuid:             "c629f6fc-081d-40b9-b7f9-dcc574f1fa79",
 		authTypes:        UserAuthTypePassphrase,
 		expectedAuthType: UserAuthTypePassphrase,
 	})
@@ -131,6 +181,7 @@ func (s *authRequestorSdCredsSuite) TestRequestUserCredentialDifferentPath(c *C)
 		passphrase:       "password",
 		passphraseType:   "passphrase",
 		path:             "/dev/nvme0n1p3",
+		uuid:             "c629f6fc-081d-40b9-b7f9-dcc574f1fa79",
 		authTypes:        UserAuthTypePassphrase,
 		expectedAuthType: UserAuthTypePassphrase,
 	})
@@ -141,6 +192,7 @@ func (s *authRequestorSdCredsSuite) TestRequestUserCredentialPIN(c *C) {
 		passphrase:       "1234",
 		passphraseType:   "pin",
 		path:             "/dev/sda1",
+		uuid:             "c629f6fc-081d-40b9-b7f9-dcc574f1fa79",
 		authTypes:        UserAuthTypePIN,
 		expectedAuthType: UserAuthTypePIN,
 	})
@@ -151,6 +203,7 @@ func (s *authRequestorSdCredsSuite) TestRequestUserCredentialRecoveryKey(c *C) {
 		passphrase:       "00000-11111-22222-33333-44444-55555-00000-11111",
 		passphraseType:   "recoverykey",
 		path:             "/dev/sda1",
+		uuid:             "c629f6fc-081d-40b9-b7f9-dcc574f1fa79",
 		authTypes:        UserAuthTypeRecoveryKey,
 		expectedAuthType: UserAuthTypeRecoveryKey,
 	})
@@ -161,6 +214,7 @@ func (s *authRequestorSdCredsSuite) TestRequestUserCredentialPassphraseOrPIN(c *
 		passphrase:       "1234",
 		passphraseType:   "pin",
 		path:             "/dev/sda1",
+		uuid:             "c629f6fc-081d-40b9-b7f9-dcc574f1fa79",
 		authTypes:        UserAuthTypePassphrase | UserAuthTypePIN,
 		expectedAuthType: UserAuthTypePIN,
 	})
@@ -171,6 +225,7 @@ func (s *authRequestorSdCredsSuite) TestRequestUserCredentialPassphraseOrRecover
 		passphrase:       "password",
 		passphraseType:   "passphrase",
 		path:             "/dev/sda1",
+		uuid:             "c629f6fc-081d-40b9-b7f9-dcc574f1fa79",
 		authTypes:        UserAuthTypePassphrase | UserAuthTypeRecoveryKey,
 		expectedAuthType: UserAuthTypePassphrase,
 	})
@@ -181,6 +236,7 @@ func (s *authRequestorSdCredsSuite) TestRequestUserCredentialPINOrRecoveryKey(c 
 		passphrase:       "1234",
 		passphraseType:   "pin",
 		path:             "/dev/sda1",
+		uuid:             "c629f6fc-081d-40b9-b7f9-dcc574f1fa79",
 		authTypes:        UserAuthTypePIN | UserAuthTypeRecoveryKey,
 		expectedAuthType: UserAuthTypePIN,
 	})
@@ -191,6 +247,7 @@ func (s *authRequestorSdCredsSuite) TestRequestUserCredentialPassphraseOrPINOrRe
 		passphrase:       "password",
 		passphraseType:   "passphrase",
 		path:             "/dev/sda1",
+		uuid:             "c629f6fc-081d-40b9-b7f9-dcc574f1fa79",
 		authTypes:        UserAuthTypePassphrase | UserAuthTypePIN | UserAuthTypeRecoveryKey,
 		expectedAuthType: UserAuthTypePassphrase,
 	})
@@ -202,6 +259,7 @@ func (s *authRequestorSdCredsSuite) TestRequestUserCredentialDifferentPrefix(c *
 		passphraseType:   "passphrase",
 		prefix:           "foo",
 		path:             "/dev/sda1",
+		uuid:             "c629f6fc-081d-40b9-b7f9-dcc574f1fa79",
 		authTypes:        UserAuthTypePassphrase,
 		expectedAuthType: UserAuthTypePassphrase,
 	})
@@ -216,7 +274,12 @@ func (s *authRequestorSdCredsSuite) TestNewRequestorNotAvailable(c *C) {
 }
 
 func (s *authRequestorSdCredsSuite) TestRequestUserCredentialNotAvailable(c *C) {
-	s.writeCred(c, "ubuntu-fde", "/dev/sda1", "passphrase", "passphrase")
+	defer MockLuks2LuksUUID(func(devicePath string) (string, error) {
+		c.Check(devicePath, Equals, "/dev/sda1")
+		return "c629f6fc-081d-40b9-b7f9-dcc574f1fa79", nil
+	})()
+
+	s.writeCred(c, "ubuntu-fde", "c629f6fc-081d-40b9-b7f9-dcc574f1fa79", "passphrase", "passphrase")
 
 	requestor, err := NewSystemdCredsAuthRequestor(nil, "")
 	c.Assert(err, IsNil)

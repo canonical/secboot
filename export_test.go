@@ -452,3 +452,11 @@ func NewPlatformDeviceUnavailableError(err error) *PlatformDeviceUnavailableErro
 func WillCheckStorageContainerBindingOption() *flagOption {
 	return &willCheckStorageContainerBindingOption
 }
+
+func MockLuks2LuksUUID(f func(devicePath string) (string, error)) (restore func()) {
+	old := luks2LuksUUID
+	luks2LuksUUID = f
+	return func() {
+		luks2LuksUUID = old
+	}
+}
