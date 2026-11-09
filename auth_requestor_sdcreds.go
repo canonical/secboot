@@ -26,7 +26,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
+
+	"github.com/snapcore/secboot/internal/luks2"
 )
 
 type systemdCredsRequestUserCredentialContext struct {
@@ -43,7 +44,13 @@ type systemdCredsAuthRequestor struct {
 }
 
 func (r *systemdCredsAuthRequestor) RequestUserCredential(ctx context.Context, name, path string, authTypes UserAuthType) (string, UserAuthType, error) {
-	pathStr := strings.ReplaceAll(strings.TrimPrefix(path, "/"), "/", "-")
+	hasUuid := false
+	uuid, err := luks2.LuksUUID(path)
+	if err != nil {
+		fmt.Fprintf(r.console, "Unknown UUID for device %q: %v\n", path, err)
+	} else {
+		hasUuid = true
+	}
 
 	for _, info := range []struct {
 		authTypeStr string
@@ -57,20 +64,29 @@ func (r *systemdCredsAuthRequestor) RequestUserCredential(ctx context.Context, n
 			continue
 		}
 
-		credPath := filepath.Join(r.credsDir, fmt.Sprintf("%s.%s.%s", r.prefix, pathStr, info.authTypeStr))
-		data, err := os.ReadFile(credPath)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return "", 0, fmt.Errorf("cannot read credential from %s: %w", path, err)
+		var credPaths []string
+
+		if hasUuid {
+			credPaths = append(credPaths, filepath.Join(r.credsDir, fmt.Sprintf("%s.%s.%s", r.prefix, info.authTypeStr, uuid)))
 		}
 
-		r.lastRequestUserCredentialCtx = systemdCredsRequestUserCredentialContext{
-			Path:     path,
-			CredPath: credPath,
+		credPaths = append(credPaths, filepath.Join(r.credsDir, fmt.Sprintf("%s.%s", r.prefix, info.authTypeStr)))
+
+		for _, credPath := range credPaths {
+			data, err := os.ReadFile(credPath)
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return "", 0, fmt.Errorf("cannot read credential from %s: %w", path, err)
+			}
+
+			r.lastRequestUserCredentialCtx = systemdCredsRequestUserCredentialContext{
+				Path:     path,
+				CredPath: credPath,
+			}
+			return string(data), info.authType, nil
 		}
-		return string(data), info.authType, nil
 	}
 
 	return "", 0, ErrAuthRequestorNotAvailable
