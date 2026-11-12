@@ -9,11 +9,14 @@ import (
 	secboot_efi "github.com/snapcore/secboot/efi"
 	"github.com/snapcore/secboot/efi/preinstall"
 	efi "github.com/snapcore/secboot/internal/efi"
+	"github.com/snapcore/secboot/log"
 	"github.com/snapcore/snapd/snap/snapdir"
 	"github.com/snapcore/snapd/snap/squashfs"
 )
 
 type options struct {
+	Debug bool `long:"debug" description:"Enable debug logging to stderr"`
+
 	Check struct {
 		PostInstall                                bool `long:"post-install" description:"Run the checks post-install rather than pre-install"`
 		PermitVM                                   bool `long:"permit-vm" description:"Permit running inside of a virtual machine"`
@@ -49,6 +52,9 @@ var opts options
 func run() error {
 	if _, err := flags.Parse(&opts); err != nil {
 		return err
+	}
+	if opts.Debug {
+		log.SetLogLevel(log.LogLevelDebug)
 	}
 
 	var checkFlags preinstall.CheckFlags

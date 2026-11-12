@@ -104,7 +104,9 @@ var _ = Suite(&tpmSuite{})
 
 func (s *tpmSuite) TestCheckTPM2ForRequiredPCClientFeatures(c *C) {
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
-		tpm2.PropertyHRPersistentMin: 7, // The simulator seems to set this to 2
+		// Reproduce issue #585: the TPM guarantees space for the EK and SRK,
+		// but not the PC-Client profile's minimum of 7 persistent objects.
+		tpm2.PropertyHRPersistentMin: 2,
 	})
 
 	ok, err := CheckTPM2ForRequiredPCClientFeatures(s.TPM)
@@ -471,7 +473,7 @@ func (s *tpmSuite) TestOpenAndCheckTPM2DeviceIsNotPCClientWithSuccessfulFeatureC
 	// the device passes the feature checks.
 	s.addTPMPropertyModifiers(c, map[tpm2.Property]uint32{
 		tpm2.PropertyPSFamilyIndicator: 2, // This is defined as PDA in the reference library specs
-		tpm2.PropertyHRPersistentMin:   7, // The simulator seems to set this to 2
+		tpm2.PropertyHRPersistentMin:   2, // Enough for the EK and SRK.
 	})
 
 	dev := tpm2_testutil.NewTransportBackedDevice(s.Transport, false, 1)
