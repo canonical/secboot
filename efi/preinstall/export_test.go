@@ -31,6 +31,7 @@ import (
 )
 
 type (
+	AMDPreOSMeasurementConfig   = amdPreOSMeasurementConfig
 	AuthorityTrustFlags         = authorityTrustFlags
 	AuthorityTrustData          = authorityTrustData
 	AuthorityTrustDataSet       = authorityTrustDataSet
@@ -65,31 +66,34 @@ const (
 )
 
 var (
-	CheckBootManagerCodeMeasurements                      = checkBootManagerCodeMeasurements
-	CheckDiscreteTPMPartialResetAttackMitigationStatus    = checkDiscreteTPMPartialResetAttackMitigationStatus
-	CheckDriversAndAppsMeasurements                       = checkDriversAndAppsMeasurements
-	CheckFirmwareLogAndChoosePCRBank                      = checkFirmwareLogAndChoosePCRBank
-	CheckForKernelIOMMU                                   = checkForKernelIOMMU
-	CheckHostSecurity                                     = checkHostSecurity
-	CheckSecureBootPolicyMeasurementsAndObtainAuthorities = checkSecureBootPolicyMeasurementsAndObtainAuthorities
-	CheckSecureBootPolicyPCRForDegradedFirmwareSettings   = checkSecureBootPolicyPCRForDegradedFirmwareSettings
-	CheckSystemIsEFI                                      = checkSystemIsEFI
-	CheckTPM2ForRequiredPCClientFeatures                  = checkTPM2ForRequiredPCClientFeatures
-	ClearTPM                                              = clearTPM
-	DetectVirtualization                                  = detectVirtualization
-	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
-	InsertActionProceed                                   = insertActionProceed
-	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
-	IsPPIActionAvailable                                  = isPPIActionAvailable
-	IsTPMDiscrete                                         = isTPMDiscrete
-	JoinErrors                                            = joinErrors
-	MatchLaunchToLoadOption                               = matchLaunchToLoadOption
-	NewX509CertificateID                                  = newX509CertificateID
-	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
-	ReadOrderedLoadOptionVariables                        = readOrderedLoadOptionVariables
-	RestrictedTPMLocalitiesIntel                          = restrictedTPMLocalitiesIntel
-	RunPPIAction                                          = runPPIAction
-	UnwrapCompoundError                                   = unwrapCompoundError
+	CheckBootManagerCodeMeasurements                                = checkBootManagerCodeMeasurements
+	CheckDiscreteTPMPartialResetAttackMitigationStatus              = checkDiscreteTPMPartialResetAttackMitigationStatus
+	CheckDriversAndAppsMeasurements                                 = checkDriversAndAppsMeasurements
+	CheckDriversAndAppsMeasurementsWithConfig                       = checkDriversAndAppsMeasurementsWithConfig
+	CheckFirmwareLogAndChoosePCRBank                                = checkFirmwareLogAndChoosePCRBank
+	CheckForKernelIOMMU                                             = checkForKernelIOMMU
+	CheckHostSecurity                                               = checkHostSecurity
+	CheckSecureBootPolicyMeasurementsAndObtainAuthorities           = checkSecureBootPolicyMeasurementsAndObtainAuthorities
+	CheckSecureBootPolicyMeasurementsAndObtainAuthoritiesWithConfig = checkSecureBootPolicyMeasurementsAndObtainAuthoritiesWithConfig
+	DetectAMDPreOSMeasurementConfig                                 = detectAMDPreOSMeasurementConfig
+	CheckSecureBootPolicyPCRForDegradedFirmwareSettings             = checkSecureBootPolicyPCRForDegradedFirmwareSettings
+	CheckSystemIsEFI                                                = checkSystemIsEFI
+	CheckTPM2ForRequiredPCClientFeatures                            = checkTPM2ForRequiredPCClientFeatures
+	ClearTPM                                                        = clearTPM
+	DetectVirtualization                                            = detectVirtualization
+	ErrInvalidLockoutAuthValueSupplied                              = errInvalidLockoutAuthValueSupplied
+	InsertActionProceed                                             = insertActionProceed
+	IsLaunchedFromLoadOption                                        = isLaunchedFromLoadOption
+	IsPPIActionAvailable                                            = isPPIActionAvailable
+	IsTPMDiscrete                                                   = isTPMDiscrete
+	JoinErrors                                                      = joinErrors
+	MatchLaunchToLoadOption                                         = matchLaunchToLoadOption
+	NewX509CertificateID                                            = newX509CertificateID
+	OpenAndCheckTPM2Device                                          = openAndCheckTPM2Device
+	ReadOrderedLoadOptionVariables                                  = readOrderedLoadOptionVariables
+	RestrictedTPMLocalitiesIntel                                    = restrictedTPMLocalitiesIntel
+	RunPPIAction                                                    = runPPIAction
+	UnwrapCompoundError                                             = unwrapCompoundError
 )
 
 func MockEfiComputePeImageDigest(fn func(crypto.Hash, io.ReaderAt, int64) ([]byte, error)) (restore func()) {
@@ -149,6 +153,10 @@ func MakePCRResults(mandatory bool, initialVal, logVal, pcrVal tpm2.Digest, err 
 		pcrValue:     pcrVal,
 		err:          err,
 	}
+}
+
+func SetAMDPreOSMeasurementConfigForTest(result *CheckResult, config *AMDPreOSMeasurementConfig) {
+	result.amdPreOSMeasurementConfig = config
 }
 
 func NewPCRBankResults(alg tpm2.HashAlgorithmId, sl uint8, pcrs [8]PcrResults) *pcrBankResults {

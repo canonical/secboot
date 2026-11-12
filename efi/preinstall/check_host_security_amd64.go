@@ -32,31 +32,46 @@ import (
 // are returned immediately and without any wrapping. Errors that can be resolved and which shouldn't
 // prevent further checks from running are returned wrapped in [joinError].
 func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (platformFirmwareIntegrityConfig, error) {
+	integrity, _, err := checkHostSecurityWithAMDPreOSMeasurements(env, log, false)
+	return integrity, err
+}
+
+// checkHostSecurityAndAMDPreOSMeasurements also returns AMD configuration that
+// determines platform-specific pre-OS measurements. On non-AMD systems, the
+// returned configuration is nil.
+func checkHostSecurityAndAMDPreOSMeasurements(env internal_efi.HostEnvironment, log *tcglog.Log) (platformFirmwareIntegrityConfig, *amdPreOSMeasurementConfig, error) {
+	return checkHostSecurityWithAMDPreOSMeasurements(env, log, true)
+}
+
+func checkHostSecurityWithAMDPreOSMeasurements(env internal_efi.HostEnvironment, log *tcglog.Log, detectMeasurements bool) (platformFirmwareIntegrityConfig, *amdPreOSMeasurementConfig, error) {
 	cpuVendor, err := determineCPUVendor(env)
 	if err != nil {
-		return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
+		return platformFirmwareIntegrityNone, nil, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
 	}
 
 	amd64Env, err := env.AMD64()
 	if err != nil {
-		return platformFirmwareIntegrityNone, fmt.Errorf("cannot obtain AMD64 environment: %w", err)
+		return platformFirmwareIntegrityNone, nil, fmt.Errorf("cannot obtain AMD64 environment: %w", err)
 	}
 
 	var errs []error
 
-	var integrity platformFirmwareIntegrityConfig
+	var (
+		integrity platformFirmwareIntegrityConfig
+		amdConfig *amdPreOSMeasurementConfig
+	)
 	switch cpuVendor {
 	case cpuVendorIntel:
 		if err := checkHostSecurityIntelBootGuard(env); err != nil {
 			var nohwrotErr *NoHardwareRootOfTrustError
 			ctxErr := fmt.Errorf("encountered an error when checking Intel BootGuard configuration: %w", err)
 			if !errors.As(err, &nohwrotErr) {
-				return platformFirmwareIntegrityNone, ctxErr
+				return platformFirmwareIntegrityNone, nil, ctxErr
 			}
 			errs = append(errs, ctxErr)
 		}
 		if err := checkHostSecurityIntelCPUDebuggingLocked(amd64Env); err != nil {
-			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error when checking Intel CPU debugging configuration: %w", err)
+			return platformFirmwareIntegrityNone, nil, fmt.Errorf("encountered an error when checking Intel CPU debugging configuration: %w", err)
 		}
 		if len(errs) == 0 {
 			integrity = platformFirmwareIntegrityVerified
@@ -67,9 +82,15 @@ func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (platf
 			ctxErr := fmt.Errorf("encountered an error when checking the AMD PSP configuration: %w", err)
 			var nohwrotErr *NoHardwareRootOfTrustError
 			if !errors.As(err, &nohwrotErr) {
-				return platformFirmwareIntegrityNone, ctxErr
+				return platformFirmwareIntegrityNone, nil, ctxErr
 			}
 			errs = append(errs, ctxErr)
+		}
+		if detectMeasurements {
+			amdConfig, err = detectAMDPreOSMeasurementConfig(env)
+			if err != nil {
+				return platformFirmwareIntegrityNone, nil, fmt.Errorf("cannot determine AMD pre-OS measurement configuration: %w", err)
+			}
 		}
 	default:
 		panic("not reached")
@@ -78,7 +99,7 @@ func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (platf
 	if err := checkSecureBootPolicyPCRForDegradedFirmwareSettings(log); err != nil {
 		var ce CompoundError
 		if !errors.As(err, &ce) {
-			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error whilst checking the TCG log for degraded firmware settings: %w", err)
+			return platformFirmwareIntegrityNone, nil, fmt.Errorf("encountered an error whilst checking the TCG log for degraded firmware settings: %w", err)
 		}
 		errs = append(errs, ce.Unwrap()...)
 	}
@@ -87,15 +108,15 @@ func checkHostSecurity(env internal_efi.HostEnvironment, log *tcglog.Log) (platf
 		case errors.Is(err, ErrNoKernelIOMMU):
 			errs = append(errs, err)
 		default:
-			return platformFirmwareIntegrityNone, fmt.Errorf("encountered an error whilst checking sysfs to determine that kernel IOMMU support is enabled: %w", err)
+			return platformFirmwareIntegrityNone, nil, fmt.Errorf("encountered an error whilst checking sysfs to determine that kernel IOMMU support is enabled: %w", err)
 		}
 	}
 
 	if len(errs) > 0 {
-		return platformFirmwareIntegrityNone, joinErrors(errs...)
+		return platformFirmwareIntegrityNone, amdConfig, joinErrors(errs...)
 	}
 
-	return integrity, nil
+	return integrity, amdConfig, nil
 }
 
 // checkDiscreteTPMPartialResetAttackMitigationStatus determines whether a partial mitigation
