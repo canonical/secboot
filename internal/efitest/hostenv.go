@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2021 Canonical Ltd
+ * Copyright (C) 2021-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -48,6 +48,7 @@ type MockHostEnvironment struct {
 	Devices map[string]internal_efi.SysfsDevice
 
 	AMD64Env internal_efi.HostEnvironmentAMD64
+	ARM64Env internal_efi.HostEnvironmentARM64
 }
 
 func NewMockHostEnvironment(vars MockVars, log *tcglog.Log) *MockHostEnvironment {
@@ -149,6 +150,19 @@ func (e *mockHostEnvironmentAMD64) ReadMSRs(msr uint32) (map[uint32]uint64, erro
 	return out, nil
 }
 
+type mockHostEnvironmentARM64 struct {
+	cpuManufacturer string
+	cpuVersion      string
+}
+
+func (e *mockHostEnvironmentARM64) CPUManufacturer() (string, error) {
+	return e.cpuManufacturer, nil
+}
+
+func (e *mockHostEnvironmentARM64) CPUVersion() (string, error) {
+	return e.cpuVersion, nil
+}
+
 // MockSysfsDevice is a mock implementation of [internal_efi.SysfsDevice].
 type MockSysfsDevice struct {
 	DevicePath       string
@@ -217,6 +231,16 @@ func WithAMD64Environment(cpuVendorIdentificator string, family uint32, cpuidFea
 			features:            features,
 			cpus:                cpus,
 			msrs:                msrs,
+		}
+	}
+}
+
+// WithARM64Environment adds a [github.com/snapcore/secboot/efi/internal.HostEnvironmentARM64] to the [MockHostEnvironment].
+func WithARM64Environment(cpuManufacturer, cpuVersion string) MockHostEnvironmentOption {
+	return func(env *MockHostEnvironment) {
+		env.ARM64Env = &mockHostEnvironmentARM64{
+			cpuManufacturer: cpuManufacturer,
+			cpuVersion:      cpuVersion,
 		}
 	}
 }
@@ -307,4 +331,12 @@ func (e *MockHostEnvironment) AMD64() (internal_efi.HostEnvironmentAMD64, error)
 		return nil, internal_efi.ErrNotAMD64Host
 	}
 	return e.AMD64Env, nil
+}
+
+// ARM64 implements [github.com/snapcore/secboot/internal/efi.HostEnvironment.ARM64].
+func (e *MockHostEnvironment) ARM64() (internal_efi.HostEnvironmentARM64, error) {
+	if e.ARM64Env == nil {
+		return nil, internal_efi.ErrNotARM64Host
+	}
+	return e.ARM64Env, nil
 }
