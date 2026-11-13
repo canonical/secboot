@@ -641,3 +641,17 @@ func (s *securebootSuite) TestWithSignatureDBUpdatesAddOneCertToDb(c *C) {
 		},
 	})
 }
+
+func (s *securebootSuite) TestWithSignatureDBUpdatesDbtNotSupported(c *C) {
+	visitor := new(mockPcrProfileOptionVisitor)
+	opt := WithSignatureDBUpdates(&SignatureDBUpdate{Name: Dbx, Data: msDbxUpdate1}, &SignatureDBUpdate{Name: Dbt})
+	c.Check(opt.ApplyOptionTo(visitor), ErrorMatches, `cannot apply signature database update 1: updates to dbt are not supported`)
+	c.Check(visitor.varModifiers, HasLen, 0)
+}
+
+func (s *securebootSuite) TestWithSignatureDBUpdatesDbrNotSupported(c *C) {
+	visitor := new(mockPcrProfileOptionVisitor)
+	opt := WithSignatureDBUpdates(&SignatureDBUpdate{Name: Dbr})
+	c.Check(opt.ApplyOptionTo(visitor), ErrorMatches, `cannot apply signature database update 0: updates to dbr are not supported`)
+	c.Check(visitor.varModifiers, HasLen, 0)
+}

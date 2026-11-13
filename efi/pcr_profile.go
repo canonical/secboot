@@ -126,6 +126,10 @@ func WithDriversAndAppsProfile() PCRProfileEnablePCRsOption {
 //
 // Note that AddPCRProfile does not consider the host's revocation policy.
 //
+// The timestamp signature database (dbt) and recovery signature database (dbr) are only
+// included in the policy if the platform firmware measured them during the current boot,
+// because not all firmware implementations measure these when they exist.
+//
 // The secure boot policy includes information about the secure boot configuration,
 // including signature databases. In order to support atomic updates to these databases,
 // it is possible to pre-generate a policy that includes these updates by supplying

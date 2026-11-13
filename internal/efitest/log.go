@@ -191,6 +191,8 @@ type LogOptions struct {
 	NoSBAT                            bool                            // omit the SbatLevel measurement to mimic older versions of shim
 	PreOSVerificationUsesDigests      crypto.Hash                     // Whether Driver or SysPrep launches are verified using a digest
 	DisableDeployedMode               bool                            // Whether deployed/audit modes are disabled and we have UEFI 2.5
+	IncludeDbt                        bool                            // include a measurement of the timestamp signature database (dbt)
+	IncludeDbr                        bool                            // include a measurement of the recovery signature database (dbr)
 }
 
 // NewLog creates a mock TCG log for testing. The log will look like a standard
@@ -342,10 +344,11 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 		db = append(db, NewSignatureListDigests(c, alg, efi.MakeGUID(0x70564dce, 0x9afc, 0x4ee3, 0x85fc, [...]uint8{0x94, 0x96, 0x49, 0xd7, 0xe4, 0x5c}), digests...))
 	}
 
-	for _, sbvar := range []struct {
+	type sbVar struct {
 		name efi.VariableDescriptor
 		data []byte
-	}{
+	}
+	sbvars := []sbVar{
 		{
 			name: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable},
 			data: sbVal,
@@ -366,7 +369,21 @@ func NewLog(c *C, opts *LogOptions) *tcglog.Log {
 			name: efi.VariableDescriptor{Name: "dbx", GUID: efi.ImageSecurityDatabaseGuid},
 			data: MakeVarPayload(c, NewSignatureListNullSHA256(efi.MakeGUID(0xa0baa8a3, 0x041d, 0x48a8, 0xbc87, [...]uint8{0xc3, 0x6d, 0x12, 0x1b, 0x5e, 0x3d}))),
 		},
-	} {
+	}
+	if opts.IncludeDbt {
+		sbvars = append(sbvars, sbVar{
+			name: efi.VariableDescriptor{Name: "dbt", GUID: efi.ImageSecurityDatabaseGuid},
+			data: MakeVarPayload(c, NewSignatureListX509(c, testutil.DecodePEMType(c, "CERTIFICATE", msPCACert), efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b}))),
+		})
+	}
+	if opts.IncludeDbr {
+		sbvars = append(sbvars, sbVar{
+			name: efi.VariableDescriptor{Name: "dbr", GUID: efi.ImageSecurityDatabaseGuid},
+			data: MakeVarPayload(c, NewSignatureListX509(c, testutil.DecodePEMType(c, "CERTIFICATE", msUefiCACert), efi.MakeGUID(0x77fa9abd, 0x0359, 0x4d32, 0xbd60, [...]uint8{0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b}))),
+		})
+	}
+
+	for _, sbvar := range sbvars {
 		data := &tcglog.EFIVariableData{
 			VariableName: sbvar.name.GUID,
 			UnicodeName:  sbvar.name.Name,

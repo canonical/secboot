@@ -43,6 +43,14 @@ var (
 
 	// Dbx is the identity of the forbidden signature database.
 	Dbx = efi.VariableDescriptor{Name: "dbx", GUID: efi.ImageSecurityDatabaseGuid}
+
+	// dbt is the identity of the timestamp signature database. This isn't exported
+	// because WithSignatureDBUpdates doesn't support updating it.
+	dbt = efi.VariableDescriptor{Name: "dbt", GUID: efi.ImageSecurityDatabaseGuid}
+
+	// dbr is the identity of the recovery signature database. This isn't exported
+	// because WithSignatureDBUpdates doesn't support updating it.
+	dbr = efi.VariableDescriptor{Name: "dbr", GUID: efi.ImageSecurityDatabaseGuid}
 )
 
 // SignatureDBUpdate corresponds to an update to a signature database, such as dbx.
@@ -54,6 +62,17 @@ type SignatureDBUpdate struct {
 type signatureDBUpdatesOption []*SignatureDBUpdate
 
 func (u signatureDBUpdatesOption) ApplyOptionTo(visitor internal_efi.PCRProfileOptionVisitor) error {
+	for i, update := range u {
+		switch update.Name {
+		case dbt, dbr:
+			// WithSecureBootPolicyProfile only includes these databases if the firmware
+			// measured them during the current boot, and some firmware only measures them
+			// if they exist. An update that creates one of them would produce a profile
+			// that doesn't match the next boot.
+			return fmt.Errorf("cannot apply signature database update %d: updates to %s are not supported", i, update.Name.Name)
+		}
+	}
+
 	visitor.AddInitialVariablesModifier(func(vars internal_efi.VariableSet) error {
 		for _, quirk := range []signatureDBUpdateFirmwareQuirk{
 			signatureDBUpdateNoFirmwareQuirk,
@@ -79,6 +98,9 @@ func (u signatureDBUpdatesOption) ApplyOptionTo(visitor internal_efi.PCRProfileO
 // current signature database contents. This should only be supplied once. If a
 // profile needs to be computed for more than one signature database update,
 // provide them all in a single option.
+//
+// Updates to the timestamp signature database (dbt) and the recovery signature
+// database (dbr) are not supported.
 func WithSignatureDBUpdates(updates ...*SignatureDBUpdate) PCRProfileOption {
 	return signatureDBUpdatesOption(updates)
 }
