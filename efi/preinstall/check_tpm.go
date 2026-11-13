@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2024 Canonical Ltd
+ * Copyright (C) 2024-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -21,6 +21,7 @@ package preinstall
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 
 	"github.com/canonical/go-tpm2"
@@ -466,4 +467,43 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 	}
 
 	return tpm, nil
+}
+
+// Architecture-specific TPM discreteness checks are dispatched at runtime rather than
+// selected by build constraints, so that all architectures' checks are compiled and
+// testable everywhere.
+
+// isTPMDiscrete determines whether the default TPM is discrete.
+func isTPMDiscrete(env internal_efi.HostEnvironment) (bool, error) {
+	switch runtimeGOARCH {
+	case "amd64":
+		return isTPMDiscreteAMD64(env)
+	default:
+		return false, &UnsupportedPlatformError{fmt.Errorf("checking for TPM discreteness is not implemented on %s", runtimeGOARCH)}
+	}
+}
+
+func isTPMDiscreteAMD64(env internal_efi.HostEnvironment) (bool, error) {
+	amd64, err := env.AMD64()
+	if err != nil {
+		return false, err
+	}
+
+	cpuVendor, err := determineCPUVendor(env)
+	if err != nil {
+		return false, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU vendor: %w", err)}
+	}
+
+	switch cpuVendor {
+	case cpuVendorIntel:
+		discrete, err := isTPMDiscreteFromIntelBootGuard(amd64)
+		if err != nil {
+			return false, fmt.Errorf("cannot check TPM discreteness using Intel BootGuard status: %w", err)
+		}
+		return discrete, nil
+	case cpuVendorAMD:
+		return false, &UnsupportedPlatformError{errors.New("cannot check TPM discreteness on AMD systems")}
+	default:
+		panic("not reached")
+	}
 }
