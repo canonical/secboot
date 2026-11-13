@@ -26,12 +26,17 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	internal_efi "github.com/snapcore/secboot/internal/efi"
+	"github.com/snapcore/secboot/log"
 )
 
 const (
 	pcClientClass uint32 = 0x00000001
 )
 
+// checkTPM2ForRequiredPCClientFeatures checks the features secboot needs when
+// the TPM does not advertise the PC-Client profile. A failed requirement returns
+// false without an error; log its details here so callers can diagnose the
+// otherwise generic ErrNoPCClientTPM without changing the public error contract.
 func checkTPM2ForRequiredPCClientFeatures(tpm *tpm2.TPMContext) (ok bool, err error) {
 	// Check permanent properties.
 	type cmpFn func(x, y uint32) bool
@@ -46,24 +51,32 @@ func checkTPM2ForRequiredPCClientFeatures(tpm *tpm2.TPMContext) (ok bool, err er
 	)
 
 	for _, data := range [...]struct {
+		name     string
 		prop     tpm2.Property
 		expected uint32
 		cmp      cmpFn
 	}{
-		{prop: tpm2.PropertyHRTransientMin, expected: 3, cmp: cmpGE},  // We use transient objects, so expect the PC-Client minimum
-		{prop: tpm2.PropertyHRPersistentMin, expected: 7, cmp: cmpGE}, // We store persistent objects, so expect the PC-Client minimum
-		{prop: tpm2.PropertyHRLoadedMin, expected: 3, cmp: cmpGE},     // We make use of multiple loaded sessions, so expect the PC-Client minimum
-		{prop: tpm2.PropertyPCRCount, expected: 24, cmp: cmpGE},
+		{name: "TPM_PT_HR_TRANSIENT_MIN", prop: tpm2.PropertyHRTransientMin, expected: 3, cmp: cmpGE}, // We use transient objects, so expect the PC-Client minimum
+		// EnsureProvisioned persists two objects: the endorsement key (EK) and
+		// storage root key (SRK). Require capacity for those objects rather than
+		// the PC-Client profile's minimum of 7. Some firmware TPMs advertise a
+		// minimum of 2 and still provide every feature we need (issue #585).
+		// This property is a guaranteed capacity, not a count of free slots;
+		// provisioning can still fail if other persistent objects fill NV storage.
+		{name: "TPM_PT_HR_PERSISTENT_MIN", prop: tpm2.PropertyHRPersistentMin, expected: 2, cmp: cmpGE},
+		{name: "TPM_PT_HR_LOADED_MIN", prop: tpm2.PropertyHRLoadedMin, expected: 3, cmp: cmpGE}, // We make use of multiple loaded sessions, so expect the PC-Client minimum
+		{name: "TPM_PT_PCR_COUNT", prop: tpm2.PropertyPCRCount, expected: 24, cmp: cmpGE},
 		// If TPM2_PT_NV_COUNTERS_MAX is zero, then the either the number of NV
 		// counters is only limited by the amount of NV storage space available,
 		// or no NV counters are supported. In the latter case, this should be
 		// caught by missing support for TPM_CC_NV_INCREMENT.
-		{prop: tpm2.PropertyNVCountersMax, expected: 6, cmp: cmpGEOrZero},
+		{name: "TPM_PT_NV_COUNTERS_MAX", prop: tpm2.PropertyNVCountersMax, expected: 6, cmp: cmpGEOrZero},
 	} {
 		switch val, err := tpm.GetCapabilityTPMProperty(data.prop); {
 		case err != nil:
 			return false, fmt.Errorf("cannot obtain value of %v: %w", data.prop, err)
 		case !data.cmp(val, data.expected):
+			log.Debugf("TPM: %s = %d, require at least %d", data.name, val, data.expected)
 			return false, nil
 		}
 	}
@@ -81,12 +94,14 @@ func checkTPM2ForRequiredPCClientFeatures(tpm *tpm2.TPMContext) (ok bool, err er
 		tpm2.AlgorithmCFB,            // Required for primary keys and parameter encryption.
 	} {
 		if !tpm.IsAlgorithmSupported(alg) {
+			log.Debugf("TPM: required algorithm %v is not supported", alg)
 			return false, nil
 		}
 	}
 
 	// Check elliptic curves.
 	if !tpm.IsECCCurveSupported(tpm2.ECCCurveNIST_P256) {
+		log.Debugf("TPM: required elliptic curve TPM_ECC_NIST_P256 is not supported")
 		return false, nil
 	}
 
@@ -149,6 +164,7 @@ func checkTPM2ForRequiredPCClientFeatures(tpm *tpm2.TPMContext) (ok bool, err er
 				panic(err)
 			}
 			if !bytes.Equal(bitmap.Bytes, expectedBitmap.Bytes) {
+				log.Debugf("TPM: PCR property %#x selects S-RTM PCRs %v, expected %v", uint32(data.prop), pcrs, data.expected)
 				return false, nil
 			}
 		}
@@ -201,6 +217,7 @@ func checkTPM2ForRequiredPCClientFeatures(tpm *tpm2.TPMContext) (ok bool, err er
 		tpm2.CommandNVRead,
 	} {
 		if !tpm.IsCommandSupported(command) {
+			log.Debugf("TPM: required command %v is not supported", command)
 			return false, nil
 		}
 	}
@@ -308,9 +325,10 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 
 	// Check that the TPM2 device class is TPM_PS_PC (0x1). We can then make assumptions about
 	// the supported features (such as mandatory commands, algorithms, PCR banks etc) based on
-	// the TPM PC Client Platform TPM Profile (PTP) spec. In all honesty, we're only ever likely
-	// to see PC-Client devices here because that's basically all that exists, but check anyway
-	// just in case.
+	// the TPM PC Client Platform TPM Profile (PTP) spec.
+	// A TPM advertising the PC-Client profile guarantees the features used by
+	// secboot. Other family values do not necessarily imply an incompatible TPM:
+	// check the features explicitly before rejecting the device.
 	switch psFamily, err := tpm.GetCapabilityTPMProperty(tpm2.PropertyPSFamilyIndicator); {
 	case err != nil:
 		return nil, fmt.Errorf("cannot obtain value for TPM_PT_PS_FAMILY_INDICATOR: %w", err)
@@ -319,6 +337,7 @@ func openAndCheckTPM2Device(env internal_efi.HostEnvironment, flags checkTPM2Dev
 		// PTP spec. Also, swtpm sets TPM_PT_PS_FAMILY_INDICATOR to the same value as
 		// TPM_PT_FAMILY_INDICATOR, which is the major version of the TCG reference library
 		// supported by the TPM ("2.0"). For these cases, perform feature detection instead.
+		log.Debugf("TPM: TPM_PT_PS_FAMILY_INDICATOR = %#x; checking required PC-Client features", psFamily)
 		switch ok, err := checkTPM2ForRequiredPCClientFeatures(tpm); {
 		case err != nil:
 			return nil, fmt.Errorf("cannot check TPM2 device for required PC-Client features: %w", err)
