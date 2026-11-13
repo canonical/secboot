@@ -23,8 +23,10 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/log"
 )
 
 type namedTokenData struct {
@@ -98,6 +100,8 @@ func (v *View) Reread() error {
 	for id, token := range hdr.Metadata.Tokens {
 		named, ok := token.(NamedToken)
 		if !ok {
+			log.Warningf("LUKS header has unsupported token (type %q, keyslots: %v)",
+				token.Type(), token.Keyslots())
 			continue
 		}
 
@@ -200,4 +204,63 @@ func (v *View) UsedKeyslots() (slots []int) {
 	}
 	sort.Ints(slots)
 	return slots
+}
+
+// KeyslotNamesSortedById returns the token names sorted
+// by their keyslot identifier (in ascending order)
+// Assumption: there is only one keyslot by token
+func (v *View) TokenNamesSortedByKeyslotId() ([]string, error) {
+	tokenNamesByKeyslotId := map[int]string{}
+	var keyslotIdentifiers []int
+
+	for name, token := range v.namedTokens {
+		keyslots := token.token.Keyslots()
+		if len(keyslots) != 1 {
+			return nil, fmt.Errorf("token %q has %v keyslots", name, len(keyslots))
+		}
+		existing, ok := tokenNamesByKeyslotId[keyslots[0]]
+		if ok {
+			return nil, fmt.Errorf("token %q has keyslot %v already used by %q", name, keyslots[0], existing)
+		}
+		tokenNamesByKeyslotId[keyslots[0]] = name
+		keyslotIdentifiers = append(keyslotIdentifiers, keyslots[0])
+	}
+
+	sort.Ints(keyslotIdentifiers)
+
+	sortedTokenNames := []string{}
+
+	for _, v := range keyslotIdentifiers {
+		sortedTokenNames = append(sortedTokenNames, tokenNamesByKeyslotId[v])
+	}
+
+	return sortedTokenNames, nil
+}
+
+// ReencryptionStatus tells if reencryption is in progress on the related
+// LUKS container.
+//
+// Reencryption is considered in progress if the LUKS2 JSON meta-data contains:
+//
+//	"config": { "requirements": { "mandatory": [ PATTERN ] } }
+//
+// where PATTERN is:
+// - "online-reencrypt" or
+// - starting with "online-reencrypt-v"
+func (v *View) IsReencryptionInProgress() bool {
+	if v.hdr.Metadata.Config.Requirements == nil {
+		return false
+	}
+	// Look if at least 1 requirement indicates reencryption
+	for _, value := range v.hdr.Metadata.Config.Requirements.Mandatory {
+		switch {
+		case string(value) == "online-reencrypt":
+			return true
+		case strings.Index(value, "online-reencrypt-v") == 0:
+			return true
+		default:
+			continue
+		}
+	}
+	return false
 }
