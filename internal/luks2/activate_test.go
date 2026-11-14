@@ -96,7 +96,7 @@ func (s *activateSuite) testActivate(c *C, data *testActivateData) {
 
 	c.Assert(s.mockSdCryptsetup.Calls(), HasLen, 1)
 	c.Assert(s.mockSdCryptsetup.Calls()[0], HasLen, 6)
-	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath, "/dev/stdin", fmt.Sprintf("luks,keyslot=%d,tries=1", data.slot)})
+	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{"systemd-cryptsetup", "attach", data.volumeName, data.sourceDevicePath, "/dev/stdin", fmt.Sprintf("luks,keyslot=%d,tries=1,discard", data.slot)})
 }
 
 func (s *activateSuite) TestActivate(c *C) {
@@ -136,7 +136,7 @@ func (s *activateSuite) TestActivateWrongKey(c *C) {
 
 	c.Assert(s.mockSdCryptsetup.Calls(), HasLen, 1)
 	c.Assert(s.mockSdCryptsetup.Calls()[0], HasLen, 6)
-	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1", "/dev/stdin", "luks,keyslot=-1,tries=1"})
+	c.Check(s.mockSdCryptsetup.Calls()[0], DeepEquals, []string{"systemd-cryptsetup", "attach", "data", "/dev/sda1", "/dev/stdin", "luks,keyslot=-1,tries=1,discard"})
 }
 
 func (s *activateSuite) TestDeactivate(c *C) {
