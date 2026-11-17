@@ -108,9 +108,6 @@ type StorageContainer interface {
 	// or arbitrary types to values of arbitrary types.
 	Activate(ctx context.Context, ks Keyslot, key []byte, cfg ActivateConfigGetter) error
 
-	// Deactivate locks this storage container.
-	Deactivate(ctx context.Context) error
-
 	// OpenRead opens this storage container in order to perform
 	// operations to keyslots that only require read access. The backend
 	// should permit as many of these to be opened as is requested, but

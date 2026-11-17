@@ -1,7 +1,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2024 Canonical Ltd
+ * Copyright (C) 2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -17,34 +17,23 @@
  *
  */
 
-package preinstall
+package testutil
 
 import (
 	"fmt"
-
-	internal_efi "github.com/snapcore/secboot/internal/efi"
+	"os"
+	"path/filepath"
 )
 
-type cpuVendor int
-
-const (
-	cpuVendorUnknown cpuVendor = iota
-	cpuVendorIntel
-	cpuVendorAMD
-)
-
-func determineCPUVendor(env internal_efi.HostEnvironment) (cpuVendor, error) {
-	amd64, err := env.AMD64()
-	if err != nil {
-		return cpuVendorUnknown, err
+func GetTpmSimulatorWorkDir() string {
+	// Choose a working directory that is allowed by the snap confinement.
+	// This is a workaround as go-tpm2 does not correctly set the correct snap run directory.
+	// See https://github.com/canonical/go-tpm2/issues/21
+	runDir := os.Getenv("XDG_RUNTIME_DIR")
+	if runDir == "" {
+		fmt.Fprintf(os.Stderr, "Cannot get TPM simulator work dir: XDG_RUNTIME_DIR not set\n")
+		return ""
 	}
-
-	switch amd64.CPUVendorIdentificator() {
-	case "GenuineIntel":
-		return cpuVendorIntel, nil
-	case "AuthenticAMD":
-		return cpuVendorAMD, nil
-	default:
-		return cpuVendorUnknown, fmt.Errorf("unknown CPU vendor: %s", amd64.CPUVendorIdentificator())
-	}
+	mssimSnapName := "tpm2-simulator-chrisccoulson"
+	return filepath.Join(runDir, "snap."+mssimSnapName)
 }

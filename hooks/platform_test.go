@@ -551,7 +551,7 @@ func (s *platformSuiteNoAEAD) TestRecoverKeysNewGCMError(c *C) {
 		}),
 		ciphertext: testutil.DecodeHexString(c, "c9f3f5cb299a115d8bdd77a800ac348f4992f2bb2df5b343729201ad9ce3f79ea2cc46927c7ef3bd809603d12521991229bcb7deaac249d568afc62390c99ddccaf759e17f52ed0c03e313494304d479a96f7d409cc0"),
 	})
-	c.Check(err, ErrorMatches, `cannot create AEAD: cipher: the nonce can't have zero length, or the security of the key will be immediately compromised`)
+	c.Check(err, ErrorMatches, `cannot create AEAD: cipher: the nonce can't have zero length.*`)
 
 	var phe *secboot.PlatformHandlerError
 	c.Assert(errors.As(err, &phe), testutil.IsTrue)

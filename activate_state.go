@@ -37,7 +37,7 @@ const (
 )
 
 // DeactivationReason permits the user of the [ActivateContext] API
-// to define and supply reasons for calling [ActivateContext.DeactivateContainer]
+// to define and supply reasons for calling [ActivateContext.DeactivateContainerByName]
 // on a successfully unlocked storage container. This is intended to
 // be used like an enum, with the user of the [ActivateContext] API
 // defining the values.
@@ -117,7 +117,7 @@ func errorToKeyslotError(err error) KeyslotErrorType {
 type ContainerActivateState struct {
 	Status             ActivationStatus            `json:"status"`                      // The overall activation status for this storage container.
 	Keyslot            string                      `json:"keyslot,omitempty"`           // If the container was activated, the name of the keyslot used.
-	DeactivateReason   DeactivationReason          `json:"deactivate-reason,omitempty"` // An argument supplied to ActivateContext.DeactivateContainer.
+	DeactivateReason   DeactivationReason          `json:"deactivate-reason,omitempty"` // An argument supplied to ActivateContext.DeactivateContainerByName.
 	KeyslotErrors      map[string]KeyslotErrorType `json:"keyslot-errors"`              // A map of errors for tried keyslots, keyed by name.
 	KeyslotErrorsOrder []string                    `json:"keyslot-errors-order"`        // A list of keyslot names in order of failure.
 

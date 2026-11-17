@@ -1,9 +1,7 @@
-//go:build amd64
-
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2025 Canonical Ltd
+ * Copyright (C) 2025-2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -25,6 +23,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	. "github.com/snapcore/secboot/efi/preinstall"
+	internal_efi "github.com/snapcore/secboot/internal/efi"
 	"github.com/snapcore/secboot/internal/efitest"
 )
 
@@ -163,4 +162,95 @@ func (s *hostSecurityAMDSuite) TestCheckHostSecurityAMDPSPErrNoDebugLock(c *C) {
 	_, err := CheckHostSecurityAMDPSP(env)
 	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: PSP debug lock is not enabled`)
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+}
+
+func (s *hostSecurityAMDSuite) TestDetectAMDPreOSMeasurementConfig(c *C) {
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2",
+			map[string]string{"DRIVER": "ccp"},
+			"pci",
+			map[string][]byte{"tsme_status": []byte("1\n")},
+			nil),
+		efitest.NewMockSysfsDevice(
+			"/sys/devices/platform/firmware-attributes/hp-bioscfg",
+			nil,
+			"firmware-attributes",
+			map[string][]byte{
+				"attributes/Measure Additional DMA Settings/current_value": []byte("PCR7\n"),
+				"attributes/SVM CPU Virtualization/current_value":          []byte("Enable\n"),
+				"attributes/DMA Protection/current_value":                  []byte("Enable\n"),
+				"attributes/Pre-boot DMA Protection/current_value":         []byte("All PCIe Devices\n"),
+			},
+			nil),
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices...))
+
+	config, err := DetectAMDPreOSMeasurementConfig(env)
+	c.Check(err, IsNil)
+	c.Check(config, DeepEquals, &AMDPreOSMeasurementConfig{
+		TSMEEnabled:               true,
+		HPPreBootDMAConfigEnabled: true,
+	})
+}
+
+func (s *hostSecurityAMDSuite) TestDetectAMDPreOSMeasurementConfigWithoutHPMeasurement(c *C) {
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2",
+			map[string]string{"DRIVER": "ccp"},
+			"pci",
+			map[string][]byte{"tsme_status": []byte("0\n")},
+			nil),
+		efitest.NewMockSysfsDevice(
+			"/sys/devices/platform/firmware-attributes/hp-bioscfg",
+			nil,
+			"firmware-attributes",
+			map[string][]byte{
+				"attributes/Measure Additional DMA Settings/current_value": []byte("Do not measure\n"),
+			},
+			nil),
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices...))
+
+	config, err := DetectAMDPreOSMeasurementConfig(env)
+	c.Check(err, IsNil)
+	c.Check(config, DeepEquals, &AMDPreOSMeasurementConfig{})
+}
+
+func (s *hostSecurityAMDSuite) TestDetectAMDPreOSMeasurementConfigMissingTSMEStatus(c *C) {
+	device := efitest.NewMockSysfsDevice(
+		"/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2",
+		map[string]string{"DRIVER": "ccp"},
+		"pci",
+		nil,
+		nil)
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
+
+	_, err := DetectAMDPreOSMeasurementConfig(env)
+	c.Check(err, ErrorMatches, `cannot determine TSME status: device attribute does not exist`)
+}
+
+func (s *hostSecurityAMDSuite) TestDetectAMDPreOSMeasurementConfigRejectsUnsupportedMeasuredHPConfig(c *C) {
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2",
+			map[string]string{"DRIVER": "ccp"},
+			"pci",
+			map[string][]byte{"tsme_status": []byte("1\n")},
+			nil),
+		efitest.NewMockSysfsDevice(
+			"/sys/devices/platform/firmware-attributes/hp-bioscfg",
+			nil,
+			"firmware-attributes",
+			map[string][]byte{
+				"attributes/Measure Additional DMA Settings/current_value": []byte("PCR7\n"),
+				"attributes/SVM CPU Virtualization/current_value":          []byte("Disable\n"),
+			},
+			nil),
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(devices...))
+
+	_, err := DetectAMDPreOSMeasurementConfig(env)
+	c.Check(err, ErrorMatches, `unsupported platform: unsupported HP SVM CPU Virtualization firmware setting "Disable"`)
 }

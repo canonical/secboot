@@ -224,12 +224,6 @@ func withStorageContainerActivateErr(name string, err error) mockStorageContaine
 	}
 }
 
-func withStorageContainerDeactivateErr(err error) mockStorageContainerOption {
-	return func(c *mockStorageContainer) {
-		c.deactivateErr = err
-	}
-}
-
 func withStorageContainerOpenReadErr(err error) mockStorageContainerOption {
 	return func(c *mockStorageContainer) {
 		c.openReadErr = err
@@ -252,8 +246,7 @@ type mockStorageContainer struct {
 
 	expectedCtx context.Context
 
-	activateErrs  map[string]error
-	deactivateErr error
+	activateErrs map[string]error
 
 	openReadErr error
 	readerOpts  []mockStorageContainerReaderOption
@@ -347,20 +340,6 @@ func (c *mockStorageContainer) Activate(ctx context.Context, keyslot Keyslot, ke
 
 	c.activationKey = key
 
-	return nil
-}
-
-func (c *mockStorageContainer) Deactivate(ctx context.Context) error {
-	if err := c.checkContext(ctx); err != nil {
-		return err
-	}
-	if c.deactivateErr != nil {
-		return c.deactivateErr
-	}
-	if !c.activated {
-		return ErrStorageContainerNotActive
-	}
-	c.activated = false
 	return nil
 }
 

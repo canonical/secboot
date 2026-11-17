@@ -43,7 +43,6 @@ func newLUKS2KeyDataReader(devicePath, name string) (secboot.KeyDataReader, erro
 // luks2Api allows the legacy secboot calls to be mocked in unit tests.
 type luks2Api struct {
 	Activate             func(string, string, []byte, int) error
-	Deactivate           func(string) error
 	ListUnlockKeyNames   func(string) ([]string, error)
 	ListRecoveryKeyNames func(string) ([]string, error)
 	NewKeyDataReader     func(string, string) (secboot.KeyDataReader, error)
@@ -55,7 +54,6 @@ type luks2Api struct {
 // existing LUKS2 specific APIs in the core secboot package will be deleted.
 var luks2Ops = &luks2Api{
 	Activate:             internal_luks2.Activate,
-	Deactivate:           internal_luks2.Deactivate,
 	ListUnlockKeyNames:   secboot.ListLUKS2ContainerUnlockKeyNames,
 	ListRecoveryKeyNames: secboot.ListLUKS2ContainerRecoveryKeyNames,
 	NewKeyDataReader:     newLUKS2KeyDataReader,
