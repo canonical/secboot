@@ -556,3 +556,95 @@ func (s *hostSecuritySuite) TestCheckDiscreteTPMPartialResetAttackMitigationStat
 	c.Check(status, Equals, DtpmPartialResetAttackMitigationNotRequired)
 	c.Check(err, IsNil)
 }
+
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityAndAMDPreOSMeasurementsAMD(c *C) {
+	pspAttrs := map[string][]byte{
+		"tsme_status": []byte("1\n"),
+		"boot_integrity": []byte(`1
+`),
+		"debug_lock_on": []byte(`1
+`),
+		"fused_part": []byte(`1
+`),
+	}
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", pspAttrs, nil),
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(devices...),
+		efitest.WithAMD64Environment("AuthenticAMD", 0x1a, nil, 0, nil),
+	)
+	log := efitest.NewLog(c, &efitest.LogOptions{})
+
+	integrity, config, err := CheckHostSecurityAndAMDPreOSMeasurements(env, log)
+	c.Check(err, IsNil)
+	c.Check(config, DeepEquals, &AMDPreOSMeasurementConfig{TSMEEnabled: true})
+	c.Check(integrity, Equals, PlatformFirmwareIntegrityVerified)
+}
+
+func (s *hostSecuritySuite) TestCheckHostSecurityAndAMDPreOSMeasurementsUnsupportedArchitecture(c *C) {
+	restore := MockRuntimeGOARCH("ppc64le")
+	defer restore()
+
+	integrity, config, err := CheckHostSecurityAndAMDPreOSMeasurements(nil, nil)
+	c.Check(config, IsNil)
+	c.Check(integrity, Equals, PlatformFirmwareIntegrityNone)
+	c.Check(err, ErrorMatches, `unsupported platform: checking host security is not implemented on ppc64le`)
+
+	var upe *UnsupportedPlatformError
+	c.Check(errors.As(err, &upe), testutil.IsTrue)
+}
+
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityAndAMDPreOSMeasurementsIntel(c *C) {
+	meiAttrs := map[string][]byte{
+		"fw_ver": []byte(`0:16.1.27.2176
+0:16.1.27.2176
+0:16.0.15.1624
+`),
+		"fw_status": fwStatusBase,
+	}
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar0", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/virtual/iommu/dmar1", nil, "iommu", nil, nil),
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:16.0/mei/mei0", map[string]string{"DEVNAME": "mei0"}, "mei", meiAttrs, efitest.NewMockSysfsDevice(
+			"/sys/devices/pci0000:00:16:0", map[string]string{"DRIVER": "mei_me"}, "pci", nil, nil,
+		)),
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(devices...),
+		efitest.WithAMD64Environment("GenuineIntel", 0x6, []uint64{internal_cpuid.FeatureSDBG, internal_cpuid.FeatureSMX}, 4, map[uint32]uint64{0xc80: 0x40000000}),
+	)
+	log := efitest.NewLog(c, &efitest.LogOptions{})
+
+	integrity, config, err := CheckHostSecurityAndAMDPreOSMeasurements(env, log)
+	c.Check(config, IsNil)
+	c.Check(err, IsNil)
+	c.Check(integrity, Equals, PlatformFirmwareIntegrityVerified)
+}
+
+func (s *hostSecurityAMD64Suite) TestCheckHostSecurityAndAMDPreOSMeasurementsRetainsConfigWithWarning(c *C) {
+	pspAttrs := map[string][]byte{
+		"tsme_status": []byte("1\n"),
+		"boot_integrity": []byte(`1
+`),
+		"debug_lock_on": []byte(`1
+`),
+		"fused_part": []byte(`1
+`),
+	}
+	devices := []internal_efi.SysfsDevice{
+		efitest.NewMockSysfsDevice("/sys/devices/pci0000:00/0000:00:08.1/0000:c1:00.2", map[string]string{"DRIVER": "ccp"}, "pci", pspAttrs, nil),
+	}
+	env := efitest.NewMockHostEnvironmentWithOpts(
+		efitest.WithSysfsDevices(devices...),
+		efitest.WithAMD64Environment("AuthenticAMD", 0x1a, nil, 0, nil),
+	)
+	log := efitest.NewLog(c, &efitest.LogOptions{})
+
+	integrity, config, err := CheckHostSecurityAndAMDPreOSMeasurements(env, log)
+	c.Check(errors.Is(err, ErrNoKernelIOMMU), testutil.IsTrue)
+	c.Check(config, DeepEquals, &AMDPreOSMeasurementConfig{TSMEEnabled: true})
+	c.Check(integrity, Equals, PlatformFirmwareIntegrityNone)
+}

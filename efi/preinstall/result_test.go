@@ -122,6 +122,25 @@ func (s *resultSuite) TestCheckResultMarshalJSON(c *C) {
 	c.Check(data, DeepEquals, []byte("{\"pcr-alg\":\"sha256\",\"used-secure-boot-cas\":[{\"subject\":\"MIGBMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMSswKQYDVQQDEyJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVUVGSSBDQSAyMDEx\",\"subject-key-id\":\"E62/Qwm9gnCcjNVPMW7VIpiKG9Q=\",\"pubkey-algorithm\":\"RSA\",\"issuer\":\"MIGRMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMTswOQYDVQQDEzJNaWNyb3NvZnQgQ29ycG9yYXRpb24gVGhpcmQgUGFydHkgTWFya2V0cGxhY2UgUm9vdA==\",\"authority-key-id\":\"RWZSQ+F+WBG/1k6eI1UIOzoiaqg=\",\"signature-algorithm\":\"SHA256-RSA\"}],\"flags\":[\"no-platform-config-profile-support\",\"no-drivers-and-apps-config-profile-support\",\"no-boot-manager-config-profile-support\"]}"))
 }
 
+func (s *resultSuite) TestCheckResultAMDPreOSMeasurementConfigJSONRoundTrip(c *C) {
+	result := &CheckResult{
+		PCRAlg:            tpm2.HashAlgorithmSHA256,
+		UsedSecureBootCAs: []*X509CertificateID{},
+	}
+	SetAMDPreOSMeasurementConfigForTest(result, &AMDPreOSMeasurementConfig{
+		TSMEEnabled:               true,
+		HPPreBootDMAConfigEnabled: true,
+	})
+
+	data, err := json.Marshal(result)
+	c.Assert(err, IsNil)
+	c.Check(string(data), Equals, `{"pcr-alg":"sha256","used-secure-boot-cas":[],"flags":[],"amd-pre-os-measurement-config":{"tsme-enabled":true,"hp-pre-boot-dma-config-enabled":true}}`)
+
+	var recovered *CheckResult
+	c.Assert(json.Unmarshal(data, &recovered), IsNil)
+	c.Check(recovered, DeepEquals, result)
+}
+
 func (s *resultSuite) TestCheckResultMarshalJSONSHA384(c *C) {
 	result := CheckResult{
 		PCRAlg:            tpm2.HashAlgorithmSHA384,
