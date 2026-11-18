@@ -78,7 +78,6 @@ type runChecksHostFixture struct {
 
 	// arch is the GOARCH that this fixture emulates; host security checks dispatch on it at runtime.
 	arch string
-
 }
 
 func runChecksHostFixturesFor(c *C, required runChecksHostCapabilities) []runChecksHostFixture {

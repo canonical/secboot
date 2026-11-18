@@ -50,9 +50,15 @@ func checkTPM2ForRequiredPCClientFeatures(tpm *tpm2.TPMContext) (ok bool, err er
 		expected uint32
 		cmp      cmpFn
 	}{
-		{prop: tpm2.PropertyHRTransientMin, expected: 3, cmp: cmpGE},  // We use transient objects, so expect the PC-Client minimum
-		{prop: tpm2.PropertyHRPersistentMin, expected: 7, cmp: cmpGE}, // We store persistent objects, so expect the PC-Client minimum
-		{prop: tpm2.PropertyHRLoadedMin, expected: 3, cmp: cmpGE},     // We make use of multiple loaded sessions, so expect the PC-Client minimum
+		{prop: tpm2.PropertyHRTransientMin, expected: 3, cmp: cmpGE}, // We use transient objects, so expect the PC-Client minimum
+		// EnsureProvisioned persists two objects: the endorsement key (EK) and
+		// storage root key (SRK). Require capacity for those objects rather than
+		// the PC-Client profile's minimum of 7. Some firmware TPMs advertise a
+		// minimum of 2 and still provide every feature we need (issue #585).
+		// This property is a guaranteed capacity, not a count of free slots;
+		// provisioning can still fail if other persistent objects fill NV storage.
+		{prop: tpm2.PropertyHRPersistentMin, expected: 2, cmp: cmpGE},
+		{prop: tpm2.PropertyHRLoadedMin, expected: 3, cmp: cmpGE}, // We make use of multiple loaded sessions, so expect the PC-Client minimum
 		{prop: tpm2.PropertyPCRCount, expected: 24, cmp: cmpGE},
 		// If TPM2_PT_NV_COUNTERS_MAX is zero, then the either the number of NV
 		// counters is only limited by the amount of NV storage space available,
