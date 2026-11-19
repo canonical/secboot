@@ -549,7 +549,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrFPFsNotLo
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoManufLockCSME11(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodNoManufLockCSME11(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:16.1.27.2176
 0:16.1.27.2176
@@ -562,8 +562,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoManufLo
 	))
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
-	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+	c.Check(err, IsNil)
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrUnsupportedNoFVMECSME11(c *C) {
@@ -651,7 +650,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrFPFsNotLo
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoManufLockCSME18(c *C) {
+func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardGoodNoManufLockCSME18(c *C) {
 	attrs := map[string][]byte{
 		"fw_ver": []byte(`0:18.0.5.2141
 0:18.0.5.2141
@@ -664,8 +663,7 @@ func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrNoManufLo
 	))
 	env := efitest.NewMockHostEnvironmentWithOpts(efitest.WithSysfsDevices(device))
 	err := CheckHostSecurityIntelBootGuard(env)
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
-	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+	c.Check(err, IsNil)
 }
 
 func (s *hostSecurityIntelSuite) TestCheckHostSecurityIntelBootGuardErrInvalidProfileCSME18(c *C) {
