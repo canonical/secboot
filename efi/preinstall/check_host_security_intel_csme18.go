@@ -48,7 +48,6 @@ const (
 
 	hfsts5Csme18BtgProfileValid hfsts5Csme18 = 1 << 1
 
-	hfsts6Csme18MfgLock    hfsts6Csme18 = 1 << 21
 	hfsts6Csme18FPFSOCLock hfsts6Csme18 = 1 << 30
 
 	// hfsts5Csme18BtgProfile is the bitmask for the BootGuard profile.
@@ -73,11 +72,9 @@ func toHfstsRegistersCsme18(regs hfstsRegisters) hfstsRegistersCsme18 {
 
 func isInManufacturingModeCSME18(regs hfstsRegistersCsme18) bool {
 	// This is based on the checks from
-	// https://github.com/coreboot/coreboot/blob/eb5bdf06b92534b6f66f612297a4ccb69008b4ac/src/soc/intel/common/block/cse/cse_spec.c#L15
+	// https://github.com/coreboot/coreboot/blob/eb5bdf06b92534b6f66f612297a4ccb69008b4ac/src/soc/intel/common/block/cse/cse_spec.c#L15,
+	// minus the HFSTS6 manufacturing lock check (see isInManufacturingModeCSME11).
 	if regs.Hfsts1&hfsts1Csme18SPIProtectionMode > 0 {
-		return true
-	}
-	if regs.Hfsts6&hfsts6Csme18MfgLock == 0 {
 		return true
 	}
 	if regs.Hfsts6&hfsts6Csme18FPFSOCLock == 0 {

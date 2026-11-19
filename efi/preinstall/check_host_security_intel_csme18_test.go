@@ -67,14 +67,15 @@ func (*hostSecurityIntelCsme18Suite) TestCheckHostSecurityIntelBootGuardCSME18Er
 	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
 }
 
-func (*hostSecurityIntelCsme18Suite) TestCheckHostSecurityIntelBootGuardCSME18ErrNoManufLock(c *C) {
+func (*hostSecurityIntelCsme18Suite) TestCheckHostSecurityIntelBootGuardCSME18GoodNoManufLock(c *C) {
+	// ThinkPad P16 Gen 3 (CSME 19, Flexible EOM): the manufacturing lock
+	// bit is clear on a fused unit. See canonical/secboot#572.
 	err := CheckHostSecurityIntelBootGuardCSME18(HfstsRegistersCsme18{
-		Hfsts1: 0x94000245,
+		Hfsts1: 0x90000245,
 		Hfsts5: 0x02F61F03,
 		Hfsts6: 0x40000000,
 	})
-	c.Check(err, ErrorMatches, `no hardware root-of-trust properly configured: system is in manufacturing mode`)
-	c.Check(err, FitsTypeOf, &NoHardwareRootOfTrustError{})
+	c.Check(err, IsNil)
 }
 
 func (*hostSecurityIntelCsme18Suite) TestCheckHostSecurityIntelBootGuardCSME18ErrInvalidProfile(c *C) {
