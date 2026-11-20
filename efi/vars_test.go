@@ -73,6 +73,18 @@ func msDbx1(c *C) efi.SignatureDatabase {
 	return db
 }
 
+func testDbt(c *C) efi.SignatureDatabase {
+	return efi.SignatureDatabase{
+		efitest.NewSignatureListX509(c, testUefiCACert1, testOwnerGuid),
+	}
+}
+
+func testDbr(c *C) efi.SignatureDatabase {
+	return efi.SignatureDatabase{
+		efitest.NewSignatureListX509(c, testUefiCACert2, testOwnerGuid),
+	}
+}
+
 func emptyDbx() efi.SignatureDatabase {
 	return efi.SignatureDatabase{
 		efitest.NewSignatureListNullSHA256(efi.MakeGUID(0xa0baa8a3, 0x041d, 0x48a8, 0xbc87, [...]uint8{0xc3, 0x6d, 0x12, 0x1b, 0x5e, 0x3d})),
@@ -139,6 +151,18 @@ func withSbatPolicy(policy ShimSbatPolicy) mockVarsConfig {
 func withSecureBootDisabled() mockVarsConfig {
 	return func(c *C, vars efitest.MockVars) {
 		vars.SetSecureBoot(false)
+	}
+}
+
+func withDbt(dbt func(*C) efi.SignatureDatabase) mockVarsConfig {
+	return func(c *C, vars efitest.MockVars) {
+		vars.SetDbt(c, dbt(c))
+	}
+}
+
+func withDbr(dbr func(*C) efi.SignatureDatabase) mockVarsConfig {
+	return func(c *C, vars efitest.MockVars) {
+		vars.SetDbr(c, dbr(c))
 	}
 }
 

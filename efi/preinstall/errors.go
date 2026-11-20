@@ -863,9 +863,6 @@ func (e *BootManagerConfigPCRError) Unwrap() error {
 //   - Secure boot is not enabled, or if supported, the system is not in deployed
 //     mode, as [github.com/snapcore/secboot/efi.WithSecureBootPolicyProfile] only
 //     generates profiles compatible with deployed mode.
-//   - The firmware supports timestamp revocation or OS recovery, as these result
-//     in additional measurements that are not yet supported by
-//     [github.com/snapcore/secboot/efi.WithSecureBootPolicyProfile].
 //   - There are insufficient, unexpected or out-of-order secure boot configuration
 //     measurements.
 //   - Measurement digests are not the tagged hash of the event data where that is
