@@ -3,7 +3,7 @@
 // -*- Mode: Go; indent-tabs-mode: t -*-
 
 /*
- * Copyright (C) 2021-2024 Canonical Ltd
+ * Copyright (C) 2026 Canonical Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -19,18 +19,22 @@
  *
  */
 
-package efi_test
+package cpuid
 
-import (
-	. "github.com/snapcore/secboot/internal/efi"
-	. "gopkg.in/check.v1"
-)
+// VendorIdentificator returns the CPU vendor identificator string.
+// CPUID is x86-only; this stub always returns "" on this architecture.
+func VendorIdentificator() string {
+	return ""
+}
 
-type defaultEnvAMD64Suite struct{}
+// Family returns the CPU display family ID.
+// CPUID is x86-only; this stub always returns 0 on this architecture.
+func Family() uint32 {
+	return 0
+}
 
-var _ = Suite(&defaultEnvAMD64Suite{})
-
-func (s *defaultEnvAMD64Suite) TestNotAMD64Host(c *C) {
-	_, err := DefaultEnv.AMD64()
-	c.Check(err, Equals, ErrNotAMD64Host)
+// HasFeature returns whether the supplied CPUID feature bit is set.
+// CPUID is x86-only; this stub always returns false on this architecture.
+func HasFeature(feature uint64) bool {
+	return false
 }

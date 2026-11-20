@@ -32,6 +32,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
+	"github.com/snapcore/secboot/internal/testutil"
 	. "github.com/snapcore/secboot/tpm2"
 )
 
@@ -66,7 +67,10 @@ func TestMain(m *testing.M) {
 	rand.Seed(time.Now().UnixNano())
 	os.Exit(func() int {
 		if tpm2_testutil.TPMBackend == tpm2_testutil.TPMBackendMssim {
-			simulatorCleanup, err := tpm2_testutil.LaunchTPMSimulator(nil)
+			opts := tpm2_testutil.TPMSimulatorOptions{
+				WorkDir: testutil.GetTpmSimulatorWorkDir(),
+			}
+			simulatorCleanup, err := tpm2_testutil.LaunchTPMSimulator(&opts)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Cannot launch TPM simulator: %v\n", err)
 				return 1
