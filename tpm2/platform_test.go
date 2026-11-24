@@ -20,6 +20,7 @@
 package tpm2_test
 
 import (
+	"bytes"
 	"crypto"
 	"encoding/json"
 	gohash "hash"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/canonical/go-tpm2"
 	"github.com/canonical/go-tpm2/policyutil"
+	tpm2_testutil "github.com/canonical/go-tpm2/testutil"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/hkdf"
@@ -490,6 +492,87 @@ func (s *platformSuite) TestRecoverKeysTPMLockout(c *C) {
 		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
 		Role:                   "",
 	})
+}
+
+// failUnseal makes the TPM respond to the first n TPM2_Unseal commands with the response code
+// rc. With TPM_RC_PCR_CHANGED, this simulates what happens when another PCR is extended (eg, by
+// IMA measuring a kernel module) between TPM2_PolicyPCR and TPM2_Unseal. It returns a pointer to
+// the number of TPM2_Unseal commands seen so far, and a function to remove the filter.
+func (s *platformSuite) failUnseal(rc tpm2.ResponseCode, n int) (calls *int, restore func()) {
+	calls = new(int)
+	transport := s.Transport().Unwrap().(*tpm2_testutil.Transport)
+	restore = transport.PushResponseFilter(func(cmdCode tpm2.CommandCode, _ tpm2.HandleList, _ []tpm2.AuthCommand, _ []byte, rsp *bytes.Buffer) error {
+		if cmdCode != tpm2.CommandUnseal {
+			return nil
+		}
+		*calls++
+		if *calls > n {
+			return nil
+		}
+		rsp.Reset()
+		return tpm2.WriteResponsePacket(rsp, rc, nil, nil, nil)
+	})
+	return calls, restore
+}
+
+func (s *platformSuite) recoverKeysWithInjectedUnsealError(c *C, rc tpm2.ResponseCode, n int) (unsealCalls int, payload []byte, err error) {
+	params := &ProtectKeyParams{
+		PCRProfile:             tpm2test.NewPCRProfileFromCurrentValues(tpm2.HashAlgorithmSHA256, []int{7}),
+		PCRPolicyCounterHandle: s.NextAvailableHandle(c, 0x0181fff0),
+		Role:                   "foo",
+	}
+	k, _, _, err := NewTPMProtectedKey(s.TPM(), params)
+	c.Assert(err, IsNil)
+
+	s.AddCleanup(s.CloseMockConnection(c))
+
+	var platformHandle json.RawMessage
+	c.Assert(k.UnmarshalPlatformHandle(&platformHandle), IsNil)
+
+	platformKeyData := &secboot.PlatformKeyData{
+		Generation:    k.Generation(),
+		EncodedHandle: platformHandle,
+		Role:          params.Role,
+		KDFAlg:        crypto.Hash(crypto.SHA256),
+		AuthMode:      k.AuthMode(),
+	}
+
+	calls, restore := s.failUnseal(rc, n)
+	defer restore()
+
+	var handler PlatformKeyDataHandler
+	payload, err = handler.RecoverKeys(platformKeyData, s.lastEncryptedPayload)
+	return *calls, payload, err
+}
+
+// TestRecoverKeysRetriesOnPCRChanged checks that a transient TPM_RC_PCR_CHANGED (caused by an
+// unrelated PCR being extended during unsealing) does not make key recovery fail.
+func (s *platformSuite) TestRecoverKeysRetriesOnPCRChanged(c *C) {
+	calls, payload, err := s.recoverKeysWithInjectedUnsealError(c, tpm2.ResponsePCRChanged, 2)
+	c.Check(err, IsNil)
+	c.Check(payload, NotNil)
+	c.Check(calls, Equals, 3)
+}
+
+// TestRecoverKeysPCRChangedPersistently checks that retrying is bounded, and that the
+// error is reported if the PCRs never stop changing.
+func (s *platformSuite) TestRecoverKeysPCRChangedPersistently(c *C) {
+	// Fail every TPM2_Unseal. 256 is comfortably more than the number of attempts that
+	// the implementation makes, so that retrying has to stop on its own.
+	calls, _, err := s.recoverKeysWithInjectedUnsealError(c, tpm2.ResponsePCRChanged, 256)
+	c.Check(tpm2.IsTPMError(err, tpm2.ErrorPCRChanged, tpm2.CommandUnseal), Equals, true)
+	c.Check(calls > 1, Equals, true, Commentf("expected a retry, got %d TPM2_Unseal command(s)", calls))
+	c.Check(calls <= 100, Equals, true, Commentf("retries are unbounded: %d TPM2_Unseal commands", calls))
+}
+
+// TestRecoverKeysDoesNotRetryOtherErrors checks that only TPM_RC_PCR_CHANGED triggers a retry,
+// and that any other error from TPM2_Unseal is reported immediately.
+func (s *platformSuite) TestRecoverKeysDoesNotRetryOtherErrors(c *C) {
+	calls, _, err := s.recoverKeysWithInjectedUnsealError(c, tpm2.ResponseLockout, 256)
+	c.Assert(err, testutil.ConvertibleTo, &secboot.PlatformHandlerError{})
+	c.Check(err.(*secboot.PlatformHandlerError).Type, Equals, secboot.PlatformHandlerErrorUserAuthUnavailable)
+	c.Check(err, testutil.ErrorIs, ErrTPMLockout)
+	c.Check(calls, Equals, 1)
 }
 
 func (s *platformSuite) testRecoverKeysNoValidSRK(c *C, prepareSrk func()) {

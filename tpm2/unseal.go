@@ -125,7 +125,56 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 	return nil, nil, err
 }
 
-// unsealDataFromTPM unseals the data from this sealed object.
+// maxUnsealAttempts is the maximum number of times that unsealDataFromTPM will try to
+// unseal an object if the TPM keeps returning TPM_RC_PCR_CHANGED.
+const maxUnsealAttempts = 30
+
+// unsealDataFromTPM unseals the data from this sealed object. If the TPM returns
+// TPM_RC_PCR_CHANGED, the whole sequence (loading the key, starting a policy session,
+// executing the policy and unsealing) is restarted, up to maxUnsealAttempts times in total.
+//
+// This is needed because of how TPMs work in general, and not because of a choice made here.
+// The TPM2 specification (Trusted Platform Module Library, Part 3: Commands, TPM2_PolicyPCR)
+// says that a policy session records the TPM's pcrUpdateCounter the first time that
+// TPM2_PolicyPCR is executed, and that the TPM returns TPM_RC_PCR_CHANGED from commands that
+// later check it (a subsequent TPM2_PolicyPCR, or TPM2_Unseal) if it no longer matches. The
+// counter is incremented when *any* PCR is extended, including PCRs that aren't selected by
+// the policy, so the session can't be used again once it's been invalidated. This happens
+// during normal boot, eg, when IMA extends PCR 10 for each kernel module that udev loads
+// between TPM2_PolicyPCR and TPM2_Unseal. The condition is transient and is resolved by
+// starting again with a new policy session, whereas treating it as fatal makes snap-bootstrap
+// needlessly fall back to the recovery key.
+//
+// This fixes https://bugs.launchpad.net/snapd/+bug/2172997. It mimics the fix for the same
+// problem in systemd (https://github.com/systemd/systemd/issues/24906), which is to retry
+// the policy session and TPM2_Unseal with no delay between attempts:
+// https://github.com/systemd/systemd/commit/0254e4d66af7aa893b31b2326335ded5dde48b51
+//
+// The error that is returned after the last attempt is the TPM_RC_PCR_CHANGED error. Any
+// other error is returned immediately.
+//
+// See unsealDataFromTPMOnce for the details of a single attempt.
+func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []byte, hmacSession tpm2.SessionContext) ([]byte, error) {
+	var (
+		data []byte
+		err  error
+	)
+	attemptsLeft := maxUnsealAttempts
+	for attemptsLeft > 0 {
+		attemptsLeft--
+		data, err = k.unsealDataFromTPMOnce(tpm, authValue, hmacSession)
+		if !tpm2.IsTPMError(err, tpm2.ErrorPCRChanged, tpm2.AnyCommandCode) {
+			break
+		}
+	}
+	return data, err
+}
+
+// unsealDataFromTPMOnce makes a single attempt to unseal the data from this sealed object.
+//
+// This must not be called directly. Always use unsealDataFromTPM, which restarts the attempt
+// if the TPM returns TPM_RC_PCR_CHANGED. Calling this directly would make a harmless and
+// transient condition fatal.
 //
 // Unsealing uses a policy session that is salted with the SRK that is used to protect the key
 // and uses the same session for response encryption. Note that this only provides protection
@@ -153,7 +202,7 @@ func (k *sealedKeyDataBase) loadForUnseal(tpm *tpm2.TPMContext, session tpm2.Ses
 // attribute set, used for authenticating use of the storage hierarchy if a transient
 // storage primary key needs to be created, in order to avoid transmitting the cleartext
 // authorization value.
-func (k *sealedKeyDataBase) unsealDataFromTPM(tpm *tpm2.TPMContext, authValue []byte, hmacSession tpm2.SessionContext) (data []byte, err error) {
+func (k *sealedKeyDataBase) unsealDataFromTPMOnce(tpm *tpm2.TPMContext, authValue []byte, hmacSession tpm2.SessionContext) (data []byte, err error) {
 	keyObject, policySession, err := k.loadForUnseal(tpm, hmacSession)
 	if err != nil {
 		return nil, err
