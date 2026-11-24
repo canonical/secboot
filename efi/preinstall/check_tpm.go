@@ -70,7 +70,7 @@ func checkTPM2ForRequiredPCClientFeatures(tpm *tpm2.TPMContext) (ok bool, err er
 		case err != nil:
 			return false, fmt.Errorf("cannot obtain value of %v: %w", data.prop, err)
 		case !data.cmp(val, data.expected):
-			log.Debugf("TPM: %s = %d, require at least %d", data.name, val, data.expected)
+			log.Debugf("TPM: %s = %d, required at least %d", data.name, val, data.expected)
 			return false, nil
 		}
 	}
