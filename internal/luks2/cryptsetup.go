@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -507,7 +508,23 @@ func TestContainerKey(devicePath string, key []byte) bool {
 	return cryptsetupCmd(bytes.NewReader(key), "open", "--test-passphrase", "--key-file", "-", devicePath) == nil
 }
 
+
 // Check if key is valid key for LUKS2 container at devicePath for a specific keyslot.
 func TestContainerKeyForKeyslot(devicePath string, slot int, key []byte) bool {
 	return cryptsetupCmd(bytes.NewReader(key), "open", "--test-passphrase", "--key-slot", strconv.Itoa(slot), "--key-file", "-", devicePath) == nil
+}
+
+func LuksUUID(devicePath string) (string, error) {
+	cmd := exec.Command("cryptsetup", "luksUUID", devicePath)
+	cmd.Stdin = nil
+
+	var errBuf bytes.Buffer
+	var outBuf strings.Builder
+	cmd.Stderr = &errBuf
+	cmd.Stdout = &outBuf
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("cryptsetup failed with: %v", osutil.OutputErr(errBuf.Bytes(), err))
+	}
+	return strings.TrimRight(outBuf.String(), "\n"), nil
 }
