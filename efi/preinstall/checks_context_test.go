@@ -2664,7 +2664,7 @@ func (s *runChecksContextSuite) TestRunBadTPMDeviceFailure(c *C) {
 
 func (s *runChecksContextSuite) TestRunBadNoPCClientTPMDevice(c *C) {
 	// Test the error case where there is a TPM2 device, but it isn't
-	// a PC Client device.
+	// a PC Client device and lacks the required persistent object capacity.
 	required := runChecksHostCapabilityNotVirtualMachine
 	for _, fixture := range runChecksHostFixturesFor(c, required) {
 		logRunChecksHostFixture(fixture)
@@ -2677,6 +2677,7 @@ func (s *runChecksContextSuite) TestRunBadNoPCClientTPMDevice(c *C) {
 			),
 			tpmPropertyModifiers: map[tpm2.Property]uint32{
 				tpm2.PropertyPSFamilyIndicator: 2,
+				tpm2.PropertyHRPersistentMin:   1, // Not enough for the EK and SRK.
 			},
 			enabledBanks: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256},
 			profileOpts:  PCRProfileOptionsDefault,
