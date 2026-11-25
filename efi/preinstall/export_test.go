@@ -22,6 +22,7 @@ package preinstall
 import (
 	"crypto"
 	"encoding/json"
+	"fmt"
 	"io"
 
 	efi "github.com/canonical/go-efilib"
@@ -44,6 +45,7 @@ type (
 	HfstsRegistersCsme18        = hfstsRegistersCsme18
 	JoinError                   = joinError
 	MeVersion                   = meVersion
+	PCRBankResults              = pcrBankResults
 	PcrResults                  = pcrResults
 	SecureBootPolicyResult      = secureBootPolicyResult
 	SecureBootPolicyResultFlags = secureBootPolicyResultFlags
@@ -98,6 +100,7 @@ var (
 	ClearTPM                                              = clearTPM
 	DetermineCPUVendor                                    = determineCPUVendor
 	DetectVirtualization                                  = detectVirtualization
+	DtpmPartialResetAttackMitigationUnknown               = dtpmPartialResetAttackMitigationUnknown
 	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
 	InsertActionProceed                                   = insertActionProceed
 	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
@@ -187,4 +190,28 @@ func MockRuntimeGOARCH(arch string) (restore func()) {
 	orig := runtimeGOARCH
 	runtimeGOARCH = arch
 	return func() { runtimeGOARCH = orig }
+}
+
+// RegisterARM64TestPlatform registers a synthetic ARM64 platform that matches the
+// supplied CPU manufacturer and version and reports measured firmware integrity.
+// Non-matching platforms fall through to the previously registered handler. This allows
+// us to test ARM64 generic logic in the absence of any real, vendor or platform specific
+// root-of-trust detection and handling
+func RegisterARM64TestPlatform(cpuManufacturer, cpuVersion string) {
+	previous := checkHostSecurityARM64Platform
+	checkHostSecurityARM64Platform = func(env internal_efi.HostEnvironmentARM64, manufacturer string) (platformFirmwareIntegrityConfig, error) {
+		if manufacturer != cpuManufacturer {
+			return previous(env, manufacturer)
+		}
+
+		version, err := env.CPUVersion()
+		if err != nil {
+			return platformFirmwareIntegrityNone, &UnsupportedPlatformError{fmt.Errorf("cannot determine CPU version: %w", err)}
+		}
+		if version != cpuVersion {
+			return previous(env, manufacturer)
+		}
+
+		return platformFirmwareIntegrityMeasured, nil
+	}
 }
