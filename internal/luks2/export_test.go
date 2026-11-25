@@ -28,9 +28,8 @@ import (
 )
 
 var (
-	AcquireSharedLock = acquireSharedLock
-	SelectCipher      = selectCipher
-	KeySize           = keySize
+	SelectCipher = selectCipher
+	KeySize      = keySize
 )
 
 func (o *FormatOptions) Validate(cipher string) error {

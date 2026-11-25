@@ -14,22 +14,22 @@ import (
 )
 
 const UsageInit = `
-usage: secboot-tool init [<options>] <device> <unlock-key-hex>
+usage: secboot-tool init [<options>] <device>
 
-Initialize (format) an encrypted container with the 'plainkey' mechanism.
+Initialize (format) an encrypted container.
+The unlock key must be given in hexadecimal on stdin (<unlock-key-hex>).
 
 Options:
   -m, --mechanism <mechanism>
-                 Select a mechanism for key protection (see below)
+                Select a mechanism for key protection (see below)
   --print-unlock-key
-                 Print the unlock key (for test and debug only)
+                Print the unlock key (for test and debug only)
 
-  -h, --help     Show this help message
-  -v, --verbose  Be verbose
+  -h, --help    Show this help message
+  -v, --verbose Be verbose
 
 Arguments:
   <device>         Path to an encrypted container
-  <unlock-key-hex> Unlock key (hexadecimal)
 
 Mechanisms:
   none
@@ -40,7 +40,8 @@ Mechanisms:
       LUKS header, encrypted by the given <unlock-key-hex>.
 
 Examples:
-  secboot-tool init /dev/sda1 30303030303131313132323232333333333434343435353535363636363737373738383838
+  echo 30303030303131313132323232333333333434343435353535363636363737373738383838 |
+	secboot-tool init /dev/sda1
 `
 
 var optsInit struct {
@@ -50,7 +51,7 @@ var optsInit struct {
 	Help           bool   `short:"h" long:"help" description:"Show help"`
 }
 
-func cmdInitContainerPlainkey(args []string) error {
+func cmdInitContainer(args []string) error {
 	var err error
 	argParser := flags.NewParser(&optsInit, flags.PassDoubleDash)
 	positionalArgs, err := argParser.ParseArgs(args)
@@ -75,14 +76,22 @@ func cmdInitContainerPlainkey(args []string) error {
 		printUnlockKey = true
 	}
 
-	if len(positionalArgs) != 2 {
+	if len(positionalArgs) != 1 {
 		return fmt.Errorf("bad argument count")
 	}
-
 	devicePath := positionalArgs[0]
-	protectorKey, err := hex.DecodeString(positionalArgs[1])
+
+	// Get the unlock key from stdin
+	lines, err := getLinesFromStdin()
 	if err != nil {
-		return fmt.Errorf("bad unlok-key-hex: %w", err)
+		return err
+	}
+	if len(lines) == 0 {
+		return fmt.Errorf("cannot get key from stdin (empty)")
+	}
+	protectorKey, err := hex.DecodeString(lines[0])
+	if err != nil {
+		return fmt.Errorf("bad <unlock-key-hex>: %w", err)
 	}
 
 	keyslotName := "default"

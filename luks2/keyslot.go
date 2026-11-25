@@ -19,12 +19,15 @@
 
 package luks2
 
-import "github.com/snapcore/secboot"
+import (
+	"github.com/snapcore/secboot"
+	"github.com/snapcore/secboot/internal/luks2"
+)
 
 type keyslotImpl struct {
 	keyslotType     secboot.KeyslotType
 	keyslotName     string
-	keyslotId       int
+	keyslotIds      []int
 	keyslotPriority int
 	keyslotData     secboot.KeyDataReader // This will eventually just be a io.Reader
 }
@@ -45,15 +48,22 @@ func (i *keyslotImpl) Data() secboot.KeyDataReader {
 	return i.keyslotData
 }
 
-func (i *keyslotImpl) KeyslotID() int {
-	return i.keyslotId
+// PreferredKeyslotId returns the LUKS2 keyslot identifier if there is only one
+// or AnySlot otherwise.
+func (i *keyslotImpl) PreferredKeyslotId() int {
+	if len(i.keyslotIds) == 1 {
+		return i.keyslotIds[0]
+	} else {
+		return luks2.AnySlot
+	}
 }
 
 // Keyslot provides information about a LUKS2 keyslot.
 type Keyslot interface {
 	secboot.Keyslot
 
-	// KeyslotID returns the LUKS2 keyslot ID associated
-	// with this secboot keyslot.
-	KeyslotID() int
+	// As LUKS2 tokens can be associated to multiple keyslots (eg: during reencryption)
+	// PreferredKeyslotId returns either the only LUKS2 keyslot identifier of the token
+	// or AnySlot if there isn't only one.
+	PreferredKeyslotId() int
 }

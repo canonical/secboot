@@ -23,6 +23,8 @@ import (
 	"context"
 	"os"
 
+	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
+
 	"golang.org/x/sys/unix"
 )
 
@@ -45,6 +47,7 @@ type (
 	StorageContainerBackend = storageContainerBackend
 	StorageContainerImpl    = storageContainerImpl
 	StorageContainerReader  = storageContainerReader
+	ReencryptionImpl        = reencryptionImpl
 )
 
 func MockDevRoot(path string) (restore func()) {
@@ -117,9 +120,27 @@ func MockUnixStat(fn func(string, *unix.Stat_t) error) (restore func()) {
 	}
 }
 
+func MockAcquireSharedLock() (restore func()) {
+	origAcquireSharedLock := internal_luks2.AcquireSharedLock
+	internal_luks2.AcquireSharedLock = func(context.Context, string) (func(), error) {
+		return func() {}, nil
+	}
+
+	return func() {
+		internal_luks2.AcquireSharedLock = origAcquireSharedLock
+	}
+}
+
 func NewStorageContainer(path string, dev uint64) *StorageContainerImpl {
 	return &storageContainerImpl{
 		path: path,
 		dev:  dev,
+	}
+}
+
+func NewReencryptionImpl(path, activeName string) ReencryptionImpl {
+	return ReencryptionImpl{
+		sourcePath:   path,
+		dmActiveName: activeName,
 	}
 }

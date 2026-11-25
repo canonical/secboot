@@ -29,6 +29,7 @@ import (
 
 	"github.com/snapcore/secboot"
 	internal_luks2 "github.com/snapcore/secboot/internal/luks2"
+	"github.com/snapcore/secboot/log"
 	"golang.org/x/sys/unix"
 )
 
@@ -156,6 +157,37 @@ func (b *storageContainerBackend) ProbeActivated(ctx context.Context, path strin
 	}
 
 	return nil, nil
+}
+
+// NewOnlineReencryption implements [secboot.StorageContainerBackend.NewOnlineReencryption].
+//
+// If activeName is not a device mapper name, this function returns (nil, nil).
+func (b *storageContainerBackend) NewOnlineReencryption(activeName string) (secboot.Reencryption, error) {
+	// Get the source path.
+	status, err := internal_luks2.ReadCryptsetupStatus(activeName)
+	if err != nil {
+		log.Warningf("cannot read cryptsetup status of %v: %v", activeName, err.Error())
+		// This backend cannot manage this active name.
+		return nil, nil
+	}
+	if status.CryptsetupType != internal_luks2.CryptsetupTypeLUKS2 {
+		// The dm name is not a LUKS2 device
+		log.Warningf("cryptsetup status type of %v: %v", activeName, status.CryptsetupType)
+		return nil, nil
+	}
+	if len(status.Device) == 0 {
+		return nil, fmt.Errorf("cannot get device of cryptsetup active name '%v'", activeName)
+	}
+	if internal_luks2.DetectCryptsetupFeatures()&internal_luks2.FeatureReencrypt == 0 {
+		return nil, fmt.Errorf("luks2 backend is missing the reencryption feature")
+	}
+
+	reencryption := reencryptionImpl{
+		sourcePath:   status.Device,
+		dmActiveName: activeName,
+	}
+
+	return reencryption, nil
 }
 
 func init() {

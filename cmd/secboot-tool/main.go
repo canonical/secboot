@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 )
 
 const Usage = `
@@ -36,15 +39,36 @@ func main() {
 	case "print-tokens":
 		err = cmdPrintTokens(args)
 	case "init":
-		err = cmdInitContainerPlainkey(args)
+		err = cmdInitContainer(args)
 	case "activate":
 		err = cmdActivateContainer(args)
 	case "deactivate":
 		err = cmdDeactivateContainer(args)
+	case "reencrypt":
+		err = cmdReencrypt(args)
 	default:
 		die(Usage)
 	}
 	if err != nil {
 		die(err.Error())
 	}
+}
+
+// Get lines from stdin and trim spaces
+func getLinesFromStdin() ([]string, error) {
+	lines := []string{}
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+		if len(line) > 0 {
+			lines = append(lines, strings.TrimSpace(line))
+		}
+		if err == io.EOF {
+			break // end of stream
+		}
+	}
+	return lines, nil
 }

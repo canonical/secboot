@@ -15,24 +15,23 @@ import (
 )
 
 const UsageActivate = `
-usage: secboot-tool activate [<options>] <device> <active-name> <unlock-key-hex>
+usage: secboot-tool activate [<options>] <device> <active-name>
 
-Activate an encrypted container that has uses mechanism 'plainkey'.
+Activate an encrypted container.
+The unlock key must be given in hexadecimal on stdin (<unlock-key-hex>).
 
 Options:
   -m, --mechanism <mechanism>
-                 Select a mechanism for key protection (see secboot-tool init)
-
-  -h, --help     Show this help message
-  -v, --verbose  Be verbose
+                Select a mechanism for key protection (see secboot-tool init)
+  -h, --help    Show this help message
+  -v, --verbose Be verbose
 
 Arguments:
   <active-name>    Name of the active volume as shown in /dev/mapper
   <device>         Path to an encrypted container
-  <unlock-key-hex> Unlock key (hexadecimal)
 
 Examples:
-  secboot-tool activate /dev/sda1 crypt02 30303030
+  echo 30303030 | secboot-tool activate /dev/sda1 crypt02
 `
 
 var optsActivate struct {
@@ -61,14 +60,22 @@ func cmdActivateContainer(args []string) error {
 		log.SetLogLevel(log.LogLevelInfo)
 	}
 
-	if len(positionalArgs) != 3 {
+	if len(positionalArgs) != 2 {
 		return fmt.Errorf("bad argument count")
 	}
 	devicePath := positionalArgs[0]
 	activeName := positionalArgs[1]
-	protectorKey, err := hex.DecodeString(positionalArgs[2])
+
+	lines, err := getLinesFromStdin()
 	if err != nil {
-		return fmt.Errorf("bad unlock-key-hex: %w", err)
+		return fmt.Errorf("cannot get key from stdin: %w", err)
+	}
+	if len(lines) == 0 {
+		return fmt.Errorf("cannot get key from stdin (empty)")
+	}
+	protectorKey, err := hex.DecodeString(lines[0])
+	if err != nil {
+		return fmt.Errorf("bad <unlock-key-hex>: %w", err)
 	}
 
 	log.Debugf("using mechanism: %v", optsActivate.Mechanism)
