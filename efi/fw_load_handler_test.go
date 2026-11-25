@@ -1547,3 +1547,129 @@ func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileUserMod
 		},
 	})
 }
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileWithDbt(c *C) {
+	// Verify that dbt is measured after dbx if the firmware measured it.
+	vars := makeMockVars(c, withMsSecureBootConfig(), withDbt(testDbt))
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			IncludeDbt: true,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbt, varData: vars[Dbt].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileWithDbtNotMeasuredByFirmware(c *C) {
+	// Verify that dbt is not measured if it exists but the firmware didn't measure it,
+	// which is the case for some firmware implementations.
+	vars := makeMockVars(c, withMsSecureBootConfig(), withDbt(testDbt))
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars:       vars,
+		logOptions: &efitest.LogOptions{Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1}},
+		alg:        tpm2.HashAlgorithmSHA256,
+		pcrs:       MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileWithDbr(c *C) {
+	// Verify that dbr is measured after dbx if the firmware measured it.
+	vars := makeMockVars(c, withMsSecureBootConfig(), withDbr(testDbr))
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			IncludeDbr: true,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbr, varData: vars[Dbr].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileWithDbtAndDbr(c *C) {
+	// Verify that dbt and dbr are measured after dbx in the correct order if the
+	// firmware measured them.
+	vars := makeMockVars(c, withMsSecureBootConfig(), withDbt(testDbt), withDbr(testDbr))
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms: []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			IncludeDbt: true,
+			IncludeDbr: true,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbt, varData: vars[Dbt].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbr, varData: vars[Dbr].Payload},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+		},
+	})
+}
+
+func (s *fwLoadHandlerSuite) TestMeasureImageStartSecureBootPolicyProfileWithDbtUserMode(c *C) {
+	// Verify that dbt is measured before the user mode related measurements.
+	vars := makeMockVars(c, withMsSecureBootConfig(), withDbt(testDbt), withDeployedModeDisabled())
+	s.testMeasureImageStart(c, &testFwMeasureImageStartData{
+		vars: vars,
+		logOptions: &efitest.LogOptions{
+			Algorithms:          []tpm2.HashAlgorithmId{tpm2.HashAlgorithmSHA256, tpm2.HashAlgorithmSHA1},
+			DisableDeployedMode: true,
+			IncludeDbt:          true,
+		},
+		alg:  tpm2.HashAlgorithmSHA256,
+		pcrs: MakePcrFlags(internal_efi.SecureBootPolicyPCR),
+		loadParams: &LoadParams{
+			"include_secure_boot_user_mode": true,
+		},
+		expectedEvents: []*mockPcrBranchEvent{
+			{pcr: 7, eventType: mockPcrBranchResetEvent},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}, varData: []byte{0x01}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: PK, varData: vars[PK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: KEK, varData: vars[KEK].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Db, varData: vars[Db].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbx, varData: vars[Dbx].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: Dbt, varData: vars[Dbt].Payload},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "AuditMode", GUID: efi.GlobalVariable}, varData: []byte{0x00}},
+			{pcr: 7, eventType: mockPcrBranchMeasureVariableEvent, varName: efi.VariableDescriptor{Name: "DeployedMode", GUID: efi.GlobalVariable}, varData: []byte{0x00}},
+			{pcr: 7, eventType: mockPcrBranchExtendEvent, digest: testutil.DecodeHexString(c, "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119")}, // EV_SEPARATOR
+		},
+	})
+}

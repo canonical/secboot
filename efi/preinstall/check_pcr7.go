@@ -286,6 +286,24 @@ func handleVariableAuthorityEvent(pcrAlg tpm2.HashAlgorithmId, db efi.SignatureD
 	return matchedEsl.Type, esd.Data, nil
 }
 
+// secureBootConfigVariable describes a secure boot configuration variable that is
+// expected to be measured to PCR7.
+type secureBootConfigVariable struct {
+	efi.VariableDescriptor
+	optional bool // The firmware may not measure this variable.
+}
+
+// hasRequiredSecureBootConfigVariables indicates whether any of the supplied variables
+// are ones that the firmware is required to measure.
+func hasRequiredSecureBootConfigVariables(configs []secureBootConfigVariable) bool {
+	for _, config := range configs {
+		if !config.optional {
+			return true
+		}
+	}
+	return false
+}
+
 type secureBootPolicyResultFlags int
 
 const (
@@ -316,17 +334,15 @@ type secureBootPolicyResult struct {
 // If the version of UEFI is >= 2.5, it also makes sure that the secure boot mode is "deployed mode". If
 // not, then the result will indicate that the system is in user mode.
 //
-// It also reads the "OsIndicationsSupported" variable to test for features that are not supported by
-// WithSecureBootPolicyProfile. These are timestamp revocation (which requires an extra signature database -
-// "dbt") and OS recovery (which requires an extra signature database -"dbr", used to control access to
-// OsRecoveryOrder and OsRecover#### variables). Of the 2, it's likely that we might need to add support for
-// timestamp revocation at some point in the future.
-//
 // After these checks, it iterates over the secure boot configuration in the log, making sure that the
 // configuration is measured in the correct order, that the event data is valid, and that the measured digest
 // is the tagged hash of the event data. It makes sure that the value of "SecureBoot" in the log is consistent
 // with the "SecureBoot" variable (which is read-only at runtime), and it verifies that all of the signature
 // databases are formatted correctly and can be decoded. It will return an error if any of these checks fail.
+// The timestamp signature database ("dbt", used by firmware that supports timestamp revocation) and the
+// recovery signature database ("dbr", used by firmware that supports OS recovery) are permitted to be measured
+// after dbx, but they are optional because whether they are measured differs between firmware implementations.
+// WithSecureBootPolicyProfile only includes these in a profile if they are measured in the log.
 //
 // If the pre-OS environment contains events other than EV_EFI_VARIABLE_DRIVER_CONFIG, it will return an error.
 // This can happen a firmware debugger is enabled, in which case PCR7 will begin with a EV_EFI_ACTION
@@ -395,37 +411,27 @@ func checkSecureBootPolicyMeasurementsAndObtainAuthorities(ctx context.Context, 
 		}
 	}
 
-	// Make sure this system doesn't support features that affect PCR7 and which we don't
-	// currently support.
-	osIndicationsSupported, err := efi.ReadOSIndicationsSupportedVariable(varCtx)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read OsIndicationsSupported variable: %w", err)
-	}
-	if osIndicationsSupported&efi.OSIndicationTimestampRevocation > 0 {
-		// Timestamp verification relies on another database (dbt) which we currently don't support
-		// in WithSecureBootPolicyProfile(). It's theoretically possible we might see this in the
-		// wild and might have to add support for it in the future.
-		return nil, errors.New("generating secure boot profiles for systems with timestamp revocation (dbt) support is currently not supported")
-	}
-	if osIndicationsSupported&efi.OSIndicationStartOSRecovery > 0 {
-		// OS recovery relies on another database (dbr) which we currently don't support in
-		// WithSecureBootPolicyProfile(), but given this also depends on EFI_VARIABLE_AUTHENTICATION_3,
-		// it's unlikely we'll ever see this in the wild.
-		return nil, errors.New("generating secure boot profiles for systems with OS recovery support, which requires dbr support, is not supported")
-	}
 	// TODO(chrisccoulson): Not sure if there's any indication that we might get SPDM related measurements,
 	// which our profile generation for PCR7 currently doesn't support.
 
 	// Make sure that the secure boot config in the log is measured in the
 	// expected order, else WithSecureBootPolicyProfile() will generate an invalid policy,
 	// because we hard code the order. The order here is what we expect to see.
-	configs := []efi.VariableDescriptor{
-		{Name: "SecureBoot", GUID: efi.GlobalVariable},
-		{Name: "PK", GUID: efi.GlobalVariable},
-		{Name: "KEK", GUID: efi.GlobalVariable},
-		{Name: "db", GUID: efi.ImageSecurityDatabaseGuid},
-		{Name: "dbx", GUID: efi.ImageSecurityDatabaseGuid},
-		// TODO: Add optional dbt / SPDM in the future.
+	//
+	// The dbt and dbr measurements are optional. Firmware that supports timestamp
+	// revocation or OS recovery doesn't necessarily measure these - EDK2 measures dbt
+	// only if it exists and never measures dbr, and we've seen firmware that doesn't
+	// measure dbt even when it exists. WithSecureBootPolicyProfile() only includes these
+	// in the profile if they are measured in the log.
+	configs := []secureBootConfigVariable{
+		{VariableDescriptor: efi.VariableDescriptor{Name: "SecureBoot", GUID: efi.GlobalVariable}},
+		{VariableDescriptor: efi.VariableDescriptor{Name: "PK", GUID: efi.GlobalVariable}},
+		{VariableDescriptor: efi.VariableDescriptor{Name: "KEK", GUID: efi.GlobalVariable}},
+		{VariableDescriptor: efi.VariableDescriptor{Name: "db", GUID: efi.ImageSecurityDatabaseGuid}},
+		{VariableDescriptor: efi.VariableDescriptor{Name: "dbx", GUID: efi.ImageSecurityDatabaseGuid}},
+		{VariableDescriptor: efi.VariableDescriptor{Name: "dbt", GUID: efi.ImageSecurityDatabaseGuid}, optional: true},
+		{VariableDescriptor: efi.VariableDescriptor{Name: "dbr", GUID: efi.ImageSecurityDatabaseGuid}, optional: true},
+		// TODO: Add optional SPDM in the future.
 	}
 
 	var (
@@ -495,6 +501,17 @@ NextEvent:
 			// ev.PCRIndex is always SecureBootPolicyPCR in this phase.
 			switch ev.EventType {
 			case tcglog.EventTypeEFIVariableDriverConfig:
+				data, ok := ev.Data.(*tcglog.EFIVariableData)
+				if !ok {
+					// The data resulting from decode errors are guaranteed to implement the error interface
+					return nil, fmt.Errorf("invalid event data for EV_EFI_VARIABLE_DRIVER_CONFIG event: %w", ev.Data.(error))
+				}
+
+				// Skip over any optional secure boot variables that the firmware didn't measure.
+				for len(configs) > 0 && configs[0].optional && (data.VariableName != configs[0].GUID || data.UnicodeName != configs[0].Name) {
+					configs = configs[1:]
+				}
+
 				if len(configs) == 0 {
 					// Unexpected config event - we're not expecting another secure boot variable
 					// to measure. We should have exitted the loop by now.
@@ -505,11 +522,6 @@ NextEvent:
 				config := configs[0]
 				configs = configs[1:]
 
-				data, ok := ev.Data.(*tcglog.EFIVariableData)
-				if !ok {
-					// The data resulting from decode errors are guaranteed to implement the error interface
-					return nil, fmt.Errorf("invalid event data for EV_EFI_VARIABLE_DRIVER_CONFIG event: %w", ev.Data.(error))
-				}
 				// Make sure this is the event we're expecting to be measured. If they're
 				// measured in an unexpected order, then WithSecureBootPolicyProfile() will
 				// generate an invalid policy.
@@ -547,31 +559,36 @@ NextEvent:
 				// See the doc notes for this event type in the tcglogPhaseFirmwareLaunch
 				// phase. This leg is here to accommodate a "DMA Protection Disabled" event
 				// as part of the secure boot configuration, just at the end of the signature
-				// database measurements. We only permit this if there are no signature database
-				// measurements remaining.
-				if permitDMAProtectionDisabledEvent && len(configs) == 0 && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
+				// database measurements. We only permit this if there are no required signature
+				// database measurements remaining. WithSecureBootPolicyProfile() measures any
+				// optional signature databases before this event, so they aren't permitted to
+				// appear after it.
+				if permitDMAProtectionDisabledEvent && !hasRequiredSecureBootConfigVariables(configs) && (bytes.Equal(ev.Data.Bytes(), []byte(tcglog.DMAProtectionDisabled)) ||
 					bytes.Equal(ev.Data.Bytes(), append([]byte(tcglog.DMAProtectionDisabled), 0x00))) {
 					// This event is detected by the host security checks which will result in a flag
 					// being added to the results so that it can be picked up by the code in
 					// profile. We don't need to do anything else here other than make sure
 					// this event only appears once.
 					permitDMAProtectionDisabledEvent = false // Don't allow this more than once.
+					configs = nil                            // Don't allow any more secure boot variables.
 					continue NextEvent
 				}
 				fallthrough
 			default:
 				// Anything that isn't EV_EFI_VARIABLE_DRIVER_CONFIG or EV_EFI_ACTION ends up here.
 				switch {
-				case internal_efi.IsVendorEventType(ev.EventType) && len(configs) == 0:
-					// ok
+				case internal_efi.IsVendorEventType(ev.EventType) && !hasRequiredSecureBootConfigVariables(configs):
+					// ok. WithSecureBootPolicyProfile() measures any optional signature
+					// databases before this event, so they aren't permitted to appear after it.
+					configs = nil
 				default:
 					return nil, fmt.Errorf("unexpected %v event %q whilst measuring config", ev.EventType, ev.Data)
 				}
 			}
 		case tcglogPhasePreOSThirdPartyDispatch:
-			if len(configs) > 0 {
+			if hasRequiredSecureBootConfigVariables(configs) {
 				// We've transitioned to a phase where components can be loaded and verified but we haven't
-				// measured all of the secure boot variables. We'll fail to generate a valid policy with
+				// measured all of the required secure boot variables. We'll fail to generate a valid policy with
 				// WithSecureBootPolicyProfile() in this case.
 				return nil, errors.New("EV_EFI_VARIABLE_DRIVER_CONFIG events for some secure boot variables missing from log")
 			}
@@ -639,9 +656,9 @@ NextEvent:
 				}
 			}
 		case tcglogPhaseOSPresent:
-			if len(configs) > 0 {
+			if hasRequiredSecureBootConfigVariables(configs) {
 				// We've transitioned to a phase where components can be loaded and verified but we haven't
-				// measured all of the secure boot variables. We'll fail to generate a valid policy with
+				// measured all of the required secure boot variables. We'll fail to generate a valid policy with
 				// WithSecureBootPolicyProfile() in this case.
 				return nil, errors.New("EV_EFI_VARIABLE_DRIVER_CONFIG events for some secure boot variables missing from log")
 			}
