@@ -93,7 +93,6 @@ const (
 	hfsts6Csme11ErrorEnforcementPolicy hfsts6Csme11 = 0xc0
 	hfsts6Csme11MeasuredBoot           hfsts6Csme11 = 1 << 8
 	hfsts6Csme11VerifiedBoot           hfsts6Csme11 = 1 << 9
-	hfsts6Csme11MfgLock                hfsts6Csme11 = 1 << 21
 	hfsts6Csme11BootGuardDisable       hfsts6Csme11 = 1 << 28
 	hfsts6Csme11FPFSOCLock             hfsts6Csme11 = 1 << 30
 
@@ -104,17 +103,19 @@ const (
 
 func isInManufacturingModeCSME11(vers meVersion, regs hfstsRegistersCsme11) bool {
 	// This is based on the checks from
-	// https://github.com/coreboot/coreboot/blob/eb5bdf06b92534b6f66f612297a4ccb69008b4ac/src/soc/intel/common/block/cse/cse_spec.c#L15
+	// https://github.com/coreboot/coreboot/blob/eb5bdf06b92534b6f66f612297a4ccb69008b4ac/src/soc/intel/common/block/cse/cse_spec.c#L15,
+	// minus the check that the manufacturing variables are locked (HFSTS6 bit 21) on
+	// CSME 16 onwards. According to Lenovo, platforms that use Intel's Flexible EOM
+	// protect this configuration by another mechanism and never set this bit on fused,
+	// shipped units, so checking it produces a false positive on those platforms.
+	// fwupd dropped the same check for this reason in
+	// https://github.com/fwupd/fwupd/pull/8318. The HFSTS1 bit 4 and FPF SOC lock
+	// checks are kept. See https://github.com/canonical/secboot/issues/572.
 	if regs.Hfsts1&hfsts1Csme11MfgMode > 0 {
 		return true
 	}
 	if vers.Major > 13 {
 		if regs.Hfsts6&hfsts6Csme11FPFSOCLock == 0 {
-			return true
-		}
-	}
-	if vers.Major > 15 {
-		if regs.Hfsts6&hfsts6Csme11MfgLock == 0 {
 			return true
 		}
 	}
