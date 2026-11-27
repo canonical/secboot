@@ -31,6 +31,7 @@ import (
 )
 
 type (
+	AMDPreOSMeasurementConfig   = amdPreOSMeasurementConfig
 	AuthorityTrustFlags         = authorityTrustFlags
 	AuthorityTrustData          = authorityTrustData
 	AuthorityTrustDataSet       = authorityTrustDataSet
@@ -78,42 +79,46 @@ const (
 )
 
 var (
-	CalculateIntelMEFamily                                = calculateIntelMEFamily
-	CheckBootManagerCodeMeasurements                      = checkBootManagerCodeMeasurements
-	CheckHostSecurityAMDPSP                               = checkHostSecurityAMDPSP
-	CheckHostSecurityIntelBootGuard                       = checkHostSecurityIntelBootGuard
-	CheckHostSecurityIntelBootGuardCSME11                 = checkHostSecurityIntelBootGuardCSME11
-	CheckHostSecurityIntelBootGuardCSME18                 = checkHostSecurityIntelBootGuardCSME18
-	CheckHostSecurityIntelBootGuardMSR                    = checkHostSecurityIntelBootGuardMSR
-	CheckHostSecurityIntelCPUDebuggingLocked              = checkHostSecurityIntelCPUDebuggingLocked
-	CheckDiscreteTPMPartialResetAttackMitigationStatus    = checkDiscreteTPMPartialResetAttackMitigationStatus
-	CheckDriversAndAppsMeasurements                       = checkDriversAndAppsMeasurements
-	CheckFirmwareLogAndChoosePCRBank                      = checkFirmwareLogAndChoosePCRBank
-	CheckForKernelIOMMU                                   = checkForKernelIOMMU
-	CheckHostSecurity                                     = checkHostSecurity
-	CheckSecureBootPolicyMeasurementsAndObtainAuthorities = checkSecureBootPolicyMeasurementsAndObtainAuthorities
-	CheckSecureBootPolicyPCRForDegradedFirmwareSettings   = checkSecureBootPolicyPCRForDegradedFirmwareSettings
-	CheckSystemIsEFI                                      = checkSystemIsEFI
-	CheckTPM2ForRequiredPCClientFeatures                  = checkTPM2ForRequiredPCClientFeatures
-	ClearTPM                                              = clearTPM
-	DetermineCPUVendor                                    = determineCPUVendor
-	DetectVirtualization                                  = detectVirtualization
-	ErrInvalidLockoutAuthValueSupplied                    = errInvalidLockoutAuthValueSupplied
-	InsertActionProceed                                   = insertActionProceed
-	IsLaunchedFromLoadOption                              = isLaunchedFromLoadOption
-	IsPPIActionAvailable                                  = isPPIActionAvailable
-	IsTPMDiscrete                                         = isTPMDiscrete
-	IsTPMDiscreteFromIntelBootGuard                       = isTPMDiscreteFromIntelBootGuard
-	JoinErrors                                            = joinErrors
-	MatchLaunchToLoadOption                               = matchLaunchToLoadOption
-	NewX509CertificateID                                  = newX509CertificateID
-	OpenAndCheckTPM2Device                                = openAndCheckTPM2Device
-	ReadIntelHFSTSRegistersFromMEISysfs                   = readIntelHFSTSRegistersFromMEISysfs
-	ReadIntelMEVersionFromMEISysfs                        = readIntelMEVersionFromMEISysfs
-	ReadOrderedLoadOptionVariables                        = readOrderedLoadOptionVariables
-	RestrictedTPMLocalitiesIntel                          = restrictedTPMLocalitiesIntel
-	RunPPIAction                                          = runPPIAction
-	UnwrapCompoundError                                   = unwrapCompoundError
+	CheckHostSecurityAndAMDPreOSMeasurements                        = checkHostSecurityAndAMDPreOSMeasurements
+	CalculateIntelMEFamily                                          = calculateIntelMEFamily
+	CheckBootManagerCodeMeasurements                                = checkBootManagerCodeMeasurements
+	CheckHostSecurityAMDPSP                                         = checkHostSecurityAMDPSP
+	CheckHostSecurityIntelBootGuard                                 = checkHostSecurityIntelBootGuard
+	CheckHostSecurityIntelBootGuardCSME11                           = checkHostSecurityIntelBootGuardCSME11
+	CheckHostSecurityIntelBootGuardCSME18                           = checkHostSecurityIntelBootGuardCSME18
+	CheckHostSecurityIntelBootGuardMSR                              = checkHostSecurityIntelBootGuardMSR
+	CheckHostSecurityIntelCPUDebuggingLocked                        = checkHostSecurityIntelCPUDebuggingLocked
+	CheckDiscreteTPMPartialResetAttackMitigationStatus              = checkDiscreteTPMPartialResetAttackMitigationStatus
+	CheckDriversAndAppsMeasurements                                 = checkDriversAndAppsMeasurements
+	CheckFirmwareLogAndChoosePCRBank                                = checkFirmwareLogAndChoosePCRBank
+	CheckForKernelIOMMU                                             = checkForKernelIOMMU
+	CheckHostSecurity                                               = checkHostSecurity
+	CheckSecureBootPolicyMeasurementsAndObtainAuthorities           = checkSecureBootPolicyMeasurementsAndObtainAuthorities
+	CheckSecureBootPolicyPCRForDegradedFirmwareSettings             = checkSecureBootPolicyPCRForDegradedFirmwareSettings
+	CheckSystemIsEFI                                                = checkSystemIsEFI
+	CheckTPM2ForRequiredPCClientFeatures                            = checkTPM2ForRequiredPCClientFeatures
+	ClearTPM                                                        = clearTPM
+	DetermineCPUVendor                                              = determineCPUVendor
+	DetectVirtualization                                            = detectVirtualization
+	ErrInvalidLockoutAuthValueSupplied                              = errInvalidLockoutAuthValueSupplied
+	InsertActionProceed                                             = insertActionProceed
+	IsLaunchedFromLoadOption                                        = isLaunchedFromLoadOption
+	IsPPIActionAvailable                                            = isPPIActionAvailable
+	IsTPMDiscrete                                                   = isTPMDiscrete
+	IsTPMDiscreteFromIntelBootGuard                                 = isTPMDiscreteFromIntelBootGuard
+	JoinErrors                                                      = joinErrors
+	MatchLaunchToLoadOption                                         = matchLaunchToLoadOption
+	NewX509CertificateID                                            = newX509CertificateID
+	OpenAndCheckTPM2Device                                          = openAndCheckTPM2Device
+	ReadIntelHFSTSRegistersFromMEISysfs                             = readIntelHFSTSRegistersFromMEISysfs
+	ReadIntelMEVersionFromMEISysfs                                  = readIntelMEVersionFromMEISysfs
+	ReadOrderedLoadOptionVariables                                  = readOrderedLoadOptionVariables
+	RestrictedTPMLocalitiesIntel                                    = restrictedTPMLocalitiesIntel
+	RunPPIAction                                                    = runPPIAction
+	UnwrapCompoundError                                             = unwrapCompoundError
+	CheckDriversAndAppsMeasurementsWithConfig                       = checkDriversAndAppsMeasurementsWithConfig
+	CheckSecureBootPolicyMeasurementsAndObtainAuthoritiesWithConfig = checkSecureBootPolicyMeasurementsAndObtainAuthoritiesWithConfig
+	DetectAMDPreOSMeasurementConfig                                 = detectAMDPreOSMeasurementConfig
 )
 
 func MockEfiComputePeImageDigest(fn func(crypto.Hash, io.ReaderAt, int64) ([]byte, error)) (restore func()) {
@@ -173,6 +178,10 @@ func MakePCRResults(mandatory bool, initialVal, logVal, pcrVal tpm2.Digest, err 
 		pcrValue:     pcrVal,
 		err:          err,
 	}
+}
+
+func SetAMDPreOSMeasurementConfigForTest(result *CheckResult, config *AMDPreOSMeasurementConfig) {
+	result.amdPreOSMeasurementConfig = config
 }
 
 func NewPCRBankResults(alg tpm2.HashAlgorithmId, sl uint8, pcrs [8]PcrResults) *pcrBankResults {

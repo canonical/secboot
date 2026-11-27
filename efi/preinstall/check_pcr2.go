@@ -46,6 +46,10 @@ import (
 // This function expects that the supplied log has already been tested to be valid (eg,
 // with checkFirmwareLogAndChoosePCRBank), and will panic if it isn't
 func checkDriversAndAppsMeasurements(ctx context.Context, env internal_efi.HostEnvironment, log *tcglog.Log, pcrAlg tpm2.HashAlgorithmId) ([]*LoadedImageInfo, error) {
+	return checkDriversAndAppsMeasurementsWithConfig(ctx, env, log, pcrAlg, nil)
+}
+
+func checkDriversAndAppsMeasurementsWithConfig(ctx context.Context, env internal_efi.HostEnvironment, log *tcglog.Log, pcrAlg tpm2.HashAlgorithmId, amdConfig *amdPreOSMeasurementConfig) ([]*LoadedImageInfo, error) {
 	varCtx := env.VarContext(ctx)
 
 	// Obtain the list of DriverXXXX load options for drivers that are started
@@ -56,18 +60,56 @@ func checkDriversAndAppsMeasurements(ctx context.Context, env internal_efi.HostE
 	}
 
 	var addonDrivers []*LoadedImageInfo
+	var seenAMDTSMEConfig bool
 
-	// Iterate over the log until OS-present and check if there are any
-	// drivers or applications loaded
+	// Iterate over the log through the initial OS authorization or launch
+	// boundary and check if there are any drivers or applications loaded.
 	phaseTracker := newTcgLogPhaseTracker()
 	for _, ev := range log.Events {
+		wasTransitioningToOSPresent := phaseTracker.phase == tcglogPhaseTransitioningToOSPresent
 		phase, err := phaseTracker.processEvent(ev)
 		if err != nil {
 			return nil, err
 		}
 
-		if phase >= tcglogPhaseTransitioningToOSPresent {
-			return addonDrivers, nil
+		if ev.PCRIndex == internal_efi.DriversAndAppsPCR {
+			if handled, err := checkAMDTSMEConfigEvent(ev, pcrAlg, amdConfig, &seenAMDTSMEConfig); handled {
+				if err != nil {
+					return nil, err
+				}
+				continue
+			}
+		}
+
+		switch phase {
+		case tcglogPhaseTransitioningToOSPresent:
+			// The phase tracker validates that this consists only of the
+			// remaining separators.
+			continue
+		case tcglogPhaseOSPresent:
+			if wasTransitioningToOSPresent {
+				// processEvent returns the new phase. The event that
+				// completes the transition is still one of the required
+				// separators, regardless of which PCR it belongs to.
+				continue
+			}
+
+			// AMD firmware may extend its independently verifiable TSME status
+			// into PCR2 after the separators but before authorizing or launching
+			// the initial OS loader. The event is handled above.
+			if (ev.PCRIndex == internal_efi.SecureBootPolicyPCR &&
+				ev.EventType == tcglog.EventTypeEFIVariableAuthority) ||
+				(ev.PCRIndex == internal_efi.BootManagerCodePCR &&
+					ev.EventType == tcglog.EventTypeEFIBootServicesApplication) {
+				return addonDrivers, nil
+			}
+
+			if ev.PCRIndex == internal_efi.DriversAndAppsPCR {
+				return nil, fmt.Errorf(
+					"unexpected post-separator event type %v found in PCR %d",
+					ev.EventType, internal_efi.DriversAndAppsPCR)
+			}
+			continue
 		}
 
 		if ev.PCRIndex != internal_efi.DriversAndAppsPCR {
@@ -126,5 +168,8 @@ func checkDriversAndAppsMeasurements(ctx context.Context, env internal_efi.HostE
 		}
 	}
 
+	if phaseTracker.reachedOSPresent() {
+		return nil, errors.New("reached end of log before encountering initial OS authorization or launch")
+	}
 	return nil, errors.New("reached end of log before encountering transition to OS-present")
 }
